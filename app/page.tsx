@@ -1,65 +1,77 @@
-import Image from "next/image";
+import { Users, Ticket, Mic2, TrendingUp } from "lucide-react";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="max-w-6xl mx-auto space-y-8">
+      
+      {/* CABEÇALHO DA PÁGINA */}
+      <div>
+        <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+        <p className="text-gray-400 mt-1">Visão geral do seu festival.</p>
+      </div>
+
+      {/* CARDS DE RESUMO (MOCK) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <div className="bg-axon-panel border border-axon-border rounded-xl p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between text-gray-400">
+            <span className="text-sm font-medium">Inscrições Ativas</span>
+            <Users size={20} className="text-axon-green" />
+          </div>
+          <div>
+            <span className="text-3xl font-bold text-white">342</span>
+            <p className="text-xs text-gray-500 mt-1">+12 nas últimas 24h</p>
+          </div>
+        </div>
+
+        <div className="bg-axon-panel border border-axon-border rounded-xl p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between text-gray-400">
+            <span className="text-sm font-medium">Receita (Inscrições)</span>
+            <TrendingUp size={20} className="text-axon-green" />
+          </div>
+          <div>
+            <span className="text-3xl font-bold text-white">R$ 18.450</span>
+            <p className="text-xs text-gray-500 mt-1">Faturamento bruto</p>
+          </div>
+        </div>
+
+        <div className="bg-axon-panel border border-axon-border rounded-xl p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between text-gray-400">
+            <span className="text-sm font-medium">Ingressos Vendidos</span>
+            <Ticket size={20} className="text-axon-green" />
+          </div>
+          <div>
+            <span className="text-3xl font-bold text-white">850</span>
+            <p className="text-xs text-gray-500 mt-1">Lote 1 esgotado</p>
+          </div>
+        </div>
+
+        <div className="bg-axon-panel border border-axon-border rounded-xl p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between text-gray-400">
+            <span className="text-sm font-medium">Mídias Pendentes</span>
+            <Mic2 size={20} className="text-red-400" />
+          </div>
+          <div>
+            <span className="text-3xl font-bold text-white">14</span>
+            <p className="text-xs text-red-400/80 mt-1">Atenção necessária</p>
+          </div>
+        </div>
+
+      </div>
+
+      {/* ÁREA DE CONTEÚDO VAZIA PARA FUTUROS MÓDULOS */}
+      <div className="bg-axon-panel border border-axon-border rounded-xl p-8 min-h-[400px] flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="w-16 h-16 bg-axon-border rounded-full flex items-center justify-center mx-auto mb-4">
+            <TrendingUp size={32} className="text-gray-500" />
+          </div>
+          <h3 className="text-lg font-medium text-white">Gráfico de Desempenho</h3>
+          <p className="text-sm text-gray-400 max-w-sm mx-auto">
+            Aqui entrará o gráfico de inscrições e vendas de ingressos ao longo do tempo.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
+
     </div>
   );
 }
