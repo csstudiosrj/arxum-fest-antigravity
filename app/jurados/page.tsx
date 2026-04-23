@@ -1,98 +1,109 @@
 "use client";
 
 import { useState } from "react";
-import { Gavel, Trophy, WifiOff, QrCode, Bluetooth, Download } from "lucide-react";
+import { Mic, Send, Wifi, Bluetooth, CheckCircle2 } from "lucide-react";
 
-export default function JuradosPage() {
-  const [abaAtiva, setAbaAtiva] = useState("apuracao");
+export default function JuradoPage() {
+  const [isRecording, setIsRecording] = useState(false);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Jurados & Apuração</h1>
-          <p className="text-gray-400 mt-1">Gestão de notas, ranking ao vivo e sincronização offline.</p>
+    <div className="min-h-screen bg-axon-bg flex flex-col select-none">
+      
+      {/* TOPBAR DO JURADO */}
+      <header className="h-16 bg-axon-panel border-b border-axon-border flex items-center justify-between px-6">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-axon-border flex items-center justify-center text-white font-bold">J1</div>
+          <div>
+            <h2 className="text-white font-bold leading-tight">Carlinhos de Jesus</h2>
+            <p className="text-xs text-gray-400 leading-tight">Mesa de Avaliação</p>
+          </div>
         </div>
-        <button className="bg-axon-panel border border-axon-border text-white px-4 py-2 rounded-md font-medium flex items-center gap-2 hover:bg-white/5 transition-colors">
-          <WifiOff size={20} className="text-axon-green" />
-          Sincronizar Notas Offline
-        </button>
-      </div>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-2 text-xs font-medium bg-axon-green/10 text-axon-green px-3 py-1.5 rounded-full border border-axon-green/20">
+            <Wifi size={14} /> Online
+          </span>
+          <span className="flex items-center gap-2 text-xs font-medium bg-blue-500/10 text-blue-500 px-3 py-1.5 rounded-full border border-blue-500/20">
+            <Bluetooth size={14} /> Sync Ativo
+          </span>
+        </div>
+      </header>
 
-      <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
-        <div className="flex border-b border-axon-border px-4">
-          <button onClick={() => setAbaAtiva("apuracao")} className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors ${abaAtiva === "apuracao" ? "border-axon-green text-axon-green" : "border-transparent text-gray-400 hover:text-white"}`}>
-            <Trophy size={18} /> Ranking ao Vivo
+      {/* ÁREA PRINCIPAL (TABLET VIEW) */}
+      <main className="flex-1 p-6 flex flex-col gap-6 max-w-4xl mx-auto w-full">
+        
+        {/* INFORMAÇÃO DA COREOGRAFIA ATUAL */}
+        <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 text-center shadow-lg relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-axon-green" />
+          <p className="text-axon-green font-bold text-sm tracking-widest uppercase mb-2">Apresentação Atual • #012</p>
+          <h1 className="text-4xl font-black text-white mb-2">O Despertar</h1>
+          <p className="text-xl text-gray-400">Studio Alpha • Jazz Avançado (Conjunto)</p>
+        </div>
+
+        {/* CRITÉRIOS DE AVALIAÇÃO */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          
+          {/* Critério 1 */}
+          <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 flex flex-col items-center gap-4">
+            <h3 className="text-lg font-bold text-white">Técnica</h3>
+            <input 
+              type="number" 
+              placeholder="0.0" 
+              step="0.1" 
+              min="0" 
+              max="10"
+              className="w-full text-center text-5xl font-black bg-axon-bg border border-axon-border rounded-xl py-6 text-white focus:outline-none focus:border-axon-green transition-colors"
+            />
+          </div>
+
+          {/* Critério 2 */}
+          <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 flex flex-col items-center gap-4">
+            <h3 className="text-lg font-bold text-white">Criatividade</h3>
+            <input 
+              type="number" 
+              placeholder="0.0" 
+              step="0.1" 
+              min="0" 
+              max="10"
+              className="w-full text-center text-5xl font-black bg-axon-bg border border-axon-border rounded-xl py-6 text-white focus:outline-none focus:border-axon-green transition-colors"
+            />
+          </div>
+
+          {/* Critério 3 */}
+          <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 flex flex-col items-center gap-4">
+            <h3 className="text-lg font-bold text-white">Figurino / Presença</h3>
+            <input 
+              type="number" 
+              placeholder="0.0" 
+              step="0.1" 
+              min="0" 
+              max="10"
+              className="w-full text-center text-5xl font-black bg-axon-bg border border-axon-border rounded-xl py-6 text-white focus:outline-none focus:border-axon-green transition-colors"
+            />
+          </div>
+
+        </div>
+
+        {/* FEEDBACK DE ÁUDIO E ENVIO */}
+        <div className="flex gap-4 mt-auto">
+          <button 
+            onClick={() => setIsRecording(!isRecording)}
+            className={`flex-1 rounded-2xl border-2 flex items-center justify-center gap-3 font-bold text-lg transition-all ${
+              isRecording 
+                ? "bg-red-500/10 border-red-500 text-red-500 animate-pulse" 
+                : "bg-axon-panel border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
+            }`}
+          >
+            <Mic size={28} />
+            {isRecording ? "Gravando Crítica... (Clique para Parar)" : "Gravar Feedback em Áudio"}
           </button>
-          <button onClick={() => setAbaAtiva("painel")} className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors ${abaAtiva === "painel" ? "border-axon-green text-axon-green" : "border-transparent text-gray-400 hover:text-white"}`}>
-            <Gavel size={18} /> Controle de Jurados
-          </button>
-          <button onClick={() => setAbaAtiva("sync")} className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors ${abaAtiva === "sync" ? "border-axon-green text-axon-green" : "border-transparent text-gray-400 hover:text-white"}`}>
-            <WifiOff size={18} /> Central Offline
+
+          <button className="flex-1 bg-axon-green text-black rounded-2xl font-black text-xl flex items-center justify-center gap-3 hover:bg-[#00c866] transition-colors shadow-[0_0_30px_rgba(0,230,118,0.3)]">
+            <Send size={28} />
+            Enviar Notas
           </button>
         </div>
 
-        <div className="p-6">
-          {abaAtiva === "apuracao" && (
-            <div className="space-y-6 animate-in fade-in">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium text-white">Categoria Atual: Jazz Avançado (Conjunto)</h3>
-                <button className="text-sm bg-white/5 border border-axon-border px-3 py-1.5 rounded hover:bg-white/10 flex items-center gap-2">
-                  <Download size={16} /> Gerar PDF Premiação
-                </button>
-              </div>
-              <div className="bg-axon-bg border border-axon-border rounded-lg divide-y divide-axon-border">
-                <div className="p-4 flex items-center justify-between bg-axon-green/5">
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl font-bold text-yellow-500">1º</span>
-                    <div>
-                      <p className="text-white font-medium">O Despertar</p>
-                      <p className="text-sm text-gray-400">Studio Alpha</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-white">9.85</p>
-                    <p className="text-xs text-gray-500">Média Final</p>
-                  </div>
-                </div>
-                <div className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl font-bold text-gray-400">2º</span>
-                    <div>
-                      <p className="text-white font-medium">Ruptura</p>
-                      <p className="text-sm text-gray-400">Cia Beta</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-white">9.40</p>
-                    <p className="text-xs text-gray-500">Média Final</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {abaAtiva === "sync" && (
-            <div className="space-y-6 animate-in fade-in text-center py-8">
-              <div className="w-16 h-16 bg-axon-bg border border-axon-border rounded-full flex items-center justify-center mx-auto mb-4">
-                <Bluetooth size={32} className="text-axon-green" />
-              </div>
-              <h3 className="text-xl font-medium text-white">Sincronização de Palco</h3>
-              <p className="text-gray-400 max-w-md mx-auto">
-                Aproxime o celular do produtor para receber as notas via Bluetooth, ou escaneie o QR Code gerado no tablet do jurado.
-              </p>
-              <div className="flex justify-center gap-4 mt-6">
-                <button className="bg-axon-green text-black px-6 py-3 rounded-md font-bold flex items-center gap-2 hover:bg-[#00c866]">
-                  <Bluetooth size={20} /> Ativar Recepção Bluetooth
-                </button>
-                <button className="bg-axon-panel border border-axon-border text-white px-6 py-3 rounded-md font-medium flex items-center gap-2 hover:bg-white/5">
-                  <QrCode size={20} /> Ler QR Code do Jurado
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
