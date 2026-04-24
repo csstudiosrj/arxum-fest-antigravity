@@ -1,6 +1,8 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
+// Client para uso em Server Components (respeita sessão do usuário)
 export async function createClient() {
   const cookieStore = await cookies();
 
@@ -28,12 +30,22 @@ export async function createClient() {
   );
 }
 
+// Client admin com service role — nunca exposto ao browser
+function createAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE!
+  );
+}
+
+// Busca a role do usuário autenticado via service role (bypassa RLS corretamente)
 export async function getUserRole(): Promise<string | null> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data } = await supabase
+  const admin = createAdminClient();
+  const { data } = await admin
     .from("usuarios")
     .select("role")
     .eq("id", user.id)
