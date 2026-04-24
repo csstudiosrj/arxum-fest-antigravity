@@ -1,154 +1,475 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Settings, ListTree, CalendarDays, GripVertical } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  DropResult,
+} from "@hello-pangea/dnd";
+import {
+  ChevronLeft, Settings, ListTree, CalendarDays,
+  GripVertical, Plus, Trash2, Save, Loader2,
+} from "lucide-react";
 
+// ── Tipos ──────────────────────────────────────────────────────────────────
+type Evento = {
+  id: string;
+  nome: string;
+  data_inicio: string;
+  data_fim: string;
+  local: string;
+  status: string;
+  descricao: string | null;
+};
+
+type Categoria = {
+  id: string;
+  nome: string;
+  valor_solo: number;
+  valor_duo: number;
+  valor_conjunto: number;
+};
+
+type Coreografia = {
+  id: string;
+  nome: string;
+  categoria: string;
+  ordem_apresentacao: number | null;
+  escolas: { nome: string } | null;
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function moeda(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+// ── Componente principal ───────────────────────────────────────────────────
 export default function PainelEventoPage() {
-  // Estado para controlar qual aba está ativa
-  const[abaAtiva, setAbaAtiva] = useState("configuracoes");
+  const params   = useParams();
+  const router   = useRouter();
+  const eventoId = params.id as string;
+
+  const [abaAtiva, setAbaAtiva]       = useState("configuracoes");
+  const [loading, setLoading]         = useState(true);
+  const [salvando, setSalvando]       = useState(false);
+  const [evento, setEvento]           = useState<Evento | null>(null);
+  const [form, setForm]               = useState<Partial<Evento>>({});
+  const [categorias, setCategorias]   = useState<Categoria[]>([]);
+  const [coreografias, setCoreografias] = useState<Coreografia[]>([]);
+  const [modalCat, setModalCat]       = useState(false);
+  const [novaCategoria, setNovaCategoria] = useState({
+    nome: "", valor_solo: 0, valor_duo: 0, valor_conjunto: 0,
+  });
+
+  const supabase = createClient();
+
+  // ── Carga inicial ──────────────────────────────────────────────────────
+  useEffect(() => {
+    async function carregar() {
+      setLoading(true);
+
+      const [{ data: ev }, { data: cats }, { data: coreos }] = await Promise.all([
+        supabase.from("eventos").select("*").eq("id", eventoId).single(),
+        supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome"),
+        supabase
+          .from("coreografias")
+          .select("id, nome, categoria, ordem_apresentacao, escolas(nome)")
+          .eq("evento_id", eventoId)
+          .order("ordem_apresentacao", { ascending: true, nullsFirst: false }),
+      ]);
+
+      if (!ev) { router.push("/eventos"); return; }
+
+      setEvento(ev);
+      setForm(ev);
+      setCategorias(cats ?? []);
+      setCoreografias(coreos ?? []);
+      setLoading(false);
+    }
+    carregar();
+  }, [eventoId]);
+
+  // ── Salvar configurações ───────────────────────────────────────────────
+  async function salvarEvento() {
+    setSalvando(true);
+    const { error } = await supabase
+      .from("eventos")
+      .update({
+        nome:        form.nome,
+        local:       form.local,
+        data_inicio: form.data_inicio,
+        data_fim:    form.data_fim,
+        status:      form.status,
+        descricao:   form.descricao,
+      })
+      .eq("id", eventoId);
+
+    if (!error) setEvento({ ...evento!, ...form as Evento });
+    setSalvando(false);
+  }
+
+  // ── Adicionar categoria ────────────────────────────────────────────────
+  async function adicionarCategoria() {
+    if (!novaCategoria.nome.trim()) return;
+    const { data, error } = await supabase
+      .from("categorias")
+      .insert({ ...novaCategoria, evento_id: eventoId })
+      .select()
+      .single();
+
+    if (!error && data) {
+      setCategorias((prev) => [...prev, data]);
+      setNovaCategoria({ nome: "", valor_solo: 0, valor_duo: 0, valor_conjunto: 0 });
+      setModalCat(false);
+    }
+  }
+
+  // ── Excluir categoria ──────────────────────────────────────────────────
+  async function excluirCategoria(id: string) {
+    await supabase.from("categorias").delete().eq("id", id);
+    setCategorias((prev) => prev.filter((c) => c.id !== id));
+  }
+
+  // ── Drag & Drop — salvar nova ordem ───────────────────────────────────
+  async function onDragEnd(result: DropResult) {
+    if (!result.destination) return;
+
+    const items = Array.from(coreografias);
+    const [moved] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, moved);
+
+    const reordenadas = items.map((c, i) => ({ ...c, ordem_apresentacao: i + 1 }));
+    setCoreografias(reordenadas);
+
+    // Persiste no banco em paralelo
+    await Promise.all(
+      reordenadas.map((c) =>
+        supabase
+          .from("coreografias")
+          .update({ ordem_apresentacao: c.ordem_apresentacao })
+          .eq("id", c.id)
+      )
+    );
+  }
+
+  // ── Loading state ──────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 size={32} className="animate-spin text-axon-gold" />
+      </div>
+    );
+  }
+
+  if (!evento) return null;
+
+  const statusCores: Record<string, string> = {
+    "inscricoes_abertas": "text-axon-green bg-axon-green/10 border-axon-green/20",
+    "encerrado":          "text-red-400 bg-red-400/10 border-red-400/20",
+    "rascunho":           "text-gray-400 bg-white/5 border-white/10",
+    "em_andamento":       "text-axon-gold bg-axon-gold/10 border-axon-gold/20",
+  };
+
+  const statusLabels: Record<string, string> = {
+    "inscricoes_abertas": "Inscrições Abertas",
+    "encerrado":          "Encerrado",
+    "rascunho":           "Rascunho",
+    "em_andamento":       "Em Andamento",
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      
-      {/* NAVEGAÇÃO SUPERIOR (BREADCRUMB) */}
+
+      {/* Breadcrumb */}
       <div className="flex items-center gap-4">
-        <Link 
-          href="/eventos" 
+        <Link
+          href="/eventos"
           className="w-10 h-10 bg-axon-panel border border-axon-border rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
         >
           <ChevronLeft size={20} />
         </Link>
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-white">Festival de Dança AXON 2026</h1>
-            <span className="text-xs font-medium px-2.5 py-1 rounded-full border text-axon-green bg-axon-green/10 border-axon-green/20">
-              Inscrições Abertas
+            <h1 className="text-2xl font-bold text-white">{evento.nome}</h1>
+            <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${statusCores[evento.status] ?? "text-gray-400 bg-white/5 border-white/10"}`}>
+              {statusLabels[evento.status] ?? evento.status}
             </span>
           </div>
-          <p className="text-sm text-gray-400 mt-1">15 a 18 de Julho, 2026 • Teatro Municipal, RJ</p>
+          <p className="text-sm text-gray-400 mt-1">
+            {new Date(evento.data_inicio).toLocaleDateString("pt-BR")} até{" "}
+            {new Date(evento.data_fim).toLocaleDateString("pt-BR")} • {evento.local}
+          </p>
         </div>
       </div>
 
-      {/* SISTEMA DE ABAS (TABS) */}
+      {/* Tabs */}
       <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
-        
-        {/* Cabeçalho das Abas */}
         <div className="flex border-b border-axon-border px-4">
-          <button 
-            onClick={() => setAbaAtiva("configuracoes")}
-            className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors ${abaAtiva === "configuracoes" ? "border-axon-green text-axon-green" : "border-transparent text-gray-400 hover:text-white"}`}
-          >
-            <Settings size={18} />
-            Configurações
-          </button>
-          <button 
-            onClick={() => setAbaAtiva("categorias")}
-            className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors ${abaAtiva === "categorias" ? "border-axon-green text-axon-green" : "border-transparent text-gray-400 hover:text-white"}`}
-          >
-            <ListTree size={18} />
-            Categorias & Taxas
-          </button>
-          <button 
-            onClick={() => setAbaAtiva("lineup")}
-            className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors ${abaAtiva === "lineup" ? "border-axon-green text-axon-green" : "border-transparent text-gray-400 hover:text-white"}`}
-          >
-            <CalendarDays size={18} />
-            Line-up (Cronograma)
-          </button>
+          {[
+            { id: "configuracoes", label: "Configurações",      icon: Settings },
+            { id: "categorias",    label: "Categorias & Taxas", icon: ListTree },
+            { id: "lineup",        label: "Line-up",            icon: CalendarDays },
+          ].map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setAbaAtiva(id)}
+              className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors ${
+                abaAtiva === id
+                  ? "border-axon-gold text-axon-gold"
+                  : "border-transparent text-gray-400 hover:text-white"
+              }`}
+            >
+              <Icon size={18} />
+              {label}
+            </button>
+          ))}
         </div>
 
-        {/* CONTEÚDO DAS ABAS */}
         <div className="p-8">
-          
-          {/* Aba: Configurações */}
+
+          {/* ── Aba: Configurações ── */}
           {abaAtiva === "configuracoes" && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <h3 className="text-lg font-medium text-white mb-4">Dados Básicos</h3>
+            <div className="space-y-6">
+              <h3 className="text-lg font-medium text-white">Dados do Evento</h3>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <label className="text-sm text-gray-400">Nome do Festival</label>
-                  <input type="text" disabled value="Festival de Dança AXON 2026" className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2 text-white opacity-50 cursor-not-allowed" />
+                  <input
+                    type="text"
+                    value={form.nome ?? ""}
+                    onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
+                  />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm text-gray-400">Local (Teatro/Ginásio)</label>
-                  <input type="text" disabled value="Teatro Municipal, RJ" className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2 text-white opacity-50 cursor-not-allowed" />
+                  <label className="text-sm text-gray-400">Local</label>
+                  <input
+                    type="text"
+                    value={form.local ?? ""}
+                    onChange={(e) => setForm({ ...form, local: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-400">Status</label>
+                  <select
+                    value={form.status ?? ""}
+                    onChange={(e) => setForm({ ...form, status: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
+                  >
+                    <option value="rascunho">Rascunho</option>
+                    <option value="inscricoes_abertas">Inscrições Abertas</option>
+                    <option value="em_andamento">Em Andamento</option>
+                    <option value="encerrado">Encerrado</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-400">Data de Início</label>
+                  <input
+                    type="date"
+                    value={form.data_inicio ?? ""}
+                    onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-400">Data de Fim</label>
+                  <input
+                    type="date"
+                    value={form.data_fim ?? ""}
+                    onChange={(e) => setForm({ ...form, data_fim: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm text-gray-400">Descrição</label>
+                  <textarea
+                    rows={3}
+                    value={form.descricao ?? ""}
+                    onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors resize-none"
+                  />
                 </div>
               </div>
-              <p className="text-sm text-gray-500 italic mt-4">* Campos bloqueados na visualização de demonstração.</p>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={salvarEvento}
+                  disabled={salvando}
+                  className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-6 py-2.5 rounded-md hover:bg-axon-gold/90 transition-colors disabled:opacity-50"
+                >
+                  {salvando ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  {salvando ? "Salvando..." : "Salvar Alterações"}
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Aba: Categorias */}
+          {/* ── Aba: Categorias ── */}
           {abaAtiva === "categorias" && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-white">Categorias Disponíveis</h3>
-                <button className="text-sm text-axon-green hover:underline">Adicionar Categoria</button>
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-white">Categorias & Taxas</h3>
+                <button
+                  onClick={() => setModalCat(true)}
+                  className="flex items-center gap-2 text-sm bg-axon-gold text-black font-semibold px-4 py-2 rounded-md hover:bg-axon-gold/90 transition-colors"
+                >
+                  <Plus size={16} /> Adicionar Categoria
+                </button>
               </div>
-              
-              <div className="bg-axon-bg border border-axon-border rounded-lg divide-y divide-axon-border">
-                <div className="p-4 flex justify-between items-center">
-                  <div>
-                    <p className="text-white font-medium">Jazz Avançado</p>
-                    <p className="text-sm text-gray-400">Solo: R$ 100 | Duo: R$ 150 | Conjunto: R$ 60/pax</p>
-                  </div>
-                  <span className="bg-white/5 text-gray-300 text-xs px-2 py-1 rounded">12 Inscrições</span>
+
+              {categorias.length === 0 ? (
+                <div className="text-center py-16 text-gray-500">
+                  <ListTree size={40} className="mx-auto mb-3 opacity-30" />
+                  <p>Nenhuma categoria cadastrada ainda.</p>
                 </div>
-                <div className="p-4 flex justify-between items-center">
-                  <div>
-                    <p className="text-white font-medium">Ballet Clássico de Repertório</p>
-                    <p className="text-sm text-gray-400">Solo: R$ 120 | Duo: R$ 180 | Conjunto: R$ 70/pax</p>
-                  </div>
-                  <span className="bg-white/5 text-gray-300 text-xs px-2 py-1 rounded">8 Inscrições</span>
+              ) : (
+                <div className="bg-axon-bg border border-axon-border rounded-lg divide-y divide-axon-border">
+                  {categorias.map((cat) => (
+                    <div key={cat.id} className="p-4 flex justify-between items-center group">
+                      <div>
+                        <p className="text-white font-medium">{cat.nome}</p>
+                        <p className="text-sm text-gray-400 mt-0.5">
+                          Solo: {moeda(cat.valor_solo)} &bull; Duo: {moeda(cat.valor_duo)} &bull; Conjunto: {moeda(cat.valor_conjunto)}/pax
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => excluirCategoria(cat.id)}
+                        className="text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
           )}
 
-          {/* Aba: Line-up */}
+          {/* ── Aba: Line-up ── */}
           {abaAtiva === "lineup" && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div className="flex items-center justify-between mb-4">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-medium text-white">Montagem do Line-up</h3>
                   <p className="text-sm text-gray-400">Arraste para reordenar as apresentações.</p>
                 </div>
-                <button className="bg-white/5 border border-axon-border text-white px-4 py-2 rounded-md text-sm hover:bg-white/10 transition-colors">
-                  Gerar PDF
-                </button>
               </div>
 
-              {/* Mockup de Drag and Drop */}
-              <div className="space-y-2">
-                {[
-                  { id: "001", escola: "Studio de Dança Alpha", coreografia: "O Despertar", cat: "Jazz Avançado" },
-                  { id: "002", escola: "Cia de Ballet Beta", coreografia: "Valsa das Flores", cat: "Ballet Clássico" },
-                  { id: "003", escola: "Escola de Artes Gama", coreografia: "Ruptura", cat: "Dança Contemporânea" }
-                ].map((item, index) => (
-                  <div key={item.id} className="flex items-center gap-4 bg-axon-bg border border-axon-border p-3 rounded-lg hover:border-gray-600 transition-colors cursor-move group">
-                    <GripVertical size={20} className="text-gray-600 group-hover:text-gray-400" />
-                    <div className="w-8 h-8 rounded bg-white/5 flex items-center justify-center text-xs font-bold text-gray-400">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-white text-sm font-medium">{item.coreografia}</p>
-                      <p className="text-xs text-gray-400">{item.escola} • {item.cat}</p>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      ID: {item.id}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-center text-axon-green mt-4">
-                O recurso real de Drag & Drop será implementado na fase de integração.
-              </p>
+              {coreografias.length === 0 ? (
+                <div className="text-center py-16 text-gray-500">
+                  <CalendarDays size={40} className="mx-auto mb-3 opacity-30" />
+                  <p>Nenhuma coreografia inscrita ainda.</p>
+                </div>
+              ) : (
+                <DragDropContext onDragEnd={onDragEnd}>
+                  <Droppable droppableId="lineup">
+                    {(provided) => (
+                      <div
+                        {...provided.droppableProps}
+                        ref={provided.innerRef}
+                        className="space-y-2"
+                      >
+                        {coreografias.map((coreo, index) => (
+                          <Draggable key={coreo.id} draggableId={coreo.id} index={index}>
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                className={`flex items-center gap-4 bg-axon-bg border rounded-lg p-3 transition-colors cursor-move group ${
+                                  snapshot.isDragging
+                                    ? "border-axon-gold shadow-lg shadow-axon-gold/10"
+                                    : "border-axon-border hover:border-gray-600"
+                                }`}
+                              >
+                                <div {...provided.dragHandleProps}>
+                                  <GripVertical size={20} className="text-gray-600 group-hover:text-gray-400" />
+                                </div>
+                                <div className="w-8 h-8 rounded bg-white/5 flex items-center justify-center text-xs font-bold text-axon-gold">
+                                  {index + 1}
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-white text-sm font-medium">{coreo.nome}</p>
+                                  <p className="text-xs text-gray-400">
+                                    {coreo.escolas?.nome ?? "Escola não informada"} &bull; {coreo.categoria}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </div>
+                    )}
+                  </Droppable>
+                </DragDropContext>
+              )}
             </div>
           )}
 
         </div>
       </div>
+
+      {/* ── Modal: Nova Categoria ── */}
+      {modalCat && (
+        <>
+          <div className="fixed inset-0 bg-black/60 z-50" onClick={() => setModalCat(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md p-6 space-y-5">
+              <h3 className="text-lg font-semibold text-white">Nova Categoria</h3>
+
+              <div className="space-y-2">
+                <label className="text-sm text-gray-400">Nome da Categoria</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Jazz Avançado"
+                  value={novaCategoria.nome}
+                  onChange={(e) => setNovaCategoria({ ...novaCategoria, nome: e.target.value })}
+                  className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                {(["valor_solo", "valor_duo", "valor_conjunto"] as const).map((campo) => (
+                  <div key={campo} className="space-y-2">
+                    <label className="text-xs text-gray-400 capitalize">
+                      {campo === "valor_solo" ? "Solo (R$)" : campo === "valor_duo" ? "Duo (R$)" : "Conjunto/pax (R$)"}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={novaCategoria[campo]}
+                      onChange={(e) => setNovaCategoria({ ...novaCategoria, [campo]: Number(e.target.value) })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-md px-3 py-2 text-white focus:outline-none focus:border-axon-gold transition-colors"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  onClick={() => setModalCat(false)}
+                  className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={adicionarCategoria}
+                  className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2 rounded-md hover:bg-axon-gold/90 transition-colors text-sm"
+                >
+                  <Plus size={15} /> Adicionar
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
     </div>
   );
 }
