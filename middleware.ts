@@ -1,4 +1,3 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_ROUTES = ["/login"];
@@ -11,79 +10,37 @@ const ROLE_ROUTES: Record<string, string[]> = {
 
 const SHARED_ROUTES = ["/participante"];
 
-export async function middleware(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  let supabaseResponse = NextResponse.next({ request });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(
-          cookiesToSet: { name: string; value: string; options: CookieOptions }[]
-        ) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Rota pública
+  // Rotas públicas passam direto
   if (PUBLIC_ROUTES.includes(pathname)) {
-    if (user) {
-      const role = user.user_metadata?.role ?? "participante";
-      return NextResponse.redirect(new URL(getHomeByRole(role), request.url));
-    }
-    return supabaseResponse;
+    return NextResponse.next();
   }
 
+  // Verifica se existe cookie de sessão do Supabase
+  const hasSession = request.cookies.getAll().some(
+    (cookie) => cookie.name.startsWith("sb-") && cookie.name.endsWith("-auth-token")
+  );
+
   // Sem sessão → login
-  if (!user) {
+  if (!hasSession) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  const role = user.user_metadata?.role ?? "participante";
-
-  // Rota compartilhada → qualquer autenticado acessa
+  // Com sessão → deixa passar (a verificação de role fica nas páginas via Server Component)
   if (SHARED_ROUTES.some((r) => pathname.startsWith(r))) {
-    return supabaseResponse;
+    return NextResponse.next();
   }
 
-  // Verifica permissão por role
-  const allowedPrefixes = ROLE_ROUTES[role] ?? [];
-  const isAllowed = allowedPrefixes.some((prefix) =>
-    pathname.startsWith(prefix)
-  );
+  const allAllowed = Object.values(ROLE_ROUTES).flat();
+  const isKnownRoute = allAllowed.some((prefix) => pathname.startsWith(prefix));
 
-  if (!isAllowed) {
-    return NextResponse.redirect(new URL(getHomeByRole(role), request.url));
+  if (!isKnownRoute) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  return supabaseResponse;
-}
-
-function getHomeByRole(role: string): string {
-  switch (role) {
-    case "admin": return "/dashboard";
-    case "escola": return "/elenco";
-    case "jurado": return "/avaliacao";
-    default: return "/participante";
-  }
+  return NextResponse.next();
 }
 
 export const config = {
