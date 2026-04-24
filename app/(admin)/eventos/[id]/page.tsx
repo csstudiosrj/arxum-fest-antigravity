@@ -39,7 +39,7 @@ type Coreografia = {
   nome: string;
   categoria: string;
   ordem_apresentacao: number | null;
-  escolas: { nome: string } | null;
+  escolas: { nome: string }[] | null;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -53,25 +53,23 @@ export default function PainelEventoPage() {
   const router   = useRouter();
   const eventoId = params.id as string;
 
-  const [abaAtiva, setAbaAtiva]       = useState("configuracoes");
-  const [loading, setLoading]         = useState(true);
-  const [salvando, setSalvando]       = useState(false);
-  const [evento, setEvento]           = useState<Evento | null>(null);
-  const [form, setForm]               = useState<Partial<Evento>>({});
-  const [categorias, setCategorias]   = useState<Categoria[]>([]);
-  const [coreografias, setCoreografias] = useState<Coreografia[]>([]);
-  const [modalCat, setModalCat]       = useState(false);
+  const [abaAtiva, setAbaAtiva]           = useState("configuracoes");
+  const [loading, setLoading]             = useState(true);
+  const [salvando, setSalvando]           = useState(false);
+  const [evento, setEvento]               = useState<Evento | null>(null);
+  const [form, setForm]                   = useState<Partial<Evento>>({});
+  const [categorias, setCategorias]       = useState<Categoria[]>([]);
+  const [coreografias, setCoreografias]   = useState<Coreografia[]>([]);
+  const [modalCat, setModalCat]           = useState(false);
   const [novaCategoria, setNovaCategoria] = useState({
     nome: "", valor_solo: 0, valor_duo: 0, valor_conjunto: 0,
   });
 
   const supabase = createClient();
 
-  // ── Carga inicial ──────────────────────────────────────────────────────
   useEffect(() => {
     async function carregar() {
       setLoading(true);
-
       const [{ data: ev }, { data: cats }, { data: coreos }] = await Promise.all([
         supabase.from("eventos").select("*").eq("id", eventoId).single(),
         supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome"),
@@ -87,13 +85,12 @@ export default function PainelEventoPage() {
       setEvento(ev);
       setForm(ev);
       setCategorias(cats ?? []);
-      setCoreografias(coreos ?? []);
+      setCoreografias((coreos ?? []) as Coreografia[]);
       setLoading(false);
     }
     carregar();
   }, [eventoId]);
 
-  // ── Salvar configurações ───────────────────────────────────────────────
   async function salvarEvento() {
     setSalvando(true);
     const { error } = await supabase
@@ -112,7 +109,6 @@ export default function PainelEventoPage() {
     setSalvando(false);
   }
 
-  // ── Adicionar categoria ────────────────────────────────────────────────
   async function adicionarCategoria() {
     if (!novaCategoria.nome.trim()) return;
     const { data, error } = await supabase
@@ -128,35 +124,25 @@ export default function PainelEventoPage() {
     }
   }
 
-  // ── Excluir categoria ──────────────────────────────────────────────────
   async function excluirCategoria(id: string) {
     await supabase.from("categorias").delete().eq("id", id);
     setCategorias((prev) => prev.filter((c) => c.id !== id));
   }
 
-  // ── Drag & Drop — salvar nova ordem ───────────────────────────────────
   async function onDragEnd(result: DropResult) {
     if (!result.destination) return;
-
     const items = Array.from(coreografias);
     const [moved] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, moved);
-
     const reordenadas = items.map((c, i) => ({ ...c, ordem_apresentacao: i + 1 }));
     setCoreografias(reordenadas);
-
-    // Persiste no banco em paralelo
     await Promise.all(
       reordenadas.map((c) =>
-        supabase
-          .from("coreografias")
-          .update({ ordem_apresentacao: c.ordem_apresentacao })
-          .eq("id", c.id)
+        supabase.from("coreografias").update({ ordem_apresentacao: c.ordem_apresentacao }).eq("id", c.id)
       )
     );
   }
 
-  // ── Loading state ──────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -168,17 +154,17 @@ export default function PainelEventoPage() {
   if (!evento) return null;
 
   const statusCores: Record<string, string> = {
-    "inscricoes_abertas": "text-axon-green bg-axon-green/10 border-axon-green/20",
-    "encerrado":          "text-red-400 bg-red-400/10 border-red-400/20",
-    "rascunho":           "text-gray-400 bg-white/5 border-white/10",
-    "em_andamento":       "text-axon-gold bg-axon-gold/10 border-axon-gold/20",
+    inscricoes_abertas: "text-axon-green bg-axon-green/10 border-axon-green/20",
+    encerrado:          "text-red-400 bg-red-400/10 border-red-400/20",
+    rascunho:           "text-gray-400 bg-white/5 border-white/10",
+    em_andamento:       "text-axon-gold bg-axon-gold/10 border-axon-gold/20",
   };
 
   const statusLabels: Record<string, string> = {
-    "inscricoes_abertas": "Inscrições Abertas",
-    "encerrado":          "Encerrado",
-    "rascunho":           "Rascunho",
-    "em_andamento":       "Em Andamento",
+    inscricoes_abertas: "Inscrições Abertas",
+    encerrado:          "Encerrado",
+    rascunho:           "Rascunho",
+    em_andamento:       "Em Andamento",
   };
 
   return (
@@ -231,37 +217,25 @@ export default function PainelEventoPage() {
 
         <div className="p-8">
 
-          {/* ── Aba: Configurações ── */}
+          {/* Configurações */}
           {abaAtiva === "configuracoes" && (
             <div className="space-y-6">
               <h3 className="text-lg font-medium text-white">Dados do Evento</h3>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-sm text-gray-400">Nome do Festival</label>
-                  <input
-                    type="text"
-                    value={form.nome ?? ""}
-                    onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
-                  />
+                  <input type="text" value={form.nome ?? ""} onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400">Local</label>
-                  <input
-                    type="text"
-                    value={form.local ?? ""}
-                    onChange={(e) => setForm({ ...form, local: e.target.value })}
-                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
-                  />
+                  <input type="text" value={form.local ?? ""} onChange={(e) => setForm({ ...form, local: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400">Status</label>
-                  <select
-                    value={form.status ?? ""}
-                    onChange={(e) => setForm({ ...form, status: e.target.value })}
-                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
-                  >
+                  <select value={form.status ?? ""} onChange={(e) => setForm({ ...form, status: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors">
                     <option value="rascunho">Rascunho</option>
                     <option value="inscricoes_abertas">Inscrições Abertas</option>
                     <option value="em_andamento">Em Andamento</option>
@@ -270,39 +244,23 @@ export default function PainelEventoPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400">Data de Início</label>
-                  <input
-                    type="date"
-                    value={form.data_inicio ?? ""}
-                    onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
-                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
-                  />
+                  <input type="date" value={form.data_inicio ?? ""} onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400">Data de Fim</label>
-                  <input
-                    type="date"
-                    value={form.data_fim ?? ""}
-                    onChange={(e) => setForm({ ...form, data_fim: e.target.value })}
-                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
-                  />
+                  <input type="date" value={form.data_fim ?? ""} onChange={(e) => setForm({ ...form, data_fim: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors" />
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-sm text-gray-400">Descrição</label>
-                  <textarea
-                    rows={3}
-                    value={form.descricao ?? ""}
-                    onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors resize-none"
-                  />
+                  <textarea rows={3} value={form.descricao ?? ""} onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors resize-none" />
                 </div>
               </div>
-
               <div className="flex justify-end">
-                <button
-                  onClick={salvarEvento}
-                  disabled={salvando}
-                  className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-6 py-2.5 rounded-md hover:bg-axon-gold/90 transition-colors disabled:opacity-50"
-                >
+                <button onClick={salvarEvento} disabled={salvando}
+                  className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-6 py-2.5 rounded-md hover:bg-axon-gold/90 transition-colors disabled:opacity-50">
                   {salvando ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                   {salvando ? "Salvando..." : "Salvar Alterações"}
                 </button>
@@ -310,19 +268,16 @@ export default function PainelEventoPage() {
             </div>
           )}
 
-          {/* ── Aba: Categorias ── */}
+          {/* Categorias */}
           {abaAtiva === "categorias" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-medium text-white">Categorias & Taxas</h3>
-                <button
-                  onClick={() => setModalCat(true)}
-                  className="flex items-center gap-2 text-sm bg-axon-gold text-black font-semibold px-4 py-2 rounded-md hover:bg-axon-gold/90 transition-colors"
-                >
+                <button onClick={() => setModalCat(true)}
+                  className="flex items-center gap-2 text-sm bg-axon-gold text-black font-semibold px-4 py-2 rounded-md hover:bg-axon-gold/90 transition-colors">
                   <Plus size={16} /> Adicionar Categoria
                 </button>
               </div>
-
               {categorias.length === 0 ? (
                 <div className="text-center py-16 text-gray-500">
                   <ListTree size={40} className="mx-auto mb-3 opacity-30" />
@@ -338,10 +293,8 @@ export default function PainelEventoPage() {
                           Solo: {moeda(cat.valor_solo)} &bull; Duo: {moeda(cat.valor_duo)} &bull; Conjunto: {moeda(cat.valor_conjunto)}/pax
                         </p>
                       </div>
-                      <button
-                        onClick={() => excluirCategoria(cat.id)}
-                        className="text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                      >
+                      <button onClick={() => excluirCategoria(cat.id)}
+                        className="text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -351,16 +304,13 @@ export default function PainelEventoPage() {
             </div>
           )}
 
-          {/* ── Aba: Line-up ── */}
+          {/* Line-up */}
           {abaAtiva === "lineup" && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-medium text-white">Montagem do Line-up</h3>
-                  <p className="text-sm text-gray-400">Arraste para reordenar as apresentações.</p>
-                </div>
+              <div>
+                <h3 className="text-lg font-medium text-white">Montagem do Line-up</h3>
+                <p className="text-sm text-gray-400">Arraste para reordenar as apresentações.</p>
               </div>
-
               {coreografias.length === 0 ? (
                 <div className="text-center py-16 text-gray-500">
                   <CalendarDays size={40} className="mx-auto mb-3 opacity-30" />
@@ -370,11 +320,7 @@ export default function PainelEventoPage() {
                 <DragDropContext onDragEnd={onDragEnd}>
                   <Droppable droppableId="lineup">
                     {(provided) => (
-                      <div
-                        {...provided.droppableProps}
-                        ref={provided.innerRef}
-                        className="space-y-2"
-                      >
+                      <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
                         {coreografias.map((coreo, index) => (
                           <Draggable key={coreo.id} draggableId={coreo.id} index={index}>
                             {(provided, snapshot) => (
@@ -396,7 +342,7 @@ export default function PainelEventoPage() {
                                 <div className="flex-1">
                                   <p className="text-white text-sm font-medium">{coreo.nome}</p>
                                   <p className="text-xs text-gray-400">
-                                    {coreo.escolas?.nome ?? "Escola não informada"} &bull; {coreo.categoria}
+                                    {coreo.escolas?.[0]?.nome ?? "Escola não informada"} &bull; {coreo.categoria}
                                   </p>
                                 </div>
                               </div>
@@ -415,53 +361,37 @@ export default function PainelEventoPage() {
         </div>
       </div>
 
-      {/* ── Modal: Nova Categoria ── */}
+      {/* Modal Nova Categoria */}
       {modalCat && (
         <>
           <div className="fixed inset-0 bg-black/60 z-50" onClick={() => setModalCat(false)} />
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
             <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md p-6 space-y-5">
               <h3 className="text-lg font-semibold text-white">Nova Categoria</h3>
-
               <div className="space-y-2">
                 <label className="text-sm text-gray-400">Nome da Categoria</label>
-                <input
-                  type="text"
-                  placeholder="Ex: Jazz Avançado"
-                  value={novaCategoria.nome}
+                <input type="text" placeholder="Ex: Jazz Avançado" value={novaCategoria.nome}
                   onChange={(e) => setNovaCategoria({ ...novaCategoria, nome: e.target.value })}
-                  className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
-                />
+                  className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors" />
               </div>
-
               <div className="grid grid-cols-3 gap-3">
                 {(["valor_solo", "valor_duo", "valor_conjunto"] as const).map((campo) => (
                   <div key={campo} className="space-y-2">
-                    <label className="text-xs text-gray-400 capitalize">
+                    <label className="text-xs text-gray-400">
                       {campo === "valor_solo" ? "Solo (R$)" : campo === "valor_duo" ? "Duo (R$)" : "Conjunto/pax (R$)"}
                     </label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={novaCategoria[campo]}
+                    <input type="number" min={0} value={novaCategoria[campo]}
                       onChange={(e) => setNovaCategoria({ ...novaCategoria, [campo]: Number(e.target.value) })}
-                      className="w-full bg-axon-bg border border-axon-border rounded-md px-3 py-2 text-white focus:outline-none focus:border-axon-gold transition-colors"
-                    />
+                      className="w-full bg-axon-bg border border-axon-border rounded-md px-3 py-2 text-white focus:outline-none focus:border-axon-gold transition-colors" />
                   </div>
                 ))}
               </div>
-
               <div className="flex gap-3 justify-end pt-2">
-                <button
-                  onClick={() => setModalCat(false)}
-                  className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
-                >
+                <button onClick={() => setModalCat(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
                   Cancelar
                 </button>
-                <button
-                  onClick={adicionarCategoria}
-                  className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2 rounded-md hover:bg-axon-gold/90 transition-colors text-sm"
-                >
+                <button onClick={adicionarCategoria}
+                  className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2 rounded-md hover:bg-axon-gold/90 transition-colors text-sm">
                   <Plus size={15} /> Adicionar
                 </button>
               </div>
