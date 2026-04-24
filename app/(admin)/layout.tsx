@@ -91,8 +91,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         setAuthorized(true);
         setLoading(false);
 
-      } catch (err: any) {
-        setDebugMsg("Erro Fatal no Código: " + err.message);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        setDebugMsg("Erro Fatal no Código: " + message);
         setHasError(true);
       }
     };

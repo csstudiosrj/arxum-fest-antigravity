@@ -1,11 +1,27 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-// Suporta tanto o nome da variável que usamos no AXON Core quanto a que o outro modelo usou
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON || '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON;
+let supabaseClient: SupabaseClient | null = null;
 
-// Cria a conexão clássica e à prova de falhas
-export const supabase = createSupabaseClient(supabaseUrl, supabaseKey);
+const getSupabaseClient = () => {
+  if (typeof window === 'undefined') {
+    // No SSR build, não tentamos criar o cliente Supabase.
+    return null as unknown as SupabaseClient;
+  }
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+      'Supabase environment variables are required: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY'
+    );
+  }
+
+  if (!supabaseClient) {
+    supabaseClient = createSupabaseClient(supabaseUrl, supabaseKey);
+  }
+
+  return supabaseClient;
+};
 
 // Mantemos essa função apenas para não quebrar as telas que já importaram ela
-export const createClient = () => supabase;
+export const createClient = getSupabaseClient;

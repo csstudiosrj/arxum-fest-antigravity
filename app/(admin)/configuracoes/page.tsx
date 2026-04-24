@@ -112,7 +112,7 @@ export default function ConfiguracoesPage() {
       setLoading(false);
     }
     carregar();
-  }, []);
+  }, [supabase]);
 
   // ── Mudar perfil ───────────────────────────────────────────────────────
   async function selecionarPerfil(perfil: PerfilFestival) {
@@ -444,7 +444,7 @@ export default function ConfiguracoesPage() {
                       <input
                         type="text"
                         placeholder={placeholder}
-                        value={(formConfig as any)[campo] ?? ""}
+                          value={(formConfig as Record<string, string | null | undefined>)[campo] ?? ""}
                         onChange={(e) => setFormConfig((p) => ({ ...p, [campo]: e.target.value }))}
                         className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors"
                       />
@@ -456,11 +456,11 @@ export default function ConfiguracoesPage() {
                 <div className="bg-axon-bg border border-axon-border rounded-xl p-5 space-y-2">
                   <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-3">Preview — como vai aparecer no sistema</p>
                   <p className="text-sm text-gray-300">
-                    "Bem-vindo ao <strong className="text-white">{formConfig.termo_evento || "Festival"}</strong>. Faça sua{" "}
-                    <strong className="text-white">{formConfig.termo_inscricao || "Inscrição"}</strong> agora e registre cada{" "}
-                    <strong className="text-white">{formConfig.termo_apresentacao || "Coreografia"}</strong> com os{" "}
-                    <strong className="text-white">{formConfig.termo_participante || "Bailarinos"}</strong> da sua{" "}
-                    <strong className="text-white">{formConfig.termo_grupo || "Escola"}</strong>."
+                    &quot;Bem-vindo ao <strong className="text-white">{formConfig.termo_evento || "Festival"}</strong>. Faça sua{' '}
+                    <strong className="text-white">{formConfig.termo_inscricao || "Inscrição"}</strong> agora e registre cada{' '}
+                    <strong className="text-white">{formConfig.termo_apresentacao || "Coreografia"}</strong> com os{' '}
+                    <strong className="text-white">{formConfig.termo_participante || "Bailarinos"}</strong> da sua{' '}
+                    <strong className="text-white">{formConfig.termo_grupo || "Escola"}</strong>.&quot;
                   </p>
                 </div>
               </div>

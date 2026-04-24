@@ -38,7 +38,7 @@ export default function TermosPage() {
                 <CheckSquare size={20} className="text-axon-green mt-0.5" />
                 <div>
                   <p className="text-white font-medium">Aceite Obrigatório</p>
-                  <p className="text-sm text-gray-400">O coordenador da escola será obrigado a marcar a caixa "Li e concordo com o regulamento" antes de finalizar qualquer inscrição.</p>
+                  <p className="text-sm text-gray-400">O coordenador da escola será obrigado a marcar a caixa &quot;Li e concordo com o regulamento&quot; antes de finalizar qualquer inscrição.</p>
                 </div>
               </div>
               <div className="space-y-2">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -42,17 +42,19 @@ export default function EventosPage() {
 
   const supabase = createClient();
 
-  useEffect(() => { carregarEventos(); }, []);
+  useEffect(() => {
+    async function carregarEventos() {
+      setLoading(true);
+      const { data } = await supabase
+        .from("eventos")
+        .select("id, nome, data_inicio, data_fim, local, status, inscritos_count")
+        .order("data_inicio", { ascending: false });
+      setEventos(data ?? []);
+      setLoading(false);
+    }
 
-  async function carregarEventos() {
-    setLoading(true);
-    const { data } = await supabase
-      .from("eventos")
-      .select("id, nome, data_inicio, data_fim, local, status, inscritos_count")
-      .order("data_inicio", { ascending: false });
-    setEventos(data ?? []);
-    setLoading(false);
-  }
+    void carregarEventos();
+  }, [supabase]);
 
   async function criarEvento() {
     if (!form.nome.trim() || !form.data_inicio || !form.data_fim) return;
@@ -104,7 +106,7 @@ export default function EventosPage() {
         <div className="text-center py-24 text-gray-500">
           <CalendarDays size={48} className="mx-auto mb-4 opacity-20 text-axon-gold" />
           <p className="text-lg">Nenhum evento cadastrado ainda.</p>
-          <p className="text-sm mt-1">Clique em "Novo Evento" para começar.</p>
+          <p className="text-sm mt-1">Clique em &quot;Novo Evento&quot; para começar.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

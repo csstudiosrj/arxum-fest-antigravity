@@ -158,7 +158,7 @@ export default function PainelEventoPage() {
       setLoading(false);
     }
     carregar();
-  }, [eventoId]);
+  }, [eventoId, router, supabase]);
 
   // ── Salvar evento ──────────────────────────────────────────────────────
   async function salvarEvento() {
@@ -349,7 +349,7 @@ export default function PainelEventoPage() {
                     <div>
                       <p className="text-axon-gold font-medium text-sm">Evento em Rascunho</p>
                       <p className="text-gray-400 text-sm mt-0.5">
-                        Inscrições estão bloqueadas. Mude o status para <strong>"Inscrições Abertas"</strong> na aba Configurações para liberar o formulário de inscrição.
+                          Inscrições estão bloqueadas. Mude o status para <strong>&quot;Inscrições Abertas&quot;</strong> na aba Configurações para liberar o formulário de inscrição.
                       </p>
                     </div>
                   </div>

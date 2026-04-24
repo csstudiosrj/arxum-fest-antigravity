@@ -55,8 +55,9 @@ export default function AdminLoginPage() {
         // Se passou, vai pro painel do festival
         router.push("/dashboard");
       }
-    } catch (err: any) {
-      setError(err.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message === "Invalid login credentials" ? "E-mail ou senha incorretos." : message);
       setLoading(false);
     }
   };
