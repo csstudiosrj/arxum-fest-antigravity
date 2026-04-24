@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+// Caminho relativo corrigido para evitar erros de alias
+import { createClient } from "../../lib/supabase/client";
 import {
   LayoutDashboard, CalendarDays, Users, Mic2, Ticket,
   Settings, LogOut, ChevronLeft, ChevronRight, ChevronDown,
@@ -24,83 +25,128 @@ const navLinks =[
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const[isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   
-  // Estados de Segurança (Padrão AXON)
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
+  const[authorized, setAuthorized] = useState(false);
   const [userEmail, setUserEmail] = useState("");
+
+  // Estados do Modo Diagnóstico
+  const [hasError, setHasError] = useState(false);
+  const [debugMsg, setDebugMsg] = useState("Iniciando verificação...");
 
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = createClient();
 
-  // Verificação de Segurança Rigorosa
   useEffect(() => {
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        router.push("/login");
-        return;
+      try {
+        const supabase = createClient();
+        setDebugMsg("1. Verificando sessão no navegador...");
+
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          setDebugMsg("Erro de Sessão: " + sessionError.message);
+          setHasError(true);
+          return;
+        }
+
+        if (!session) {
+          setDebugMsg("Nenhuma sessão encontrada. O cookie de login não foi salvo pelo navegador.");
+          setHasError(true);
+          return;
+        }
+
+        setDebugMsg("2. Sessão encontrada! Buscando cargo no banco de dados...");
+
+        const { data: userData, error: userError } = await supabase
+          .from("usuarios")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+
+        if (userError) {
+          setDebugMsg("Erro ao ler tabela 'usuarios' (Provável bloqueio de RLS): " + userError.message);
+          setHasError(true);
+          return;
+        }
+
+        if (!userData) {
+          setDebugMsg("Usuário não encontrado na tabela 'usuarios'.");
+          setHasError(true);
+          return;
+        }
+
+        setDebugMsg("3. Cargo encontrado: " + userData.role);
+
+        if (userData.role !== 'admin' && userData.role !== 'super_admin') {
+          setDebugMsg("Acesso Negado. Seu cargo é: " + userData.role);
+          setHasError(true);
+          return;
+        }
+
+        // Se passou por tudo, libera o acesso!
+        setUserEmail(session.user.email || "");
+        setAuthorized(true);
+        setLoading(false);
+
+      } catch (err: any) {
+        setDebugMsg("Erro Fatal no Código: " + err.message);
+        setHasError(true);
       }
-
-      const { data: userData, error } = await supabase
-        .from("usuarios")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
-
-      // Se der erro ou a role não for admin, expulsa sumariamente
-      if (error || !userData || (userData.role !== 'admin' && userData.role !== 'super_admin')) {
-        await supabase.auth.signOut();
-        router.push("/login");
-        return;
-      }
-
-      // Acesso concedido
-      setUserEmail(session.user.email || "");
-      setAuthorized(true);
-      setLoading(false);
     };
 
     checkUser();
-  },[router, supabase]);
+  }, [router]);
 
   async function handleLogout() {
+    const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");
   }
 
-  // Tela de carregamento enquanto verifica a segurança
-  if (loading) {
+  // TELA DE DIAGNÓSTICO (Se der erro, ele para aqui e te mostra o motivo)
+  if (hasError) {
     return (
-      <div className="h-screen w-full bg-axon-bg flex items-center justify-center">
-        <Loader2 className="animate-spin text-axon-green" size={48} />
+      <div className="h-screen w-full bg-[#0d0807] flex flex-col items-center justify-center p-8 text-white">
+        <div className="bg-[#1a1413] border border-red-500 p-8 rounded-xl max-w-2xl w-full text-center shadow-2xl">
+          <h1 className="text-2xl font-bold text-red-500 mb-4">Diagnóstico de Erro</h1>
+          <p className="text-lg font-mono text-gray-300 bg-black p-4 rounded mb-6">{debugMsg}</p>
+          <button onClick={() => router.push('/login')} className="bg-[#C5A059] text-black px-6 py-2 rounded font-bold hover:bg-opacity-90">
+            Voltar para o Login
+          </button>
+        </div>
       </div>
     );
   }
 
-  // Se não estiver autorizado, não renderiza nada (evita piscar a tela)
+  if (loading) {
+    return (
+      <div className="h-screen w-full bg-[#0d0807] flex items-center justify-center">
+        <Loader2 className="animate-spin text-[#C5A059]" size={48} />
+      </div>
+    );
+  }
+
   if (!authorized) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-axon-bg text-white">
-      <aside className={`${isSidebarOpen ? "w-64" : "w-20"} bg-axon-panel border-r border-axon-border flex flex-col transition-all duration-300 ease-in-out relative z-20`}>
-        <div className="h-16 flex items-center justify-between px-4 border-b border-axon-border">
+    <div className="flex h-screen overflow-hidden bg-[#0d0807] text-white">
+      <aside className={`${isSidebarOpen ? "w-64" : "w-20"} bg-[#1a1413] border-r border-[#1a1413]/50 flex flex-col transition-all duration-300 ease-in-out relative z-20`}>
+        <div className="h-16 flex items-center justify-between px-4 border-b border-[#1a1413]/50">
           {isSidebarOpen ? (
             <span className="text-xl font-bold tracking-wider truncate px-2">
-              AXON <span className="text-axon-green font-light">Fest</span>
+              AXON <span className="text-[#C5A059] font-light">Fest</span>
             </span>
           ) : (
-            <span className="text-xl font-bold tracking-wider mx-auto text-axon-green">AX</span>
+            <span className="text-xl font-bold tracking-wider mx-auto text-[#C5A059]">AX</span>
           )}
         </div>
 
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="absolute -right-3 top-20 bg-axon-panel border border-axon-border rounded-full p-1 text-gray-400 hover:text-white hover:border-axon-green transition-colors z-30"
-          aria-label={isSidebarOpen ? "Recolher menu" : "Expandir menu"}
+          className="absolute -right-3 top-20 bg-[#1a1413] border border-[#1a1413]/50 rounded-full p-1 text-gray-400 hover:text-white hover:border-[#C5A059] transition-colors z-30"
         >
           {isSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
@@ -114,7 +160,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 key={link.href}
                 href={link.href}
                 className={`flex items-center gap-3 rounded-md transition-colors ${
-                  isActive ? "bg-axon-green-dim text-axon-green font-medium" : "text-gray-400 hover:text-white hover:bg-white/5"
+                  isActive ? "bg-[#C5A059]/10 text-[#C5A059] font-medium" : "text-gray-400 hover:text-white hover:bg-white/5"
                 } ${isSidebarOpen ? "px-3 py-2" : "p-3 justify-center"}`}
               >
                 <Icon size={20} className="shrink-0" />
@@ -123,28 +169,18 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             );
           })}
         </nav>
-
-        {isSidebarOpen && (
-          <div className="px-3 pb-4 border-t border-axon-border pt-3">
-            <Link href="/configuracoes" className="flex items-center gap-3 px-3 py-2 rounded-md text-gray-400 hover:text-white hover:bg-white/5 transition-colors text-sm">
-              <Settings size={18} className="shrink-0" />
-              <span>Configurações</span>
-            </Link>
-          </div>
-        )}
       </aside>
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <header className="h-16 bg-axon-panel/80 backdrop-blur-md border-b border-axon-border flex items-center justify-between px-8 sticky top-0 z-10">
+        <header className="h-16 bg-[#1a1413]/80 backdrop-blur-md border-b border-[#1a1413]/50 flex items-center justify-between px-8 sticky top-0 z-10">
           <div className="text-gray-400 text-sm font-medium">Painel do Organizador</div>
 
           <div className="relative">
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-              className="flex items-center gap-3 hover:bg-white/5 p-1.5 pr-3 rounded-full transition-colors border border-transparent hover:border-axon-border"
-              aria-expanded={isUserMenuOpen}
+              className="flex items-center gap-3 hover:bg-white/5 p-1.5 pr-3 rounded-full transition-colors border border-transparent hover:border-[#1a1413]/50"
             >
-              <div className="w-9 h-9 rounded-full bg-axon-border flex items-center justify-center text-axon-green font-bold text-sm uppercase">
+              <div className="w-9 h-9 rounded-full bg-[#1a1413]/50 border border-[#C5A059]/30 flex items-center justify-center text-[#C5A059] font-bold text-sm uppercase">
                 {userEmail.substring(0, 2)}
               </div>
               <div className="text-left hidden sm:block">
@@ -157,18 +193,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             {isUserMenuOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)} />
-                <div className="absolute right-0 mt-2 w-56 bg-axon-panel border border-axon-border rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
-                  <div className="px-4 py-2 border-b border-axon-border mb-2">
+                <div className="absolute right-0 mt-2 w-56 bg-[#1a1413] border border-[#1a1413]/50 rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
+                  <div className="px-4 py-2 border-b border-[#1a1413]/50 mb-2">
                     <p className="text-sm text-white font-medium">Minha Conta</p>
                     <p className="text-xs text-gray-400 truncate">{userEmail}</p>
                   </div>
-                  <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
-                    <User size={16} /> Meu Perfil
-                  </a>
-                  <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
-                    <Settings size={16} /> Configurações
-                  </a>
-                  <div className="h-px bg-axon-border my-2" />
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors"
