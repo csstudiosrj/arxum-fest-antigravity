@@ -1,19 +1,21 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import { redirect } from "next/navigation";
+import { getUserRole } from "@/lib/supabase/server";
+import AdminShell from "./_components/AdminShell";
 
 export const metadata: Metadata = {
-  title: "AXON Fest",
-  description: "Sistema de Gestão de Festivais Artísticos",
+  title: "AXON Fest — Painel do Organizador",
 };
 
-export default function RootLayout({
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <html lang="pt-BR">
-      <body>{children}</body>
-    </html>
-  );
+  const role = await getUserRole();
+
+  if (!role) redirect("/login");
+  if (role !== "admin") redirect("/login");
+
+  return <AdminShell>{children}</AdminShell>;
 }

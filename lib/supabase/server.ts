@@ -20,10 +20,26 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             );
           } catch {
-            // Chamado de Server Component — o middleware cuida dos cookies
+            // Server Component — middleware cuida dos cookies
           }
         },
       },
     }
   );
+}
+
+// Busca a role do usuário autenticado direto da tabela usuarios
+export async function getUserRole(): Promise<string | null> {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data } = await supabase
+    .from("usuarios")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  return data?.role ?? null;
 }
