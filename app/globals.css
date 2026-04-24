@@ -1,12 +1,16 @@
 @import "tailwindcss";
 
 @theme {
-  /* Cores personalizadas da AXON */
-  --color-axon-bg: #0a0a0a;
-  --color-axon-panel: #141414;
-  --color-axon-border: #262626;
-  --color-axon-green: #00e676;
-  --color-axon-green-dim: rgba(0, 230, 118, 0.1);
+  /* ── Superfícies ── */
+  --color-axon-bg:           #0d0807;
+  --color-axon-panel:        #1a1413;
+  --color-axon-border:       #2e2825;
+
+  /* ── Destaques ── */
+  --color-axon-gold:         #C5A059;
+  --color-axon-gold-dim:     rgba(197, 160, 89, 0.12);
+  --color-axon-green:        #138946;
+  --color-axon-green-dim:    rgba(19, 137, 70, 0.12);
 }
 
 body {
@@ -14,17 +18,7 @@ body {
   color: #ffffff;
 }
 
-/* Estilização suave da barra de rolagem para combinar com o dark mode */
-::-webkit-scrollbar {
-  width: 8px;
-}
-::-webkit-scrollbar-track {
-  background: var(--color-axon-bg);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-axon-border);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
-}
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--color-axon-bg); }
+::-webkit-scrollbar-thumb { background: var(--color-axon-border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f3a; }
