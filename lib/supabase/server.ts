@@ -13,18 +13,14 @@ export async function createClient() {
           return cookieStore.getAll();
         },
         setAll(
-          cookiesToSet: Array<{
-            name: string;
-            value: string;
-            options?: CookieOptions;
-          }>
+          cookiesToSet: { name: string; value: string; options: CookieOptions }[]
         ) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             );
           } catch {
-            // Server Component — cookies serão setados pelo middleware
+            // Chamado de Server Component — o middleware cuida dos cookies
           }
         },
       },
