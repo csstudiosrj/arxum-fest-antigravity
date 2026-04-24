@@ -29,8 +29,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [authorized, setAuthorized]         = useState(false);
   const [userEmail, setUserEmail]           = useState("");
   const [userName, setUserName]             = useState("Organizador");
-  const [hasError, setHasError]             = useState(false);
-  const [debugMsg, setDebugMsg]             = useState("Iniciando verificação...");
 
   const pathname = usePathname();
   const router   = useRouter();
@@ -39,23 +37,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     const checkUser = async () => {
       try {
         const supabase = createClient();
-        setDebugMsg("1. Verificando sessão no navegador...");
 
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-        if (sessionError) {
-          setDebugMsg("Erro de Sessão: " + sessionError.message);
-          setHasError(true);
+        if (sessionError || !session) {
+          router.push("/login");
           return;
         }
-
-        if (!session) {
-          setDebugMsg("Nenhuma sessão encontrada. O cookie de login não foi salvo pelo navegador.");
-          setHasError(true);
-          return;
-        }
-
-        setDebugMsg("2. Sessão encontrada! Buscando cargo no banco de dados...");
 
         const { data: userData, error: userError } = await supabase
           .from("usuarios")
@@ -63,23 +51,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           .eq("id", session.user.id)
           .single();
 
-        if (userError) {
-          setDebugMsg("Erro ao ler tabela 'usuarios' (Provável bloqueio de RLS): " + userError.message);
-          setHasError(true);
+        if (userError || !userData) {
+          router.push("/login");
           return;
         }
-
-        if (!userData) {
-          setDebugMsg("Usuário não encontrado na tabela 'usuarios'.");
-          setHasError(true);
-          return;
-        }
-
-        setDebugMsg("3. Cargo encontrado: " + userData.role);
 
         if (userData.role !== "admin" && userData.role !== "super_admin") {
-          setDebugMsg("Acesso Negado. Seu cargo é: " + userData.role);
-          setHasError(true);
+          router.push("/login");
           return;
         }
 
@@ -94,10 +72,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         setAuthorized(true);
         setLoading(false);
 
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Erro desconhecido";
-        setDebugMsg("Erro Fatal no Código: " + msg);
-        setHasError(true);
+      } catch {
+        router.push("/login");
       }
     };
 
@@ -116,23 +92,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     .slice(0, 2)
     .join("")
     .toUpperCase() || "AX";
-
-  if (hasError) {
-    return (
-      <div className="h-screen w-full bg-[#0d0807] flex flex-col items-center justify-center p-8 text-white">
-        <div className="bg-[#1a1413] border border-red-500 p-8 rounded-xl max-w-2xl w-full text-center shadow-2xl">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Diagnóstico de Erro</h1>
-          <p className="text-lg font-mono text-gray-300 bg-black p-4 rounded mb-6">{debugMsg}</p>
-          <button
-            onClick={() => router.push("/login")}
-            className="bg-[#C5A059] text-black px-6 py-2 rounded font-bold hover:bg-opacity-90"
-          >
-            Voltar para o Login
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   if (loading) {
     return (
