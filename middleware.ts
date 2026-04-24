@@ -13,22 +13,18 @@ const SHARED_ROUTES = ["/participante"];
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Rotas públicas passam direto
   if (PUBLIC_ROUTES.includes(pathname)) {
     return NextResponse.next();
   }
 
-  // Verifica se existe cookie de sessão do Supabase
   const hasSession = request.cookies.getAll().some(
     (cookie) => cookie.name.startsWith("sb-") && cookie.name.endsWith("-auth-token")
   );
 
-  // Sem sessão → login
   if (!hasSession) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // Com sessão → deixa passar (a verificação de role fica nas páginas via Server Component)
   if (SHARED_ROUTES.some((r) => pathname.startsWith(r))) {
     return NextResponse.next();
   }
