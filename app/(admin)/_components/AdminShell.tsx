@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createClient } from "../../lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 import {
   LayoutDashboard, CalendarDays, Users, Mic2, Ticket,
   Settings, LogOut, ChevronLeft, ChevronRight, ChevronDown,
@@ -221,13 +221,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
                 <div className="fixed top-16 right-6 w-64 bg-[#1a1413] border border-[#2e2825] rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
 
-                  {/* Info */}
                   <div className="px-4 py-3 border-b border-[#2e2825] mb-1">
                     <p className="text-sm text-white font-medium capitalize">{userName}</p>
                     <p className="text-xs text-gray-400 truncate">{userEmail}</p>
                   </div>
 
-                  {/* Meu Perfil */}
                   <Link
                     href="/perfil"
                     onClick={() => setIsUserMenuOpen(false)}
@@ -240,7 +238,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   <div className="h-px bg-[#2e2825] my-1" />
                   <p className="px-4 py-1.5 text-xs text-gray-600 font-medium uppercase tracking-wider">Gestão</p>
 
-                  {/* Usuários & Permissões */}
                   <Link
                     href="/usuarios"
                     onClick={() => setIsUserMenuOpen(false)}
@@ -250,7 +247,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                     <span>Usuários & Permissões</span>
                   </Link>
 
-                  {/* Configurações */}
                   <Link
                     href="/configuracoes"
                     onClick={() => setIsUserMenuOpen(false)}
@@ -262,7 +258,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
                   <div className="h-px bg-[#2e2825] my-1" />
 
-                  {/* Logout */}
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors"
