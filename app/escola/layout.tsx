@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getUserRole } from "@/lib/supabase/server";
-import EscolaShell from "@/app/(escola)/_components/EscolaShell";
+import EscolaShell from "@/app/escola/_components/EscolaShell";
 
 export const metadata: Metadata = {
   title: "AXON Fest — Portal da Escola",
