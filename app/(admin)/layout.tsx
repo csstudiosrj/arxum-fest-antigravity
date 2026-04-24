@@ -8,7 +8,7 @@ import { createClient } from "../../lib/supabase/client";
 import {
   LayoutDashboard, CalendarDays, Users, Mic2, Ticket,
   Settings, LogOut, ChevronLeft, ChevronRight, ChevronDown,
-  User, Gavel, ShoppingBag, FileSignature, Megaphone, Loader2
+  User, Gavel, ShoppingBag, FileSignature, Megaphone, Loader2, ShieldCheck
 } from "lucide-react";
 
 const navLinks =[
@@ -194,16 +194,52 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             {isUserMenuOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)} />
-                <div className="absolute right-0 mt-2 w-56 bg-[#1a1413] border border-[#1a1413]/50 rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
-                  <div className="px-4 py-2 border-b border-[#1a1413]/50 mb-2">
-                    <p className="text-sm text-white font-medium">Minha Conta</p>
+
+                <div className="fixed top-16 right-6 w-64 bg-[#1a1413] border border-[#2e2825] rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
+
+                  <div className="px-4 py-3 border-b border-[#2e2825] mb-1">
+                    <p className="text-sm text-white font-medium capitalize">Organizador</p>
                     <p className="text-xs text-gray-400 truncate">{userEmail}</p>
                   </div>
+
+                  <Link
+                    href="/perfil"
+                    onClick={() => setIsUserMenuOpen(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    <User size={16} />
+                    <span>Meu Perfil</span>
+                  </Link>
+
+                  <div className="h-px bg-[#2e2825] my-1" />
+                  <p className="px-4 py-1.5 text-xs text-gray-600 font-medium uppercase tracking-wider">Gestão</p>
+
+                  <Link
+                    href="/usuarios"
+                    onClick={() => setIsUserMenuOpen(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    <ShieldCheck size={16} />
+                    <span>Usuários & Permissões</span>
+                  </Link>
+
+                  <Link
+                    href="/configuracoes"
+                    onClick={() => setIsUserMenuOpen(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    <Settings size={16} />
+                    <span>Configurações do Sistema</span>
+                  </Link>
+
+                  <div className="h-px bg-[#2e2825] my-1" />
+
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors"
                   >
-                    <LogOut size={16} /> Sair da plataforma
+                    <LogOut size={16} />
+                    <span>Sair da plataforma</span>
                   </button>
                 </div>
               </>
