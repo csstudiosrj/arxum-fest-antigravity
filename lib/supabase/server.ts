@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export async function createClient() {
@@ -12,9 +12,7 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(
-          cookiesToSet: { name: string; value: string; options: CookieOptions }[]
-        ) {
+        setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
@@ -28,10 +26,8 @@ export async function createClient() {
   );
 }
 
-// Busca a role do usuário autenticado direto da tabela usuarios
 export async function getUserRole(): Promise<string | null> {
   const supabase = await createClient();
-
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
