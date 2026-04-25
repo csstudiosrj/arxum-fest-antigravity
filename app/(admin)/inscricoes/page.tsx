@@ -129,36 +129,7 @@ function ModalCadastrarGrupo({ termo, onClose, onSaved }: ModalCadastrarGrupoPro
 
     if (escolaErr) { setErro(escolaErr.message); setSalvando(false); return; }
 
-    // 2. Criar usuário admin da escola via API de invite
-    const { error: userError } = await supabase.functions.invoke("bright-handler", {
-      body: {
-        email: email.trim(),
-        escola_id: escola.id,
-        nome: responsavel.trim() || null,
-      },
-    });
-
-    if (userError) {
-      // Tentar criar usuário diretamente via API
-      const inviteRes = await fetch("/api/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim(),
-          role: "escola_admin",
-          action: "invite",
-          inviterRole: "admin" // Assumindo que quem cadastra é admin
-        }),
-      });
-
-      if (!inviteRes.ok) {
-        const inviteData = await inviteRes.json();
-        setErro(`${termo.grupo} cadastrado, mas erro ao criar usuário: ${inviteData.error || "Erro desconhecido"}`);
-        setSalvando(false);
-        return;
-      }
-    }
-
+    // 2. O cadastro da escola foi concluído. O usuário será criado quando o responsável aceitar o convite.
     setEscolaSalva(escola as Escola);
     setEtapa("confirmacao");
     onSaved();
