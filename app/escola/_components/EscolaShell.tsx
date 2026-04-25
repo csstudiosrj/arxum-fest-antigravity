@@ -15,10 +15,14 @@ import {
 } from "lucide-react";
 
 const navLinks = [
-  { name: "Banco de Elenco", href: "/elenco", icon: Users },
-  { name: "Minhas Inscrições", href: "/inscricoes-escola", icon: ClipboardList },
-  { name: "Músicas", href: "/musicas", icon: Music },
-  { name: "Loja do Evento", href: "/loja-escola", icon: ShoppingBag },
+  { name: "Banco de Elenco", href: "/escola/elenco", icon: Users },
+  {
+    name: "Minhas Inscrições",
+    href: "/escola/inscricoes-escola",
+    icon: ClipboardList,
+  },
+  { name: "Músicas", href: "/escola/musicas", icon: Music },
+  { name: "Loja do Evento", href: "/escola/loja-escola", icon: ShoppingBag },
 ];
 
 export default function EscolaShell({
@@ -31,21 +35,18 @@ export default function EscolaShell({
 
   return (
     <div className="min-h-screen bg-axon-bg text-white flex flex-col">
-      {/* ── Top Navigation Bar ── */}
       <header className="h-16 bg-axon-panel border-b border-axon-border flex items-center justify-between px-6 sticky top-0 z-20">
-        {/* Logo */}
         <div className="flex items-center gap-8">
           <span className="text-lg font-bold tracking-wider shrink-0">
             AXON <span className="text-axon-green font-light">Fest</span>
           </span>
 
-          {/* Nav links horizontais */}
           <nav className="hidden md:flex items-center gap-1">
             {navLinks.map((link) => {
               const isActive =
-                pathname === link.href ||
-                pathname.startsWith(link.href + "/");
+                pathname === link.href || pathname.startsWith(link.href + "/");
               const Icon = link.icon;
+
               return (
                 <Link
                   key={link.href}
@@ -64,7 +65,6 @@ export default function EscolaShell({
           </nav>
         </div>
 
-        {/* Menu do usuário */}
         <div className="relative">
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -129,7 +129,6 @@ export default function EscolaShell({
         </div>
       </header>
 
-      {/* ── Conteúdo da página ── */}
       <div className="flex-1 p-8">{children}</div>
     </div>
   );

@@ -15,7 +15,7 @@ export default async function EscolaLayout({
   const role = await getUserRole();
 
   if (!role) redirect("/login");
-  if (role !== "escola") redirect("/login");
+  if (role !== "escola_admin" && role !== "coreografo") redirect("/login");
 
   return <EscolaShell>{children}</EscolaShell>;
 }
