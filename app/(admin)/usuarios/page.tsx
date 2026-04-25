@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import {
-  UserPlus, Mail, Lock, Shield, Trash2,
+  UserPlus, Mail, Lock, Shield, Trash2, Pencil,
   Send, KeyRound, CheckCircle, AlertCircle,
-  Loader2, ChevronDown, Crown, Users
+  Loader2, ChevronDown, Crown, Users, X, AlertTriangle
 } from "lucide-react";
 import { createClient } from "../../../lib/supabase/client";
 
@@ -15,7 +15,6 @@ interface Usuario {
   email: string;
   nome: string | null;
   role: string;
-  criado_em?: string;
 }
 
 type Acao = "invite" | "add";
@@ -23,33 +22,29 @@ type Acao = "invite" | "add";
 // ─── Configuração de cargos ───────────────────────────────────────────────────
 
 const CARGOS: Record<string, { label: string; descricao: string; cor: string }> = {
-  super_admin: { label: "Super Admin",  descricao: "Acesso total incluindo assinatura e credenciais", cor: "text-purple-400 bg-purple-400/10 border-purple-400/30" },
-  admin:       { label: "Admin",        descricao: "Acesso total exceto credenciais e assinatura",    cor: "text-[#C5A059] bg-[#C5A059]/10 border-[#C5A059]/30" },
-  produtor:    { label: "Produtor",     descricao: "PDV, Loja, Inscrições e Dashboard",               cor: "text-blue-400 bg-blue-400/10 border-blue-400/30" },
-  marketing:   { label: "Marketing",   descricao: "Marketing, Dashboard e Inscrições (sem valores)", cor: "text-pink-400 bg-pink-400/10 border-pink-400/30" },
-  assistente:  { label: "Assistente",  descricao: "Inscrições & Elenco e Mídias & Áudio",            cor: "text-green-400 bg-green-400/10 border-green-400/30" },
+  super_admin: { label: "Super Admin", descricao: "Acesso total incluindo assinatura e credenciais", cor: "text-purple-400 bg-purple-400/10 border-purple-400/30" },
+  admin:       { label: "Admin",       descricao: "Acesso total exceto credenciais e assinatura",   cor: "text-[#C5A059] bg-[#C5A059]/10 border-[#C5A059]/30" },
+  produtor:    { label: "Produtor",    descricao: "PDV, Loja, Inscrições e Dashboard",              cor: "text-blue-400 bg-blue-400/10 border-blue-400/30" },
+  marketing:   { label: "Marketing",  descricao: "Marketing, Dashboard e Inscrições (sem valores)",cor: "text-pink-400 bg-pink-400/10 border-pink-400/30" },
+  assistente:  { label: "Assistente", descricao: "Inscrições & Elenco e Mídias & Áudio",           cor: "text-green-400 bg-green-400/10 border-green-400/30" },
 };
 
 const HIERARQUIA: Record<string, string[]> = {
   super_admin: ["super_admin", "admin", "produtor", "marketing", "assistente"],
   admin:       ["produtor", "marketing", "assistente"],
-  produtor:    [],
-  marketing:   [],
-  assistente:  [],
+  produtor:    [], marketing: [], assistente: [],
 };
 
-// ─── Badge de cargo ───────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function BadgeCargo({ role }: { role: string }) {
   const cfg = CARGOS[role] ?? { label: role, cor: "text-gray-400 bg-gray-400/10 border-gray-400/30" };
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${cfg.cor}`}>
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cfg.cor}`}>
       {cfg.label}
     </span>
   );
 }
-
-// ─── Toast ────────────────────────────────────────────────────────────────────
 
 function Toast({ msg, tipo, visivel }: { msg: string; tipo: "ok" | "erro"; visivel: boolean }) {
   return (
@@ -58,6 +53,128 @@ function Toast({ msg, tipo, visivel }: { msg: string; tipo: "ok" | "erro"; visiv
     } ${tipo === "ok" ? "bg-[#C5A059] text-black" : "bg-red-500/90 text-white"}`}>
       {tipo === "ok" ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
       {msg}
+    </div>
+  );
+}
+
+// ─── Modal Confirmação de Exclusão ────────────────────────────────────────────
+
+function ModalConfirmarExclusao({
+  usuario, onConfirmar, onCancelar, excluindo,
+}: {
+  usuario: Usuario; onConfirmar: () => void; onCancelar: () => void; excluindo: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1a1413] border border-red-500/30 rounded-2xl p-6 w-full max-w-sm space-y-5">
+        <div className="flex flex-col items-center text-center gap-3">
+          <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+            <AlertTriangle size={26} className="text-red-400" />
+          </div>
+          <div>
+            <h2 className="text-white font-bold text-lg">Remover Usuário</h2>
+            <p className="text-gray-400 text-sm mt-1">
+              Tem certeza que deseja remover{" "}
+              <span className="text-white font-medium">{usuario.nome ?? usuario.email}</span>?
+            </p>
+            <p className="text-gray-600 text-xs mt-2">
+              Esta ação revoga o acesso imediatamente e não pode ser desfeita.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-[#0d0807] border border-[#2e2825] rounded-xl p-3 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-[#1a1413] border border-[#2e2825] flex items-center justify-center text-[#C5A059] font-bold text-xs uppercase shrink-0">
+            {(usuario.nome ?? usuario.email).substring(0, 2)}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm text-white truncate">{usuario.nome ?? "—"}</p>
+            <p className="text-xs text-gray-500 truncate">{usuario.email}</p>
+          </div>
+          <BadgeCargo role={usuario.role} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={onCancelar} disabled={excluindo}
+            className="py-3 rounded-xl border border-[#2e2825] text-gray-400 hover:text-white text-sm font-medium transition-colors disabled:opacity-50">
+            Cancelar
+          </button>
+          <button onClick={onConfirmar} disabled={excluindo}
+            className="py-3 rounded-xl bg-red-500 text-white font-bold text-sm hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+            {excluindo ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            {excluindo ? "Removendo..." : "Sim, remover"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal Editar Cargo ───────────────────────────────────────────────────────
+
+function ModalEditarCargo({
+  usuario, inviterRole, onSalvar, onCancelar, salvando,
+}: {
+  usuario: Usuario; inviterRole: string;
+  onSalvar: (novoRole: string) => void;
+  onCancelar: () => void; salvando: boolean;
+}) {
+  const [roleAtual, setRoleAtual] = useState(usuario.role);
+  const cargosPermitidos = HIERARQUIA[inviterRole] ?? [];
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#1a1413] border border-[#2e2825] rounded-2xl p-6 w-full max-w-sm space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-white font-bold flex items-center gap-2">
+            <Pencil size={16} className="text-[#C5A059]" /> Editar Cargo
+          </h2>
+          <button onClick={onCancelar} className="text-gray-500 hover:text-white transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Info do usuário */}
+        <div className="bg-[#0d0807] border border-[#2e2825] rounded-xl p-3 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-[#1a1413] border border-[#2e2825] flex items-center justify-center text-[#C5A059] font-bold text-sm uppercase shrink-0">
+            {(usuario.nome ?? usuario.email).substring(0, 2)}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm text-white truncate">{usuario.nome ?? "—"}</p>
+            <p className="text-xs text-gray-500 truncate">{usuario.email}</p>
+          </div>
+        </div>
+
+        {/* Seletor de cargo */}
+        <div className="space-y-1.5">
+          <label className="text-xs text-gray-400 uppercase tracking-wider">Novo Cargo</label>
+          <div className="relative">
+            <Shield size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+            <select value={roleAtual} onChange={(e) => setRoleAtual(e.target.value)}
+              className="w-full bg-[#0d0807] border border-[#2e2825] rounded-xl pl-10 pr-8 py-3 text-white text-sm focus:outline-none focus:border-[#C5A059] appearance-none">
+              {cargosPermitidos.map((c) => (
+                <option key={c} value={c}>{CARGOS[c]?.label ?? c}</option>
+              ))}
+            </select>
+            <ChevronDown size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+          </div>
+          {roleAtual && CARGOS[roleAtual] && (
+            <p className="text-xs text-gray-500 pl-1">{CARGOS[roleAtual].descricao}</p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={onCancelar} disabled={salvando}
+            className="py-3 rounded-xl border border-[#2e2825] text-gray-400 hover:text-white text-sm font-medium transition-colors disabled:opacity-50">
+            Cancelar
+          </button>
+          <button onClick={() => onSalvar(roleAtual)} disabled={salvando || roleAtual === usuario.role}
+            className="py-3 rounded-xl bg-[#C5A059] text-black font-bold text-sm hover:bg-[#d4af6a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            {salvando ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
+            {salvando ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -82,7 +199,6 @@ function ModalConvidar({
     if (!email || !role) { setErro("Preencha e-mail e cargo."); return; }
     if (acao === "add" && senha.length < 6) { setErro("Senha deve ter no mínimo 6 caracteres."); return; }
     setErro(""); setEnviando(true);
-
     try {
       const res = await fetch("/api/invite", {
         method: "POST",
@@ -90,11 +206,10 @@ function ModalConvidar({
         body: JSON.stringify({ email, role, action: acao, password: senha, inviterRole }),
       });
       const json = await res.json();
-      if (!res.ok) { setErro(json.error ?? "Erro desconhecido."); return; }
+      if (!res.ok) { setErro(json.error ?? "Erro desconhecido."); setEnviando(false); return; }
       onSucesso();
     } catch {
       setErro("Erro de conexão. Tente novamente.");
-    } finally {
       setEnviando(false);
     }
   };
@@ -102,32 +217,30 @@ function ModalConvidar({
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-[#1a1413] border border-[#2e2825] rounded-2xl p-6 w-full max-w-md space-y-5">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <h2 className="text-white font-bold flex items-center gap-2">
             <UserPlus size={18} className="text-[#C5A059]" /> Adicionar Membro
           </h2>
-          <button onClick={onFechar} className="text-gray-500 hover:text-white transition-colors text-xl leading-none">×</button>
+          <button onClick={onFechar} className="text-gray-500 hover:text-white transition-colors">
+            <X size={20} />
+          </button>
         </div>
 
-        {/* Abas de ação */}
+        {/* Abas */}
         <div className="flex bg-[#0d0807] border border-[#2e2825] rounded-xl overflow-hidden">
-          <button onClick={() => setAcao("invite")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
-              acao === "invite" ? "bg-[#1a1413] text-[#C5A059]" : "text-gray-500 hover:text-white"}`}>
-            <Send size={14} /> Convite por E-mail
-          </button>
-          <button onClick={() => setAcao("add")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
-              acao === "add" ? "bg-[#1a1413] text-[#C5A059]" : "text-gray-500 hover:text-white"}`}>
-            <KeyRound size={14} /> Criar Manualmente
-          </button>
+          {([["invite", Send, "Convite por E-mail"], ["add", KeyRound, "Criar Manualmente"]] as const).map(([a, Icon, label]) => (
+            <button key={a} onClick={() => setAcao(a as Acao)}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
+                acao === a ? "bg-[#1a1413] text-[#C5A059]" : "text-gray-500 hover:text-white"}`}>
+              <Icon size={14} /> {label}
+            </button>
+          ))}
         </div>
 
         <p className="text-xs text-gray-500">
           {acao === "invite"
             ? "O usuário receberá um e-mail para definir a própria senha."
-            : "O usuário receberá login e senha prontos — ideal para enviar via WhatsApp."}
+            : "Crie login e senha prontos — ideal para enviar via WhatsApp."}
         </p>
 
         {/* E-mail */}
@@ -160,7 +273,7 @@ function ModalConvidar({
           )}
         </div>
 
-        {/* Senha (só no modo add) */}
+        {/* Senha */}
         {acao === "add" && (
           <div className="space-y-1.5">
             <label className="text-xs text-gray-400 uppercase tracking-wider">Senha Provisória</label>
@@ -179,7 +292,7 @@ function ModalConvidar({
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-3 pt-1">
+        <div className="grid grid-cols-2 gap-3">
           <button onClick={onFechar}
             className="py-3 rounded-xl border border-[#2e2825] text-gray-400 hover:text-white text-sm font-medium transition-colors">
             Cancelar
@@ -201,9 +314,17 @@ export default function UsuariosPage() {
   const supabase = createClient();
 
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [meuId, setMeuId] = useState("");
   const [inviterRole, setInviterRole] = useState("");
   const [carregando, setCarregando] = useState(true);
-  const [modalAberto, setModalAberto] = useState(false);
+
+  // Modais
+  const [modalConvidar, setModalConvidar] = useState(false);
+  const [modalEditar, setModalEditar] = useState<Usuario | null>(null);
+  const [modalExcluir, setModalExcluir] = useState<Usuario | null>(null);
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
+
   const [toast, setToast] = useState({ msg: "", tipo: "ok" as "ok" | "erro", visivel: false });
 
   const mostrarToast = (msg: string, tipo: "ok" | "erro" = "ok") => {
@@ -215,44 +336,71 @@ export default function UsuariosPage() {
     setCarregando(true);
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
+    setMeuId(session.user.id);
 
-    // Role de quem está logado
     const { data: eu } = await supabase
       .from("usuarios").select("role").eq("id", session.user.id).single();
     if (eu) setInviterRole(eu.role);
 
-    // Lista todos os usuários
     const { data } = await supabase
-      .from("usuarios")
-      .select("id, email, nome, role")
-      .order("role");
-
+      .from("usuarios").select("id, email, nome, role").order("role");
     if (data) setUsuarios(data as Usuario[]);
     setCarregando(false);
   };
 
   useEffect(() => { carregar(); }, []);
 
-  const removerUsuario = async (id: string, role: string) => {
-    // Proteção: não pode remover super_admin
-    if (role === "super_admin") {
-      mostrarToast("Não é possível remover um Super Admin.", "erro");
-      return;
-    }
-    if (!confirm("Tem certeza que deseja remover este usuário?")) return;
-
-    const res = await fetch("/api/invite", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "remove", userId: id, inviterRole }),
-    });
-    if (res.ok) {
-      setUsuarios((prev) => prev.filter((u) => u.id !== id));
-      mostrarToast("Usuário removido.");
-    } else {
-      mostrarToast("Erro ao remover usuário.", "erro");
+  // ── Editar cargo ──
+  const handleEditarCargo = async (novoRole: string) => {
+    if (!modalEditar) return;
+    setSalvandoEdicao(true);
+    try {
+      const res = await fetch("/api/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", userId: modalEditar.id, role: novoRole, inviterRole }),
+      });
+      const json = await res.json();
+      if (!res.ok) { mostrarToast(json.error ?? "Erro ao atualizar.", "erro"); return; }
+      setUsuarios((prev) => prev.map((u) => u.id === modalEditar.id ? { ...u, role: novoRole } : u));
+      setModalEditar(null);
+      mostrarToast("Cargo atualizado com sucesso!");
+    } catch {
+      mostrarToast("Erro de conexão.", "erro");
+    } finally {
+      setSalvandoEdicao(false);
     }
   };
+
+  // ── Excluir usuário ──
+  const handleExcluir = async () => {
+    if (!modalExcluir) return;
+    setExcluindo(true);
+    try {
+      const res = await fetch("/api/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remove", userId: modalExcluir.id, inviterRole }),
+      });
+      const json = await res.json();
+      if (!res.ok) { mostrarToast(json.error ?? "Erro ao remover.", "erro"); return; }
+      setUsuarios((prev) => prev.filter((u) => u.id !== modalExcluir.id));
+      setModalExcluir(null);
+      mostrarToast("Usuário removido.");
+    } catch {
+      mostrarToast("Erro de conexão.", "erro");
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
+  // ── Helpers de permissão ──
+  const podeEditar = (u: Usuario) =>
+    u.id !== meuId && (HIERARQUIA[inviterRole] ?? []).includes(u.role);
+
+  const podeExcluir = (u: Usuario) =>
+    u.id !== meuId && u.role !== "super_admin" &&
+    (inviterRole === "super_admin" || (HIERARQUIA[inviterRole] ?? []).includes(u.role));
 
   const podeConvidar = (HIERARQUIA[inviterRole] ?? []).length > 0;
 
@@ -260,16 +408,20 @@ export default function UsuariosPage() {
     <>
       <Toast msg={toast.msg} tipo={toast.tipo} visivel={toast.visivel} />
 
-      {modalAberto && (
-        <ModalConvidar
-          inviterRole={inviterRole}
-          onFechar={() => setModalAberto(false)}
-          onSucesso={() => {
-            setModalAberto(false);
-            mostrarToast("Usuário adicionado com sucesso!");
-            carregar();
-          }}
-        />
+      {modalConvidar && (
+        <ModalConvidar inviterRole={inviterRole}
+          onFechar={() => setModalConvidar(false)}
+          onSucesso={() => { setModalConvidar(false); mostrarToast("Usuário adicionado!"); carregar(); }} />
+      )}
+
+      {modalEditar && (
+        <ModalEditarCargo usuario={modalEditar} inviterRole={inviterRole}
+          onSalvar={handleEditarCargo} onCancelar={() => setModalEditar(null)} salvando={salvandoEdicao} />
+      )}
+
+      {modalExcluir && (
+        <ModalConfirmarExclusao usuario={modalExcluir}
+          onConfirmar={handleExcluir} onCancelar={() => setModalExcluir(null)} excluindo={excluindo} />
       )}
 
       <div className="max-w-4xl mx-auto space-y-6">
@@ -280,14 +432,14 @@ export default function UsuariosPage() {
             <p className="text-gray-400 mt-1 text-sm">Gerencie quem acessa o painel e com quais permissões.</p>
           </div>
           {podeConvidar && (
-            <button onClick={() => setModalAberto(true)}
+            <button onClick={() => setModalConvidar(true)}
               className="flex items-center gap-2 bg-[#C5A059] text-black px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#d4af6a] transition-colors">
               <UserPlus size={16} /> Adicionar Membro
             </button>
           )}
         </div>
 
-        {/* Mapa de permissões */}
+        {/* Mapa de acessos */}
         <div className="bg-axon-panel border border-axon-border rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Crown size={16} className="text-[#C5A059]" />
@@ -303,7 +455,7 @@ export default function UsuariosPage() {
           </div>
         </div>
 
-        {/* Lista de usuários */}
+        {/* Lista */}
         <div className="bg-axon-panel border border-axon-border rounded-2xl overflow-hidden">
           <div className="flex items-center gap-2 px-5 py-4 border-b border-axon-border">
             <Users size={16} className="text-[#C5A059]" />
@@ -325,29 +477,41 @@ export default function UsuariosPage() {
             <div className="divide-y divide-axon-border">
               {usuarios.map((u) => (
                 <div key={u.id} className="flex items-center justify-between px-5 py-4 hover:bg-white/[0.02] transition-colors">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="w-9 h-9 rounded-full bg-[#1a1413] border border-[#2e2825] flex items-center justify-center text-[#C5A059] font-bold text-sm uppercase shrink-0">
                       {(u.nome ?? u.email).substring(0, 2)}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{u.nome ?? "—"}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-white truncate">{u.nome ?? "—"}</p>
+                        {u.id === meuId && (
+                          <span className="text-xs text-gray-600 font-normal">(você)</span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-500 truncate">{u.email}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0 ml-4">
+                  <div className="flex items-center gap-2 shrink-0 ml-4">
                     <BadgeCargo role={u.role} />
-                    {u.role !== "super_admin" && inviterRole === "super_admin" || 
-                     (HIERARQUIA[inviterRole] ?? []).includes(u.role) ? (
-                      <button
-                        onClick={() => removerUsuario(u.id, u.role)}
-                        className="text-gray-600 hover:text-red-400 transition-colors p-1"
-                      >
-                        <Trash2 size={15} />
+
+                    {/* Editar */}
+                    {podeEditar(u) ? (
+                      <button onClick={() => setModalEditar(u)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-[#C5A059] hover:bg-[#C5A059]/10 transition-colors"
+                        title="Editar cargo">
+                        <Pencil size={14} />
                       </button>
-                    ) : (
-                      <div className="w-7" />
-                    )}
+                    ) : <div className="w-8" />}
+
+                    {/* Excluir */}
+                    {podeExcluir(u) ? (
+                      <button onClick={() => setModalExcluir(u)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                        title="Remover usuário">
+                        <Trash2 size={14} />
+                      </button>
+                    ) : <div className="w-8" />}
                   </div>
                 </div>
               ))}

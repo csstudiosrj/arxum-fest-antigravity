@@ -4,9 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 const HIERARQUIA: Record<string, string[]> = {
   super_admin: ["super_admin", "admin", "produtor", "marketing", "assistente"],
   admin:       ["produtor", "marketing", "assistente"],
-  produtor:    [],
-  marketing:   [],
-  assistente:  [],
+  produtor:    [], marketing: [], assistente: [],
 };
 
 export async function POST(req: NextRequest) {
@@ -20,7 +18,7 @@ export async function POST(req: NextRequest) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // ── Remoção ──
+    // ── Remover ──
     if (action === "remove") {
       if (!userId) return NextResponse.json({ error: "userId ausente." }, { status: 400 });
       const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
@@ -29,7 +27,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // ── Validações comuns ──
+    // ── Atualizar cargo ──
+    if (action === "update") {
+      if (!userId || !role || !inviterRole)
+        return NextResponse.json({ error: "Campos ausentes." }, { status: 400 });
+      if (!HIERARQUIA[inviterRole]?.includes(role))
+        return NextResponse.json({ error: "Sem permissão para atribuir este cargo." }, { status: 403 });
+      const { error } = await supabaseAdmin.from("usuarios").update({ role }).eq("id", userId);
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ success: true });
+    }
+
+    // ── Validações para invite/add ──
     if (!email || !role || !action || !inviterRole)
       return NextResponse.json({ error: "Campos obrigatórios ausentes." }, { status: 400 });
 
