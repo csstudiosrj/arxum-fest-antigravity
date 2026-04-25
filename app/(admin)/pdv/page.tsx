@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Ticket, Coffee, ShoppingCart, Plus, Minus,
-  CreditCard, Banknote, Trash2, Wifi, WifiOff,
-  CheckCircle, QrCode
+  Plus, Pencil, Trash2, Save, X, Package,
+  ReceiptText, Settings, ToggleLeft, ToggleRight,
+  TrendingUp, Banknote, QrCode, CreditCard,
+  AlertCircle, CheckCircle, ChevronDown
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-// ─── Tipos ───────────────────────────────────────────────────────────────────
+// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Produto {
   id: string;
@@ -18,164 +19,191 @@ interface Produto {
   tipo: "cantina" | "bilheteria";
   estoque: number | null;
   ativo: boolean;
+  ordem: number;
 }
 
-interface ItemCarrinho {
-  produto: Produto;
-  quantidade: number;
-}
-
-interface VendaLocal {
+interface Venda {
   id: string;
-  operador_id: string | null;
-  itens: { produto_id: string; nome: string; preco: number; quantidade: number }[];
   total: number;
   forma_pagamento: string;
   sincronizado: boolean;
   created_at: string;
+  itens: { nome: string; preco: number; quantidade: number }[];
+  operador_id: string | null;
 }
 
-// ─── IndexedDB helpers ────────────────────────────────────────────────────────
-
-const DB_NAME = "axon_pdv";
-const DB_VERSION = 1;
-
-function abrirDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = (e.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains("vendas")) {
-        db.createObjectStore("vendas", { keyPath: "id" });
-      }
-      if (!db.objectStoreNames.contains("produtos")) {
-        db.createObjectStore("produtos", { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+interface PdvConfig {
+  id: string;
+  pin_vendedor: string;
+  chave_pix: string | null;
+  nome_recebedor: string | null;
+  cidade_recebedor: string | null;
 }
 
-async function salvarVendaLocal(venda: VendaLocal) {
-  const db = await abrirDB();
-  return new Promise<void>((resolve, reject) => {
-    const tx = db.transaction("vendas", "readwrite");
-    tx.objectStore("vendas").put(venda);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const CATEGORIAS_CANTINA = ["Bebidas", "Salgados", "Doces", "Lanches", "Outros"];
+const CATEGORIAS_BILHETERIA = ["Ingressos", "Pacotes", "VIP", "Outros"];
+
+function moeda(v: number) {
+  return `R$ ${v.toFixed(2).replace(".", ",")}`;
 }
 
-async function buscarVendasNaoSincronizadas(): Promise<VendaLocal[]> {
-  const db = await abrirDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("vendas", "readonly");
-    const req = tx.objectStore("vendas").getAll();
-    req.onsuccess = () =>
-      resolve((req.result as VendaLocal[]).filter((v) => !v.sincronizado));
-    req.onerror = () => reject(req.error);
-  });
+function iconeForma(forma: string) {
+  if (forma === "pix") return <QrCode size={14} className="text-axon-green" />;
+  if (forma === "cartao") return <CreditCard size={14} className="text-blue-400" />;
+  return <Banknote size={14} className="text-yellow-400" />;
 }
 
-async function marcarVendaSincronizada(id: string) {
-  const db = await abrirDB();
-  return new Promise<void>((resolve, reject) => {
-    const tx = db.transaction("vendas", "readwrite");
-    const store = tx.objectStore("vendas");
-    const req = store.get(id);
-    req.onsuccess = () => {
-      const venda = req.result as VendaLocal;
-      if (venda) {
-        venda.sincronizado = true;
-        store.put(venda);
-      }
-      resolve();
-    };
-    req.onerror = () => reject(req.error);
-  });
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+function Toast({ msg, visivel, erro }: { msg: string; visivel: boolean; erro?: boolean }) {
+  return (
+    <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full font-bold text-sm flex items-center gap-2 shadow-lg z-50 transition-all duration-300 ${
+      visivel ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+    } ${erro ? "bg-red-500 text-white" : "bg-axon-green text-black"}`}>
+      {erro ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
+      {msg}
+    </div>
+  );
 }
 
-async function cachearProdutos(produtos: Produto[]) {
-  const db = await abrirDB();
-  const tx = db.transaction("produtos", "readwrite");
-  const store = tx.objectStore("produtos");
-  store.clear();
-  produtos.forEach((p) => store.put(p));
-}
+// ─── Modal de Produto ─────────────────────────────────────────────────────────
 
-async function buscarProdutosCache(): Promise<Produto[]> {
-  const db = await abrirDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("produtos", "readonly");
-    const req = tx.objectStore("produtos").getAll();
-    req.onsuccess = () => resolve(req.result as Produto[]);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-// ─── Modal de Troco ───────────────────────────────────────────────────────────
-
-function ModalTroco({
-  total,
-  onConfirmar,
-  onCancelar,
+function ModalProduto({
+  produto,
+  onSalvar,
+  onFechar,
+  salvando,
 }: {
-  total: number;
-  onConfirmar: (valorRecebido: number) => void;
-  onCancelar: () => void;
+  produto: Partial<Produto> | null;
+  onSalvar: (p: Partial<Produto>) => void;
+  onFechar: () => void;
+  salvando: boolean;
 }) {
-  const [valor, setValor] = useState("");
-  const valorNum = parseFloat(valor.replace(",", ".")) || 0;
-  const troco = valorNum - total;
+  const [form, setForm] = useState<Partial<Produto>>(
+    produto ?? { tipo: "cantina", ativo: true, ordem: 0 }
+  );
+
+  const categorias = form.tipo === "bilheteria" ? CATEGORIAS_BILHETERIA : CATEGORIAS_CANTINA;
+  const valido = form.nome?.trim() && form.preco && form.categoria && form.tipo;
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 w-full max-w-sm space-y-5">
-        <h2 className="text-lg font-bold text-white flex items-center gap-2">
-          <Banknote size={20} className="text-axon-green" /> Pagamento em Dinheiro
-        </h2>
-        <div className="text-sm text-gray-400">
-          Total a cobrar:{" "}
-          <span className="text-white font-bold text-lg">
-            R$ {total.toFixed(2).replace(".", ",")}
-          </span>
+      <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 w-full max-w-md space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">
+            {produto?.id ? "Editar Produto" : "Novo Produto"}
+          </h2>
+          <button onClick={onFechar} className="text-gray-500 hover:text-white transition-colors">
+            <X size={20} />
+          </button>
         </div>
-        <div className="space-y-2">
-          <label className="text-xs text-gray-400 uppercase tracking-wider">
-            Valor Recebido
-          </label>
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder="0,00"
-            value={valor}
-            onChange={(e) => setValor(e.target.value)}
-            className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-3 text-white text-xl font-bold focus:outline-none focus:border-axon-green text-right"
-            autoFocus
-          />
-        </div>
-        {valorNum >= total && (
-          <div className="bg-axon-green/10 border border-axon-green/30 rounded-lg p-3 text-center">
-            <p className="text-xs text-gray-400 mb-1">Troco</p>
-            <p className="text-2xl font-bold text-axon-green">
-              R$ {troco.toFixed(2).replace(".", ",")}
-            </p>
+
+        <div className="space-y-4">
+          {/* Tipo */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-gray-400 uppercase tracking-wider">Seção</label>
+            <div className="flex bg-axon-bg border border-axon-border rounded-lg p-1">
+              {(["cantina", "bilheteria"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setForm((f) => ({ ...f, tipo: t, categoria: undefined }))}
+                  className={`flex-1 py-2 rounded-md text-sm font-medium capitalize transition-colors ${
+                    form.tipo === t ? "bg-axon-panel text-white shadow" : "text-gray-500 hover:text-white"
+                  }`}
+                >
+                  {t === "cantina" ? "🍔 Cantina" : "🎟️ Bilheteria"}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
-        <div className="grid grid-cols-2 gap-3 pt-1">
+
+          {/* Nome */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-gray-400 uppercase tracking-wider">Nome do Produto</label>
+            <input
+              value={form.nome ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
+              placeholder="Ex: Água Mineral 500ml"
+            />
+          </div>
+
+          {/* Preço + Categoria */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs text-gray-400 uppercase tracking-wider">Preço (R$)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.50"
+                value={form.preco ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, preco: parseFloat(e.target.value) }))}
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
+                placeholder="0,00"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-gray-400 uppercase tracking-wider">Categoria</label>
+              <select
+                value={form.categoria ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))}
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
+              >
+                <option value="">Selecione</option>
+                {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Estoque */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-gray-400 uppercase tracking-wider">
+              Estoque <span className="text-gray-600 normal-case">(deixe vazio para ilimitado)</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={form.estoque ?? ""}
+              onChange={(e) => setForm((f) => ({
+                ...f,
+                estoque: e.target.value === "" ? null : parseInt(e.target.value),
+              }))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
+              placeholder="Ilimitado"
+            />
+          </div>
+
+          {/* Ordem */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-gray-400 uppercase tracking-wider">
+              Ordem de exibição
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={form.ordem ?? 0}
+              onChange={(e) => setForm((f) => ({ ...f, ordem: parseInt(e.target.value) || 0 }))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-1">
           <button
-            onClick={onCancelar}
-            className="py-3 rounded-lg border border-axon-border text-gray-400 hover:text-white transition-colors text-sm font-medium"
+            onClick={onFechar}
+            className="flex-1 py-2.5 rounded-lg border border-axon-border text-gray-400 hover:text-white text-sm font-medium transition-colors"
           >
             Cancelar
           </button>
           <button
-            onClick={() => onConfirmar(valorNum)}
-            disabled={valorNum < total}
-            className="py-3 rounded-lg bg-axon-green text-black font-bold text-sm hover:bg-[#00c866] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => onSalvar(form)}
+            disabled={salvando || !valido}
+            className="flex-1 py-2.5 rounded-lg bg-axon-green text-black font-bold text-sm hover:bg-[#00c866] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Confirmar
+            <Save size={15} />
+            {salvando ? "Salvando..." : "Salvar"}
           </button>
         </div>
       </div>
@@ -183,372 +211,459 @@ function ModalTroco({
   );
 }
 
-// ─── Toast de Feedback ────────────────────────────────────────────────────────
+// ─── Aba Produtos ─────────────────────────────────────────────────────────────
 
-function Toast({ mensagem, visivel }: { mensagem: string; visivel: boolean }) {
+function AbaProdutos({
+  produtos,
+  onNovo,
+  onEditar,
+  onToggle,
+  onExcluir,
+}: {
+  produtos: Produto[];
+  onNovo: () => void;
+  onEditar: (p: Produto) => void;
+  onToggle: (p: Produto) => void;
+  onExcluir: (id: string) => void;
+}) {
+  const [filtroTipo, setFiltroTipo] = useState<"todos" | "cantina" | "bilheteria">("todos");
+
+  const filtrados = produtos.filter((p) =>
+    filtroTipo === "todos" ? true : p.tipo === filtroTipo
+  );
+
+  const cantina = produtos.filter((p) => p.tipo === "cantina");
+  const bilheteria = produtos.filter((p) => p.tipo === "bilheteria");
+
   return (
-    <div
-      className={`fixed bottom-8 left-1/2 -translate-x-1/2 bg-axon-green text-black px-6 py-3 rounded-full font-bold text-sm flex items-center gap-2 shadow-lg transition-all duration-300 z-50 ${
-        visivel ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-      }`}
-    >
-      <CheckCircle size={18} />
-      {mensagem}
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex bg-axon-bg border border-axon-border rounded-lg p-1">
+          {(["todos", "cantina", "bilheteria"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setFiltroTipo(t)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${
+                filtroTipo === t ? "bg-axon-panel text-white shadow" : "text-gray-500 hover:text-white"
+              }`}
+            >
+              {t === "todos" ? `Todos (${produtos.length})` : t === "cantina" ? `🍔 Cantina (${cantina.length})` : `🎟️ Bilheteria (${bilheteria.length})`}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={onNovo}
+          className="flex items-center gap-2 bg-axon-green text-black px-4 py-2 rounded-lg font-semibold text-sm hover:bg-[#00c866] transition-colors"
+        >
+          <Plus size={16} /> Novo Produto
+        </button>
+      </div>
+
+      {/* Lista */}
+      {filtrados.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-gray-600 gap-3">
+          <Package size={40} className="opacity-30" />
+          <p className="text-sm">Nenhum produto cadastrado ainda.</p>
+          <button onClick={onNovo} className="text-axon-green text-sm hover:underline">
+            Cadastrar primeiro produto →
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtrados
+            .sort((a, b) => a.ordem - b.ordem)
+            .map((p) => (
+              <div
+                key={p.id}
+                className={`flex items-center justify-between bg-axon-bg border rounded-xl px-4 py-3 transition-colors ${
+                  p.ativo ? "border-axon-border" : "border-axon-border opacity-50"
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-white truncate">{p.nome}</p>
+                    <span className="text-xs text-gray-600 bg-axon-panel px-2 py-0.5 rounded-full shrink-0">
+                      {p.categoria}
+                    </span>
+                    <span className="text-xs text-gray-600 shrink-0">
+                      {p.tipo === "cantina" ? "🍔" : "🎟️"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <p className="text-axon-green font-bold text-sm">{moeda(p.preco)}</p>
+                    <p className="text-xs text-gray-600">
+                      Estoque: {p.estoque === null ? "Ilimitado" : p.estoque}
+                    </p>
+                    <p className="text-xs text-gray-600">Ordem: {p.ordem}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => onToggle(p)}
+                    className={`transition-colors ${p.ativo ? "text-axon-green hover:text-gray-400" : "text-gray-600 hover:text-axon-green"}`}
+                    title={p.ativo ? "Desativar" : "Ativar"}
+                  >
+                    {p.ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                  </button>
+                  <button
+                    onClick={() => onEditar(p)}
+                    className="text-gray-500 hover:text-white transition-colors p-1"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    onClick={() => onExcluir(p.id)}
+                    className="text-gray-500 hover:text-red-400 transition-colors p-1"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Aba Vendas ───────────────────────────────────────────────────────────────
+
+function AbaVendas({ vendas }: { vendas: Venda[] }) {
+  const total = vendas.reduce((a, v) => a + v.total, 0);
+  const porForma = {
+    pix: vendas.filter((v) => v.forma_pagamento === "pix").reduce((a, v) => a + v.total, 0),
+    cartao: vendas.filter((v) => v.forma_pagamento === "cartao").reduce((a, v) => a + v.total, 0),
+    dinheiro: vendas.filter((v) => v.forma_pagamento === "dinheiro").reduce((a, v) => a + v.total, 0),
+  };
+
+  const [expandido, setExpandido] = useState<string | null>(null);
+
+  return (
+    <div className="space-y-5">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Total Geral", valor: moeda(total), cor: "text-axon-green", icon: <TrendingUp size={16} /> },
+          { label: "PIX", valor: moeda(porForma.pix), cor: "text-axon-green", icon: <QrCode size={16} /> },
+          { label: "Cartão", valor: moeda(porForma.cartao), cor: "text-blue-400", icon: <CreditCard size={16} /> },
+          { label: "Dinheiro", valor: moeda(porForma.dinheiro), cor: "text-yellow-400", icon: <Banknote size={16} /> },
+        ].map(({ label, valor, cor, icon }) => (
+          <div key={label} className="bg-axon-bg border border-axon-border rounded-xl p-4">
+            <div className={`flex items-center gap-1.5 ${cor} mb-2`}>{icon}<span className="text-xs">{label}</span></div>
+            <p className={`text-xl font-bold ${cor}`}>{valor}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Lista de vendas */}
+      {vendas.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-gray-600 gap-3">
+          <ReceiptText size={40} className="opacity-30" />
+          <p className="text-sm">Nenhuma venda registrada ainda.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {[...vendas]
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .map((v) => (
+              <div key={v.id} className="bg-axon-bg border border-axon-border rounded-xl overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
+                  onClick={() => setExpandido(expandido === v.id ? null : v.id)}
+                >
+                  <div className="flex items-center gap-3">
+                    {iconeForma(v.forma_pagamento)}
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-white">{moeda(v.total)}</p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(v.created_at).toLocaleString("pt-BR")}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {!v.sincronizado && (
+                      <span className="text-xs text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20">
+                        Pendente sync
+                      </span>
+                    )}
+                    <ChevronDown
+                      size={16}
+                      className={`text-gray-500 transition-transform ${expandido === v.id ? "rotate-180" : ""}`}
+                    />
+                  </div>
+                </button>
+
+                {expandido === v.id && (
+                  <div className="px-4 pb-4 border-t border-axon-border pt-3 space-y-1.5">
+                    {v.itens.map((item, i) => (
+                      <div key={i} className="flex justify-between text-sm text-gray-400">
+                        <span>{item.quantidade}× {item.nome}</span>
+                        <span>{moeda(item.preco * item.quantidade)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Aba Configurações ────────────────────────────────────────────────────────
+
+function AbaConfig({
+  config,
+  onSalvar,
+  salvando,
+}: {
+  config: PdvConfig | null;
+  onSalvar: (c: Partial<PdvConfig>) => void;
+  salvando: boolean;
+}) {
+  const [form, setForm] = useState<Partial<PdvConfig>>(config ?? {});
+
+  useEffect(() => {
+    if (config) setForm(config);
+  }, [config]);
+
+  return (
+    <div className="max-w-lg space-y-6">
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold text-white">Acesso dos Vendedores</h3>
+        <div className="space-y-1.5">
+          <label className="text-xs text-gray-400 uppercase tracking-wider">PIN de 4 dígitos</label>
+          <input
+            type="password"
+            maxLength={4}
+            value={form.pin_vendedor ?? ""}
+            onChange={(e) => setForm((f) => ({ ...f, pin_vendedor: e.target.value }))}
+            className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green tracking-widest text-center text-2xl font-bold"
+            placeholder="••••"
+          />
+          <p className="text-xs text-gray-600">
+            O vendedor usa esse PIN para acessar as telas <code className="text-axon-green">/pdv</code> e <code className="text-axon-green">/bilheteria</code>.
+          </p>
+        </div>
+      </div>
+
+      <div className="h-px bg-axon-border" />
+
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold text-white">Configuração PIX</h3>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-xs text-gray-400 uppercase tracking-wider">Chave PIX</label>
+            <input
+              value={form.chave_pix ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, chave_pix: e.target.value }))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
+              placeholder="CPF, CNPJ, e-mail ou chave aleatória"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-gray-400 uppercase tracking-wider">Nome do Recebedor</label>
+            <input
+              value={form.nome_recebedor ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, nome_recebedor: e.target.value }))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
+              placeholder="Nome que aparece no app do pagador"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-gray-400 uppercase tracking-wider">Cidade</label>
+            <input
+              value={form.cidade_recebedor ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, cidade_recebedor: e.target.value }))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
+              placeholder="Rio de Janeiro"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-gray-600">
+          O QR Code PIX é gerado localmente via padrão EMV — sem intermediário, o dinheiro cai direto na sua conta.
+        </p>
+      </div>
+
+      <button
+        onClick={() => onSalvar(form)}
+        disabled={salvando}
+        className="flex items-center gap-2 bg-axon-green text-black px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#00c866] transition-colors disabled:opacity-40"
+      >
+        <Save size={15} />
+        {salvando ? "Salvando..." : "Salvar Configurações"}
+      </button>
     </div>
   );
 }
 
 // ─── Componente Principal ─────────────────────────────────────────────────────
 
-export default function PdvPage() {
+export default function AdminPdvPage() {
   const supabase = createClient();
 
-  const [abaAtiva, setAbaAtiva] = useState<"cantina" | "bilheteria">("cantina");
+  const [aba, setAba] = useState<"produtos" | "vendas" | "config">("produtos");
   const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
-  const [online, setOnline] = useState(true);
-  const [modalTroco, setModalTroco] = useState(false);
-  const [toastVisivel, setToastVisivel] = useState(false);
-  const [toastMsg, setToastMsg] = useState("");
-  const [vendaFinalizada, setVendaFinalizada] = useState(false);
+  const [vendas, setVendas] = useState<Venda[]>([]);
+  const [config, setConfig] = useState<PdvConfig | null>(null);
+  const [modalProduto, setModalProduto] = useState<Partial<Produto> | null | false>(false);
+  const [salvando, setSalvando] = useState(false);
+  const [toast, setToast] = useState({ msg: "", visivel: false, erro: false });
 
-  // ── Status de conexão ──
+  const mostrarToast = (msg: string, erro = false) => {
+    setToast({ msg, visivel: true, erro });
+    setTimeout(() => setToast((t) => ({ ...t, visivel: false })), 2500);
+  };
+
+  // ── Carregar dados ──
   useEffect(() => {
-    setOnline(navigator.onLine);
-    const handleOnline = () => setOnline(true);
-    const handleOffline = () => setOnline(false);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
+    async function carregar() {
+      const [{ data: prods }, { data: vends }, { data: cfg }] = await Promise.all([
+        supabase.from("pdv_produtos").select("*").order("ordem"),
+        supabase.from("pdv_vendas").select("*").order("created_at", { ascending: false }).limit(100),
+        supabase.from("pdv_config").select("*").limit(1).maybeSingle(),
+      ]);
+      if (prods) setProdutos(prods as Produto[]);
+      if (vends) setVendas(vends as Venda[]);
+      if (cfg) setConfig(cfg as PdvConfig);
+    }
+    carregar();
   }, []);
 
-  // ── Carregar produtos (Supabase → cache; cache se offline) ──
+  // ── Realtime vendas ──
   useEffect(() => {
-    async function carregarProdutos() {
-      if (navigator.onLine) {
-        const { data, error } = await supabase
-          .from("pdv_produtos")
-          .select("*")
-          .eq("ativo", true)
-          .order("categoria");
-        if (!error && data) {
-          setProdutos(data as Produto[]);
-          await cachearProdutos(data as Produto[]);
-          return;
-        }
-      }
-      const cache = await buscarProdutosCache();
-      setProdutos(cache);
-    }
-    carregarProdutos();
+    const channel = supabase
+      .channel("pdv_vendas_realtime")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pdv_vendas" }, (payload) => {
+        setVendas((prev) => [payload.new as Venda, ...prev]);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // ── Sincronização silenciosa quando volta a internet ──
-  const sincronizar = useCallback(async () => {
-    const pendentes = await buscarVendasNaoSincronizadas();
-    if (!pendentes.length) return;
-    for (const venda of pendentes) {
-      const { error } = await supabase.from("pdv_vendas").insert({
-        id: venda.id,
-        operador_id: venda.operador_id,
-        itens: venda.itens,
-        total: venda.total,
-        forma_pagamento: venda.forma_pagamento,
-        sincronizado: true,
-        created_at: venda.created_at,
-      });
-      if (!error) await marcarVendaSincronizada(venda.id);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (online) sincronizar();
-  }, [online, sincronizar]);
-
-  // ── Carrinho ──
-  const adicionarItem = (produto: Produto) => {
-    setCarrinho((prev) => {
-      const existe = prev.find((i) => i.produto.id === produto.id);
-      if (existe)
-        return prev.map((i) =>
-          i.produto.id === produto.id
-            ? { ...i, quantidade: i.quantidade + 1 }
-            : i
-        );
-      return [...prev, { produto, quantidade: 1 }];
-    });
-  };
-
-  const ajustarQuantidade = (id: string, delta: number) => {
-    setCarrinho((prev) =>
-      prev
-        .map((i) =>
-          i.produto.id === id ? { ...i, quantidade: i.quantidade + delta } : i
-        )
-        .filter((i) => i.quantidade > 0)
-    );
-  };
-
-  const limparCarrinho = () => setCarrinho([]);
-
-  const total = carrinho.reduce(
-    (acc, i) => acc + i.produto.preco * i.quantidade,
-    0
-  );
-
-  // ── Exibir toast ──
-  const mostrarToast = (msg: string) => {
-    setToastMsg(msg);
-    setToastVisivel(true);
-    setTimeout(() => setToastVisivel(false), 2500);
-  };
-
-  // ── Finalizar venda ──
-  const finalizarVenda = async (formaPagamento: string) => {
-    if (!carrinho.length) return;
-
-    const { data: { user } } = await supabase.auth.getUser();
-
-    const venda: VendaLocal = {
-      id: crypto.randomUUID(),
-      operador_id: user?.id ?? null,
-      itens: carrinho.map((i) => ({
-        produto_id: i.produto.id,
-        nome: i.produto.nome,
-        preco: i.produto.preco,
-        quantidade: i.quantidade,
-      })),
-      total,
-      forma_pagamento: formaPagamento,
-      sincronizado: false,
-      created_at: new Date().toISOString(),
-    };
-
-    await salvarVendaLocal(venda);
-
-    if (navigator.onLine) {
-      const { error } = await supabase.from("pdv_vendas").insert({ ...venda, sincronizado: true });
-      if (!error) await marcarVendaSincronizada(venda.id);
-    }
-
-    setVendaFinalizada(true);
-    setTimeout(() => {
-      limparCarrinho();
-      setVendaFinalizada(false);
-      mostrarToast("Venda registrada!");
-    }, 800);
-  };
-
-  const handleCobrar = (forma: string) => {
-    if (forma === "dinheiro") {
-      setModalTroco(true);
+  // ── CRUD Produtos ──
+  const salvarProduto = async (form: Partial<Produto>) => {
+    setSalvando(true);
+    if (form.id) {
+      const { error } = await supabase.from("pdv_produtos").update(form).eq("id", form.id);
+      if (!error) {
+        setProdutos((prev) => prev.map((p) => (p.id === form.id ? { ...p, ...form } as Produto : p)));
+        mostrarToast("Produto atualizado!");
+      } else mostrarToast("Erro ao atualizar.", true);
     } else {
-      finalizarVenda(forma);
+      const { data, error } = await supabase.from("pdv_produtos").insert(form).select().single();
+      if (!error && data) {
+        setProdutos((prev) => [...prev, data as Produto]);
+        mostrarToast("Produto cadastrado!");
+      } else mostrarToast("Erro ao cadastrar.", true);
+    }
+    setSalvando(false);
+    setModalProduto(false);
+  };
+
+  const toggleAtivo = async (p: Produto) => {
+    const { error } = await supabase
+      .from("pdv_produtos")
+      .update({ ativo: !p.ativo })
+      .eq("id", p.id);
+    if (!error) {
+      setProdutos((prev) => prev.map((x) => (x.id === p.id ? { ...x, ativo: !x.ativo } : x)));
+      mostrarToast(p.ativo ? "Produto desativado." : "Produto ativado!");
     }
   };
 
-  const produtosFiltrados = produtos.filter((p) => p.tipo === abaAtiva);
+  const excluirProduto = async (id: string) => {
+    if (!confirm("Excluir este produto?")) return;
+    const { error } = await supabase.from("pdv_produtos").delete().eq("id", id);
+    if (!error) {
+      setProdutos((prev) => prev.filter((p) => p.id !== id));
+      mostrarToast("Produto excluído.");
+    } else mostrarToast("Erro ao excluir.", true);
+  };
+
+  // ── Salvar Config ──
+  const salvarConfig = async (form: Partial<PdvConfig>) => {
+    setSalvando(true);
+    if (config?.id) {
+      const { error } = await supabase.from("pdv_config").update(form).eq("id", config.id);
+      if (!error) { setConfig({ ...config, ...form } as PdvConfig); mostrarToast("Configurações salvas!"); }
+      else mostrarToast("Erro ao salvar.", true);
+    } else {
+      const { data, error } = await supabase.from("pdv_config").insert(form).select().single();
+      if (!error && data) { setConfig(data as PdvConfig); mostrarToast("Configurações salvas!"); }
+      else mostrarToast("Erro ao salvar.", true);
+    }
+    setSalvando(false);
+  };
+
+  const abas = [
+    { id: "produtos" as const, label: "Produtos", icon: Package },
+    { id: "vendas" as const, label: "Vendas", icon: ReceiptText },
+    { id: "config" as const, label: "Configurações", icon: Settings },
+  ];
 
   return (
     <>
-      {modalTroco && (
-        <ModalTroco
-          total={total}
-          onConfirmar={() => {
-            setModalTroco(false);
-            finalizarVenda("dinheiro");
-          }}
-          onCancelar={() => setModalTroco(false)}
+      <Toast {...toast} />
+
+      {modalProduto !== false && (
+        <ModalProduto
+          produto={modalProduto}
+          onSalvar={salvarProduto}
+          onFechar={() => setModalProduto(false)}
+          salvando={salvando}
         />
       )}
 
-      <Toast mensagem={toastMsg} visivel={toastVisivel} />
-
-      <div className="h-[calc(100vh-8rem)] flex gap-6">
-        {/* ── Lado Esquerdo: Produtos ── */}
-        <div className="flex-1 flex flex-col space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-white">Frente de Caixa</h1>
-              <span
-                className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${
-                  online
-                    ? "bg-axon-green/10 text-axon-green border border-axon-green/30"
-                    : "bg-red-500/10 text-red-400 border border-red-500/30"
-                }`}
-              >
-                {online ? <Wifi size={12} /> : <WifiOff size={12} />}
-                {online ? "Online" : "Offline"}
-              </span>
-            </div>
-
-            <div className="flex bg-axon-panel border border-axon-border rounded-lg p-1">
-              <button
-                onClick={() => setAbaAtiva("cantina")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  abaAtiva === "cantina"
-                    ? "bg-axon-bg text-white shadow"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <Coffee size={16} /> Cantina
-              </button>
-              <button
-                onClick={() => setAbaAtiva("bilheteria")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  abaAtiva === "bilheteria"
-                    ? "bg-axon-bg text-white shadow"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <Ticket size={16} /> Bilheteria
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 bg-axon-panel border border-axon-border rounded-xl p-6 overflow-y-auto">
-            {produtosFiltrados.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
-                <Coffee size={40} className="opacity-30" />
-                <p className="text-sm">Nenhum produto cadastrado nessa categoria.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-                {produtosFiltrados.map((produto) => (
-                  <button
-                    key={produto.id}
-                    onClick={() => adicionarItem(produto)}
-                    className="bg-axon-bg border border-axon-border rounded-xl p-4 flex flex-col items-center justify-center text-center hover:border-axon-green transition-colors group h-32 active:scale-95"
-                  >
-                    <span className="text-xs text-gray-500 mb-2">{produto.categoria}</span>
-                    <span className="text-sm font-medium text-white mb-1 group-hover:text-axon-green transition-colors leading-tight">
-                      {produto.nome}
-                    </span>
-                    <span className="text-lg font-bold text-white">
-                      R$ {produto.preco.toFixed(2).replace(".", ",")}
-                    </span>
-                    {produto.estoque !== null && (
-                      <span className="text-xs text-gray-500 mt-1">
-                        Estoque: {produto.estoque}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">PDV — Gestão</h1>
+          <p className="text-gray-400 mt-1 text-sm">
+            Cadastro de produtos, acompanhamento de vendas e configurações do caixa.
+          </p>
         </div>
 
-        {/* ── Lado Direito: Carrinho ── */}
-        <div className="w-96 bg-axon-panel border border-axon-border rounded-xl flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-axon-border bg-axon-bg/50 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-white font-medium">
-              <ShoppingCart size={18} className="text-axon-green" />
-              Pedido Atual
-              {carrinho.length > 0 && (
-                <span className="bg-axon-green text-black text-xs font-bold px-2 py-0.5 rounded-full">
-                  {carrinho.reduce((a, i) => a + i.quantidade, 0)}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={limparCarrinho}
-              className="text-gray-500 hover:text-red-400 transition-colors"
-            >
-              <Trash2 size={18} />
-            </button>
+        <div className="bg-axon-panel border border-axon-border rounded-2xl overflow-hidden">
+          {/* Abas */}
+          <div className="flex border-b border-axon-border px-4">
+            {abas.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setAba(id)}
+                className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors ${
+                  aba === id
+                    ? "border-axon-green text-axon-green"
+                    : "border-transparent text-gray-400 hover:text-white"
+                }`}
+              >
+                <Icon size={16} />
+                {label}
+                {id === "vendas" && vendas.length > 0 && (
+                  <span className="ml-1 bg-axon-green/20 text-axon-green text-xs font-bold px-1.5 py-0.5 rounded-full">
+                    {vendas.length}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {carrinho.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-3">
-                <ShoppingCart size={36} className="opacity-30" />
-                <p className="text-sm text-center">
-                  Clique nos produtos para adicionar ao pedido
-                </p>
-              </div>
-            ) : (
-              carrinho.map((item) => (
-                <div
-                  key={item.produto.id}
-                  className="flex items-center justify-between bg-axon-bg border border-axon-border p-3 rounded-lg"
-                >
-                  <div className="flex-1 min-w-0 pr-2">
-                    <p className="text-sm text-white font-medium truncate">{item.produto.nome}</p>
-                    <p className="text-xs text-gray-400">
-                      R$ {item.produto.preco.toFixed(2).replace(".", ",")} × {item.quantidade} ={" "}
-                      <span className="text-axon-green font-medium">
-                        R$ {(item.produto.preco * item.quantidade).toFixed(2).replace(".", ",")}
-                      </span>
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => ajustarQuantidade(item.produto.id, -1)}
-                      className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10"
-                    >
-                      <Minus size={14} />
-                    </button>
-                    <span className="text-sm font-bold w-5 text-center text-white">
-                      {item.quantidade}
-                    </span>
-                    <button
-                      onClick={() => ajustarQuantidade(item.produto.id, 1)}
-                      className="w-7 h-7 rounded-full bg-axon-green/20 flex items-center justify-center text-axon-green hover:bg-axon-green/30"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))
+          <div className="p-6">
+            {aba === "produtos" && (
+              <AbaProdutos
+                produtos={produtos}
+                onNovo={() => setModalProduto(null)}
+                onEditar={(p) => setModalProduto(p)}
+                onToggle={toggleAtivo}
+                onExcluir={excluirProduto}
+              />
             )}
-          </div>
-
-          <div className="p-4 border-t border-axon-border bg-axon-bg/50 space-y-4">
-            <div className="flex items-center justify-between text-lg font-bold text-white">
-              <span>Total:</span>
-              <span className={`${vendaFinalizada ? "text-axon-green scale-110" : "text-axon-green"} transition-all`}>
-                R$ {total.toFixed(2).replace(".", ",")}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={() => handleCobrar("dinheiro")}
-                disabled={!carrinho.length}
-                className="flex flex-col items-center justify-center gap-1.5 bg-axon-panel border border-axon-border rounded-lg p-3 text-gray-300 hover:text-white hover:border-axon-green transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <Banknote size={20} />
-                <span className="text-xs font-medium">Dinheiro</span>
-              </button>
-              <button
-                onClick={() => handleCobrar("pix")}
-                disabled={!carrinho.length}
-                className="flex flex-col items-center justify-center gap-1.5 bg-axon-panel border border-axon-border rounded-lg p-3 text-gray-300 hover:text-white hover:border-axon-green transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <QrCode size={20} />
-                <span className="text-xs font-medium">PIX</span>
-              </button>
-              <button
-                onClick={() => handleCobrar("cartao")}
-                disabled={!carrinho.length}
-                className="flex flex-col items-center justify-center gap-1.5 bg-axon-panel border border-axon-border rounded-lg p-3 text-gray-300 hover:text-white hover:border-axon-green transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <CreditCard size={20} />
-                <span className="text-xs font-medium">Cartão</span>
-              </button>
-            </div>
-
-            <button
-              disabled={!carrinho.length}
-              onClick={() => handleCobrar("pix")}
-              className="w-full bg-axon-green text-black font-bold py-3 rounded-lg hover:bg-[#00c866] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              Finalizar Venda
-            </button>
+            {aba === "vendas" && <AbaVendas vendas={vendas} />}
+            {aba === "config" && (
+              <AbaConfig config={config} onSalvar={salvarConfig} salvando={salvando} />
+            )}
           </div>
         </div>
       </div>
