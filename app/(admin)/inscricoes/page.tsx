@@ -161,7 +161,25 @@ function ModalCadastrarGrupo({ termo, escola, onClose, onSaved }: ModalCadastrar
 
     if (escolaErr) { setErro(escolaErr.message); setSalvando(false); return; }
 
-    // 2. O cadastro da escola foi concluído. O usuário será criado quando o responsável aceitar o convite.
+    const inviteRes = await fetch("/api/invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        role: "escola_admin",
+        action: "invite",
+        inviterRole: "admin",
+        escola_id: escolaCadastrada.id,
+        nome: responsavel.trim() || null,
+      }),
+    });
+    const inviteJson = await inviteRes.json();
+    if (!inviteRes.ok) {
+      setErro(`Escola cadastrada, mas erro ao criar usuário: ${inviteJson.error || "Erro desconhecido"}`);
+      setSalvando(false);
+      return;
+    }
+
     setEscolaSalva(escolaCadastrada as Escola);
     setEtapa("confirmacao");
     onSaved();
@@ -656,12 +674,11 @@ export default function InscricoesPage() {
           termo={termo}
           escola={editarEscola}
           onClose={() => { setModalGrupo(false); setEditarEscola(null); }}
-          onSaved={() => { setModalGrupo(false); setEditarEscola(null); carregar(); }}
+          onSaved={() => { setEditarEscola(null); carregar(); }}
         />
       )}
 
       <div className="max-w-5xl mx-auto space-y-6 p-6">
-
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
