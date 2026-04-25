@@ -67,7 +67,10 @@ export async function POST(req: NextRequest) {
 
     const { error: upsertError } = await supabaseAdmin
       .from("usuarios")
-      .upsert({ id: newUserId, role, email }, { onConflict: "id" });
+      .upsert(
+        { id: newUserId, email, role, nome: null, telefone: null, foto_url: null },
+        { onConflict: "id" }
+      );
 
     if (upsertError)
       return NextResponse.json({ error: "Usuário criado, mas erro ao salvar cargo: " + upsertError.message }, { status: 500 });
