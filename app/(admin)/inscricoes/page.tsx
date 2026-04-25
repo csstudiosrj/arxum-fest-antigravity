@@ -19,6 +19,8 @@ import {
   Copy,
   Check,
   MessageCircle,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
@@ -94,13 +96,20 @@ interface ModalCadastrarGrupoProps {
 
 type EtapaModal = "formulario" | "confirmacao";
 
-function ModalCadastrarGrupo({ termo, onClose, onSaved }: ModalCadastrarGrupoProps) {
+interface ModalCadastrarGrupoProps {
+  termo: Terminologia;
+  escola?: Escola | null;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function ModalCadastrarGrupo({ termo, escola, onClose, onSaved }: ModalCadastrarGrupoProps) {
   const supabase = createClient();
 
-  const [nome, setNome] = useState("");
-  const [responsavel, setResponsavel] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [email, setEmail] = useState("");
+  const [nome, setNome] = useState(escola?.nome ?? "");
+  const [responsavel, setResponsavel] = useState(escola?.responsavel ?? "");
+  const [telefone, setTelefone] = useState(escola?.telefone ?? "");
+  const [email, setEmail] = useState(escola?.email ?? "");
 
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -115,8 +124,31 @@ function ModalCadastrarGrupo({ termo, onClose, onSaved }: ModalCadastrarGrupoPro
 
     setSalvando(true);
 
-    // 1. Insere a escola
-    const { data: escola, error: escolaErr } = await supabase
+    if (escola) {
+      const { error: escolaErr } = await supabase
+        .from("escolas")
+        .update({
+          nome: nome.trim(),
+          responsavel: responsavel.trim() || null,
+          telefone: telefone.trim() || null,
+          email: email.trim(),
+        })
+        .eq("id", escola.id);
+
+      if (escolaErr) { setErro(escolaErr.message); setSalvando(false); return; }
+      setEtapa("confirmacao");
+      setEscolaSalva({
+        ...escola,
+        nome: nome.trim(),
+        responsavel: responsavel.trim() || "",
+        telefone: telefone.trim() || "",
+        email: email.trim(),
+      });
+      onSaved();
+      return;
+    }
+
+    const { data: escolaCadastrada, error: escolaErr } = await supabase
       .from("escolas")
       .insert({
         nome: nome.trim(),
@@ -130,7 +162,7 @@ function ModalCadastrarGrupo({ termo, onClose, onSaved }: ModalCadastrarGrupoPro
     if (escolaErr) { setErro(escolaErr.message); setSalvando(false); return; }
 
     // 2. O cadastro da escola foi concluído. O usuário será criado quando o responsável aceitar o convite.
-    setEscolaSalva(escola as Escola);
+    setEscolaSalva(escolaCadastrada as Escola);
     setEtapa("confirmacao");
     onSaved();
   }
@@ -283,9 +315,11 @@ function ModalCadastrarGrupo({ termo, onClose, onSaved }: ModalCadastrarGrupoPro
 interface CardGrupoProps {
   escola: EscolaComDados;
   termo: Terminologia;
+  onEdit: (escola: EscolaComDados) => void;
+  onDelete: (escola: EscolaComDados) => void;
 }
 
-function CardGrupo({ escola, termo }: CardGrupoProps) {
+function CardGrupo({ escola, termo, onEdit, onDelete }: CardGrupoProps) {
   const [expandido, setExpandido] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"apresentacoes" | "participantes">("apresentacoes");
 
@@ -301,9 +335,10 @@ function CardGrupo({ escola, termo }: CardGrupoProps) {
   return (
     <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
       {/* Header do card */}
-      <button
+      <div
+        role="button"
         onClick={() => setExpandido((p) => !p)}
-        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-colors text-left"
+        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-colors text-left cursor-pointer"
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
@@ -344,10 +379,26 @@ function CardGrupo({ escola, termo }: CardGrupoProps) {
           )}
         </div>
 
-        <div className="text-neutral-500 shrink-0">
-          {expandido ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+        <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(escola); }}
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+            title="Editar escola"
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(escola); }}
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+            title="Excluir escola"
+          >
+            <Trash2 size={16} />
+          </button>
+          <div className="text-neutral-500">
+            {expandido ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+          </div>
         </div>
-      </button>
+      </div>
 
       {/* Resumo mobile */}
       <div className="sm:hidden flex items-center gap-4 px-5 pb-3 text-xs text-neutral-500">
@@ -520,6 +571,7 @@ export default function InscricoesPage() {
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [modalGrupo, setModalGrupo] = useState(false);
+  const [editarEscola, setEditarEscola] = useState<Escola | null>(null);
 
   const [kpis, setKpis] = useState({
     grupos: 0,
@@ -602,8 +654,9 @@ export default function InscricoesPage() {
       {modalGrupo && (
         <ModalCadastrarGrupo
           termo={termo}
-          onClose={() => setModalGrupo(false)}
-          onSaved={() => { carregar(); }}
+          escola={editarEscola}
+          onClose={() => { setModalGrupo(false); setEditarEscola(null); }}
+          onSaved={() => { setModalGrupo(false); setEditarEscola(null); carregar(); }}
         />
       )}
 
@@ -688,7 +741,21 @@ export default function InscricoesPage() {
         ) : (
           <div className="space-y-3">
             {gruposFiltrados.map((escola) => (
-              <CardGrupo key={escola.id} escola={escola} termo={termo} />
+              <CardGrupo
+                key={escola.id}
+                escola={escola}
+                termo={termo}
+                onEdit={(escola) => { setEditarEscola(escola); setModalGrupo(true); }}
+                onDelete={async (escola) => {
+                  if (!confirm(`Excluir ${escola.nome}? Esta ação não pode ser desfeita.`)) return;
+                  const { error } = await supabase.from("escolas").delete().eq("id", escola.id);
+                  if (error) {
+                    alert(`Erro ao excluir escola: ${error.message}`);
+                    return;
+                  }
+                  carregar();
+                }}
+              />
             ))}
           </div>
         )}
