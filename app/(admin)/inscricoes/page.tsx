@@ -573,6 +573,70 @@ function CardGrupo({ escola, termo, onEdit, onDelete }: CardGrupoProps) {
   );
 }
 
+function Toast({ msg, tipo, visivel }: { msg: string; tipo: "ok" | "erro"; visivel: boolean }) {
+  return (
+    <div className={`fixed bottom-8 left-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-full text-sm font-semibold shadow-xl transition-all duration-300 ${
+      visivel ? "opacity-100 translate-x-[-50%]" : "opacity-0 pointer-events-none translate-x-[-50%]"
+    } ${tipo === "ok" ? "bg-axon-gold text-black" : "bg-red-500/90 text-white"}`}>
+      {tipo === "ok" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+      {msg}
+    </div>
+  );
+}
+
+function ModalConfirmarExclusao({
+  escola,
+  onConfirmar,
+  onCancelar,
+  excluindo,
+  erro,
+}: {
+  escola: EscolaComDados;
+  onConfirmar: () => void;
+  onCancelar: () => void;
+  excluindo: boolean;
+  erro: string | null;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-axon-panel border border-red-500/30 rounded-2xl w-full max-w-sm p-6 space-y-5">
+        <div className="flex flex-col items-center text-center gap-3">
+          <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+            <Trash2 size={22} className="text-red-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-white">Excluir escola</h2>
+            <p className="text-sm text-neutral-400 mt-1">
+              Tem certeza que deseja excluir <span className="text-white font-medium">{escola.nome}</span>?
+            </p>
+            <p className="text-xs text-neutral-500 mt-2">
+              Esta ação também irá remover dados de inscrições e elenco associados.
+            </p>
+          </div>
+        </div>
+
+        {erro && (
+          <div className="flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-300">
+            <AlertCircle size={16} /> {erro}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={onCancelar} disabled={excluindo}
+            className="py-3 rounded-xl border border-axon-border text-neutral-400 hover:text-white text-sm transition-colors disabled:opacity-50">
+            Cancelar
+          </button>
+          <button onClick={onConfirmar} disabled={excluindo}
+            className="py-3 rounded-xl bg-red-500 text-white font-semibold text-sm hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+            {excluindo ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            {excluindo ? "Excluindo..." : "Sim, excluir"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Pagina Principal ───────────────────────────────────────────────────────
 
 export default function InscricoesPage() {
@@ -590,6 +654,10 @@ export default function InscricoesPage() {
   const [busca, setBusca] = useState("");
   const [modalGrupo, setModalGrupo] = useState(false);
   const [editarEscola, setEditarEscola] = useState<Escola | null>(null);
+  const [escolaExcluir, setEscolaExcluir] = useState<EscolaComDados | null>(null);
+  const [excluindoEscola, setExcluindoEscola] = useState(false);
+  const [erroExcluir, setErroExcluir] = useState<string | null>(null);
+  const [toast, setToast] = useState({ msg: "", tipo: "ok" as "ok" | "erro", visivel: false });
 
   const [kpis, setKpis] = useState({
     grupos: 0,
@@ -666,6 +734,70 @@ export default function InscricoesPage() {
     e.nome.toLowerCase().includes(busca.toLowerCase()) ||
     (e.responsavel ?? "").toLowerCase().includes(busca.toLowerCase())
   );
+
+  const mostrarToast = useCallback((msg: string, tipo: "ok" | "erro" = "ok") => {
+    setToast({ msg, tipo, visivel: true });
+    setTimeout(() => setToast((current) => ({ ...current, visivel: false })), 3000);
+  }, []);
+
+  async function confirmarExcluirEscola() {
+    if (!escolaExcluir) return;
+    setErroExcluir(null);
+    setExcluindoEscola(true);
+
+    const coreoIds = escolaExcluir.coreografias.map((c) => c.id);
+    if (coreoIds.length > 0) {
+      const { error } = await supabase
+        .from("coreografia_elenco")
+        .delete()
+        .in("coreografia_id", coreoIds);
+      if (error) {
+        setErroExcluir(error.message);
+        setExcluindoEscola(false);
+        mostrarToast(`Erro ao excluir escola: ${error.message}`, "erro");
+        return;
+      }
+    }
+
+    const { error: coreoError } = await supabase
+      .from("coreografias")
+      .delete()
+      .eq("escola_id", escolaExcluir.id);
+    if (coreoError) {
+      setErroExcluir(coreoError.message);
+      setExcluindoEscola(false);
+      mostrarToast(`Erro ao excluir escola: ${coreoError.message}`, "erro");
+      return;
+    }
+
+    const { error: bailarinoError } = await supabase
+      .from("bailarinos")
+      .delete()
+      .eq("escola_id", escolaExcluir.id);
+    if (bailarinoError) {
+      setErroExcluir(bailarinoError.message);
+      setExcluindoEscola(false);
+      mostrarToast(`Erro ao excluir escola: ${bailarinoError.message}`, "erro");
+      return;
+    }
+
+    const { error: escolaError } = await supabase
+      .from("escolas")
+      .delete()
+      .eq("id", escolaExcluir.id);
+
+    if (escolaError) {
+      setErroExcluir(escolaError.message);
+      setExcluindoEscola(false);
+      mostrarToast(`Erro ao excluir escola: ${escolaError.message}`, "erro");
+      return;
+    }
+
+    setEscolaExcluir(null);
+    setExcluindoEscola(false);
+    mostrarToast("Escola excluída com sucesso.");
+    carregar();
+  }
 
   return (
     <>
@@ -763,20 +895,22 @@ export default function InscricoesPage() {
                 escola={escola}
                 termo={termo}
                 onEdit={(escola) => { setEditarEscola(escola); setModalGrupo(true); }}
-                onDelete={async (escola) => {
-                  if (!confirm(`Excluir ${escola.nome}? Esta ação não pode ser desfeita.`)) return;
-                  const { error } = await supabase.from("escolas").delete().eq("id", escola.id);
-                  if (error) {
-                    alert(`Erro ao excluir escola: ${error.message}`);
-                    return;
-                  }
-                  carregar();
-                }}
+                onDelete={(escola) => setEscolaExcluir(escola)}
               />
             ))}
           </div>
         )}
       </div>
+      {escolaExcluir && (
+        <ModalConfirmarExclusao
+          escola={escolaExcluir}
+          onConfirmar={confirmarExcluirEscola}
+          onCancelar={() => { setEscolaExcluir(null); setErroExcluir(null); }}
+          excluindo={excluindoEscola}
+          erro={erroExcluir}
+        />
+      )}
+      <Toast msg={toast.msg} tipo={toast.tipo} visivel={toast.visivel} />
     </>
   );
 }
