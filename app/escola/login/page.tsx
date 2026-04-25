@@ -103,7 +103,6 @@ export default function EscolaLoginPage() {
         const { error: userError } = await supabase
           .from("usuarios")
           .insert({
-            id: authData.user.id,
             email: email.trim(),
             nome: nome.trim(),
             role: 'escola_admin',
