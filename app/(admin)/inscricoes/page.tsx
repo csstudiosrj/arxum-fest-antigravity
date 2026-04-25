@@ -9,20 +9,29 @@ import {
   Search,
   Plus,
   X,
-  UserPlus,
   Loader2,
   AlertCircle,
-  Building2,
   Users,
   Music4,
   CircleDollarSign,
   CheckCircle2,
   Clock3,
+  Copy,
+  Check,
+  MessageCircle,
 } from "lucide-react";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 
 type StatusPagamento = "pago" | "pendente";
+
+interface Terminologia {
+  grupo: string;
+  participante: string;
+  apresentacao: string;
+  inscricao: string;
+  organizacao: string;
+}
 
 interface Escola {
   id: string;
@@ -64,26 +73,7 @@ interface EscolaComDados extends Escola {
   elenco: ElencoRow[];
 }
 
-// ── Masks ──────────────────────────────────────────────────────────────────
-
-function maskCPF(value: string): string {
-  const d = value.replace(/\D/g, "").slice(0, 11);
-  return d
-    .replace(/(\d{3})(\d)/, "$1.$2")
-    .replace(/(\d{3})(\d)/, "$1.$2")
-    .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
-}
-
-function maskDate(value: string): string {
-  const d = value.replace(/\D/g, "").slice(0, 8);
-  return d.replace(/(\d{2})(\d)/, "$1/$2").replace(/(\d{2})(\d)/, "$1/$2");
-}
-
-function dateMaskToISO(masked: string): string {
-  const [d, m, y] = masked.split("/");
-  if (!d || !m || !y || y.length < 4) return "";
-  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-}
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function formatMoeda(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -94,388 +84,225 @@ function cpfFormatado(cpf: string): string {
   return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
 }
 
-// ── Modal Bailarino ────────────────────────────────────────────────────────
+// ── Modal Cadastrar Grupo ──────────────────────────────────────────────────
 
-interface ModalBailarinoProps {
-  escolaId: string;
+interface ModalCadastrarGrupoProps {
+  termo: Terminologia;
   onClose: () => void;
-  onSaved: (b: Bailarino) => void;
+  onSaved: () => void;
 }
 
-function ModalBailarino({ escolaId, onClose, onSaved }: ModalBailarinoProps) {
+type EtapaModal = "formulario" | "confirmacao";
+
+function ModalCadastrarGrupo({ termo, onClose, onSaved }: ModalCadastrarGrupoProps) {
   const supabase = createClient();
+
   const [nome, setNome] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [dataNasc, setDataNasc] = useState("");
-  const [termoAssinado, setTermoAssinado] = useState(false);
+  const [responsavel, setResponsavel] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [email, setEmail] = useState("");
+
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [etapa, setEtapa] = useState<EtapaModal>("formulario");
+  const [copiado, setCopiado] = useState(false);
+  const [escolaSalva, setEscolaSalva] = useState<Escola | null>(null);
 
   async function salvar() {
     setErro(null);
-    if (!nome.trim()) { setErro("Nome obrigatorio."); return; }
+    if (!nome.trim()) { setErro(`Nome do ${termo.grupo.toLowerCase()} e obrigatorio.`); return; }
+    if (!email.trim()) { setErro("E-mail do responsavel e obrigatorio para enviar o convite."); return; }
+
     setSalvando(true);
-    const { data, error } = await supabase
-      .from("bailarinos")
+
+    // 1. Insere a escola
+    const { data: escola, error: escolaErr } = await supabase
+      .from("escolas")
       .insert({
         nome: nome.trim(),
-        cpf: cpf.replace(/\D/g, ""),
-        data_nascimento: dateMaskToISO(dataNasc) || null,
-        escola_id: escolaId,
-        termo_assinado: termoAssinado,
+        responsavel: responsavel.trim() || null,
+        telefone: telefone.trim() || null,
+        email: email.trim(),
       })
       .select()
       .single();
+
+    if (escolaErr) { setErro(escolaErr.message); setSalvando(false); return; }
+
+    // 2. Chama a Edge Function para disparar o convite e criar o usuario
+    const { error: fnErr } = await supabase.functions.invoke("bright-handler", {
+      body: {
+        email: email.trim(),
+        escola_id: escola.id,
+        nome: responsavel.trim() || null,
+      },
+    });
+
     setSalvando(false);
-    if (error) { setErro(error.message); return; }
-    onSaved(data as Bailarino);
+
+    if (fnErr) {
+      // Escola ja foi criada — avisa mas nao bloqueia
+      setErro(`${termo.grupo} cadastrado, mas o convite nao foi enviado: ${fnErr.message}. Copie o link manualmente.`);
+    }
+
+    setEscolaSalva(escola as Escola);
+    setEtapa("confirmacao");
+    onSaved();
+  }
+
+  function copiarLink() {
+    const url = `${window.location.origin}/convite/${email.trim()}`;
+    navigator.clipboard.writeText(url);
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2000);
+  }
+
+  function abrirWhatsApp() {
+    if (!escolaSalva) return;
+    const link = `${window.location.origin}/convite/${email.trim()}`;
+    const mensagem = encodeURIComponent(
+      `Ola, ${responsavel.trim() || "responsavel"}! ${termo.organizacao} convidou o ${termo.grupo.toLowerCase()} *${escolaSalva.nome}* para se cadastrar no sistema.\n\nClique no link abaixo para criar sua senha e comecar a cadastrar suas ${termo.apresentacao.toLowerCase()}s e ${termo.participante.toLowerCase()}s:\n\n${link}`
+    );
+    window.open(`https://wa.me/?text=${mensagem}`, "_blank");
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md mx-4 p-6 shadow-2xl">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-semibold text-white">Cadastrar Bailarino</h3>
+    <div className="fixed inset-0 z-[50] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
+          <h2 className="text-base font-semibold text-white">
+            {etapa === "formulario" ? `Cadastrar ${termo.grupo}` : `${termo.grupo} cadastrado`}
+          </h2>
           <button onClick={onClose} className="p-1 text-neutral-400 hover:text-white transition-colors" aria-label="Fechar">
             <X size={18} />
           </button>
         </div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs text-neutral-400 mb-1" htmlFor="mb-nome">Nome completo *</label>
-            <input id="mb-nome" type="text" value={nome} onChange={(e) => setNome(e.target.value)}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
-              placeholder="Nome do bailarino" />
-          </div>
-          <div>
-            <label className="block text-xs text-neutral-400 mb-1" htmlFor="mb-cpf">CPF</label>
-            <input id="mb-cpf" type="text" value={cpf} onChange={(e) => setCpf(maskCPF(e.target.value))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
-              placeholder="000.000.000-00" />
-          </div>
-          <div>
-            <label className="block text-xs text-neutral-400 mb-1" htmlFor="mb-nasc">Data de nascimento</label>
-            <input id="mb-nasc" type="text" value={dataNasc} onChange={(e) => setDataNasc(maskDate(e.target.value))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
-              placeholder="dd/mm/aaaa" />
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input type="checkbox" checked={termoAssinado} onChange={(e) => setTermoAssinado(e.target.checked)}
-              className="w-4 h-4 accent-axon-gold rounded" />
-            <span className="text-sm text-neutral-300">Termo assinado</span>
-          </label>
-          {erro && (
-            <p className="flex items-center gap-2 text-xs text-red-400">
-              <AlertCircle size={14} /> {erro}
-            </p>
-          )}
-        </div>
-        <div className="flex gap-3 mt-6">
-          <button onClick={onClose}
-            className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-sm text-neutral-400 hover:text-white hover:border-neutral-500 transition-colors">
-            Cancelar
-          </button>
-          <button onClick={salvar} disabled={salvando}
-            className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2">
-            {salvando && <Loader2 size={14} className="animate-spin" />}
-            Salvar
-          </button>
-        </div>
+
+        {/* Formulario */}
+        {etapa === "formulario" && (
+          <>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs text-neutral-400 mb-1" htmlFor="cg-nome">
+                  Nome do {termo.grupo.toLowerCase()} *
+                </label>
+                <input id="cg-nome" type="text" value={nome} onChange={(e) => setNome(e.target.value)}
+                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+                  placeholder={`Nome do ${termo.grupo.toLowerCase()}`} />
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-400 mb-1" htmlFor="cg-resp">
+                  Nome do responsavel
+                </label>
+                <input id="cg-resp" type="text" value={responsavel} onChange={(e) => setResponsavel(e.target.value)}
+                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+                  placeholder="Nome do diretor / responsavel" />
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-400 mb-1" htmlFor="cg-tel">
+                  Telefone / WhatsApp
+                </label>
+                <input id="cg-tel" type="text" value={telefone} onChange={(e) => setTelefone(e.target.value)}
+                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+                  placeholder="(00) 00000-0000" />
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-400 mb-1" htmlFor="cg-email">
+                  E-mail do responsavel *
+                </label>
+                <input id="cg-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+                  placeholder="email@exemplo.com" />
+                <p className="text-xs text-neutral-600 mt-1">
+                  O Supabase enviara um convite automaticamente para este e-mail.
+                </p>
+              </div>
+
+              {erro && (
+                <p className="flex items-start gap-2 text-xs text-red-400">
+                  <AlertCircle size={14} className="shrink-0 mt-0.5" /> {erro}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
+              <button onClick={onClose}
+                className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-sm text-neutral-400 hover:text-white hover:border-neutral-500 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={salvar} disabled={salvando}
+                className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2">
+                {salvando && <Loader2 size={14} className="animate-spin" />}
+                Cadastrar e convidar
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Confirmacao */}
+        {etapa === "confirmacao" && escolaSalva && (
+          <>
+            <div className="p-6 space-y-5">
+              <div className="flex items-center gap-3 p-4 bg-axon-green-dim border border-axon-green/20 rounded-lg">
+                <CheckCircle2 size={18} className="text-axon-green shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-white">{escolaSalva.nome} cadastrado</p>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Convite enviado para <span className="text-white">{email}</span>
+                  </p>
+                </div>
+              </div>
+
+              {erro && (
+                <p className="flex items-start gap-2 text-xs text-amber-400">
+                  <AlertCircle size={14} className="shrink-0 mt-0.5" /> {erro}
+                </p>
+              )}
+
+              <div>
+                <p className="text-xs text-neutral-500 mb-3">
+                  Alem do e-mail, voce pode compartilhar o acesso manualmente:
+                </p>
+                <div className="space-y-2">
+                  <button onClick={copiarLink}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-neutral-300 hover:text-white hover:border-neutral-500 transition-colors">
+                    {copiado ? <Check size={15} className="text-axon-green" /> : <Copy size={15} />}
+                    {copiado ? "Link copiado" : "Copiar link de acesso"}
+                  </button>
+                  <button onClick={abrirWhatsApp}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-neutral-300 hover:text-white hover:border-neutral-500 transition-colors">
+                    <MessageCircle size={15} />
+                    Enviar pelo WhatsApp
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-axon-border">
+              <button onClick={onClose}
+                className="w-full px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-semibold hover:opacity-90 transition-opacity">
+                Concluir
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Modal Cadastro Manual (emergencia) ─────────────────────────────────────
+// ── Card de Grupo (expansivel) ─────────────────────────────────────────────
 
-interface ModalCadastroManualProps {
-  onClose: () => void;
-  onSaved: () => void;
-}
-
-function ModalCadastroManual({ onClose, onSaved }: ModalCadastroManualProps) {
-  const supabase = createClient();
-
-  // Escola
-  const [nomeEscola, setNomeEscola] = useState("");
-  const [responsavel, setResponsavel] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [email, setEmail] = useState("");
-  const [escolaExistente, setEscolaExistente] = useState<Escola | null>(null);
-  const [escolas, setEscolas] = useState<Escola[]>([]);
-  const [modoEscola, setModoEscola] = useState<"nova" | "existente">("existente");
-
-  // Coreografia
-  const [nomeCoreo, setNomeCoreo] = useState("");
-  const [categoria, setCategoria] = useState("");
-  const [tipo, setTipo] = useState("solo");
-  const [qtd, setQtd] = useState(1);
-  const [valor, setValor] = useState("");
-  const [status, setStatus] = useState<StatusPagamento>("pendente");
-
-  // Elenco
-  const [bailarinosDaEscola, setBailarinos] = useState<Bailarino[]>([]);
-  const [elencoSelecionado, setElencoSelecionado] = useState<string[]>([]);
-  const [modalBailarino, setModalBailarino] = useState(false);
-
-  const [etapa, setEtapa] = useState<"escola" | "coreografia">("escola");
-  const [escolaConfirmada, setEscolaConfirmada] = useState<Escola | null>(null);
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.from("escolas").select("*").order("nome").then(({ data }) => setEscolas((data as Escola[]) ?? []));
-  }, [supabase]);
-
-  useEffect(() => {
-    if (!escolaConfirmada) return;
-    supabase.from("bailarinos").select("*").eq("escola_id", escolaConfirmada.id).order("nome")
-      .then(({ data }) => setBailarinos((data as Bailarino[]) ?? []));
-  }, [supabase, escolaConfirmada]);
-
-  async function confirmarEscola() {
-    setErro(null);
-    if (modoEscola === "existente") {
-      if (!escolaExistente) { setErro("Selecione uma escola."); return; }
-      setEscolaConfirmada(escolaExistente);
-      setEtapa("coreografia");
-      return;
-    }
-    if (!nomeEscola.trim()) { setErro("Nome da escola obrigatorio."); return; }
-    setSalvando(true);
-    const { data, error } = await supabase
-      .from("escolas")
-      .insert({ nome: nomeEscola.trim(), responsavel: responsavel.trim(), telefone, email })
-      .select().single();
-    setSalvando(false);
-    if (error) { setErro(error.message); return; }
-    setEscolaConfirmada(data as Escola);
-    setEtapa("coreografia");
-  }
-
-  async function salvarCoreografia() {
-    setErro(null);
-    if (!nomeCoreo.trim()) { setErro("Nome da coreografia obrigatorio."); return; }
-    if (!escolaConfirmada) return;
-    setSalvando(true);
-
-    const valorNum = parseFloat(valor.replace(",", ".")) || 0;
-    const { data: coreo, error: coreoErr } = await supabase
-      .from("coreografias")
-      .insert({
-        nome: nomeCoreo.trim(),
-        categoria: categoria.trim() || "Geral",
-        escola_id: escolaConfirmada.id,
-        tipo,
-        quantidade_bailarinos: qtd,
-        valor_total: valorNum,
-        status_pagamento: status,
-      })
-      .select().single();
-
-    if (coreoErr) { setErro(coreoErr.message); setSalvando(false); return; }
-
-    if (elencoSelecionado.length > 0) {
-      await supabase.from("coreografia_elenco").insert(
-        elencoSelecionado.map((bid) => ({ coreografia_id: coreo.id, bailarino_id: bid }))
-      );
-    }
-
-    setSalvando(false);
-    onSaved();
-  }
-
-  return (
-    <>
-      {modalBailarino && escolaConfirmada && (
-        <ModalBailarino
-          escolaId={escolaConfirmada.id}
-          onClose={() => setModalBailarino(false)}
-          onSaved={(b) => { setBailarinos((p) => [...p, b]); setModalBailarino(false); }}
-        />
-      )}
-
-      <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-10 px-4">
-        <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-xl shadow-2xl">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
-            <div>
-              <h2 className="text-base font-semibold text-white">Cadastro Manual de Emergencia</h2>
-              <p className="text-xs text-neutral-500 mt-0.5">
-                {etapa === "escola" ? "Etapa 1 de 2 — Escola" : `Etapa 2 de 2 — Coreografia (${escolaConfirmada?.nome})`}
-              </p>
-            </div>
-            <button onClick={onClose} className="p-1 text-neutral-400 hover:text-white transition-colors" aria-label="Fechar">
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="p-6 space-y-5">
-
-            {/* ── Etapa 1: Escola ── */}
-            {etapa === "escola" && (
-              <>
-                <div className="flex gap-2">
-                  {(["existente", "nova"] as const).map((m) => (
-                    <button key={m} onClick={() => setModoEscola(m)}
-                      className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                        modoEscola === m
-                          ? "border-axon-gold bg-axon-gold/10 text-axon-gold"
-                          : "border-axon-border text-neutral-400 hover:text-white"
-                      }`}>
-                      {m === "existente" ? "Escola ja cadastrada" : "Nova escola"}
-                    </button>
-                  ))}
-                </div>
-
-                {modoEscola === "existente" ? (
-                  <div>
-                    <label className="block text-xs text-neutral-400 mb-1" htmlFor="esc-sel">Selecionar escola</label>
-                    <select id="esc-sel" value={escolaExistente?.id ?? ""}
-                      onChange={(e) => setEscolaExistente(escolas.find((x) => x.id === e.target.value) ?? null)}
-                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors">
-                      <option value="">Selecione...</option>
-                      {escolas.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {[
-                      { id: "esc-nome", label: "Nome da escola *", value: nomeEscola, set: setNomeEscola, placeholder: "Nome da escola" },
-                      { id: "esc-resp", label: "Responsavel", value: responsavel, set: setResponsavel, placeholder: "Nome do diretor/responsavel" },
-                      { id: "esc-tel",  label: "Telefone", value: telefone, set: setTelefone, placeholder: "(00) 00000-0000" },
-                      { id: "esc-email",label: "E-mail", value: email, set: setEmail, placeholder: "email@escola.com" },
-                    ].map(({ id, label, value, set, placeholder }) => (
-                      <div key={id}>
-                        <label className="block text-xs text-neutral-400 mb-1" htmlFor={id}>{label}</label>
-                        <input id={id} type="text" value={value} onChange={(e) => set(e.target.value)}
-                          className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
-                          placeholder={placeholder} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {erro && <p className="flex items-center gap-2 text-xs text-red-400"><AlertCircle size={14} />{erro}</p>}
-              </>
-            )}
-
-            {/* ── Etapa 2: Coreografia ── */}
-            {etapa === "coreografia" && (
-              <>
-                <div>
-                  <label className="block text-xs text-neutral-400 mb-1" htmlFor="cm-nome">Nome da coreografia *</label>
-                  <input id="cm-nome" type="text" value={nomeCoreo} onChange={(e) => setNomeCoreo(e.target.value)}
-                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
-                    placeholder="Ex: Alma Livre" />
-                </div>
-                <div>
-                  <label className="block text-xs text-neutral-400 mb-1" htmlFor="cm-cat">
-                    Categoria <span className="text-neutral-600">(opcional)</span>
-                  </label>
-                  <input id="cm-cat" type="text" value={categoria} onChange={(e) => setCategoria(e.target.value)}
-                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
-                    placeholder="Ex: Infantil, Juvenil..." />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-neutral-400 mb-1" htmlFor="cm-tipo">Tipo</label>
-                    <select id="cm-tipo" value={tipo} onChange={(e) => setTipo(e.target.value)}
-                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors">
-                      <option value="solo">Solo</option>
-                      <option value="duo">Duo</option>
-                      <option value="conjunto">Conjunto</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-neutral-400 mb-1" htmlFor="cm-qtd">Qtd. bailarinos</label>
-                    <input id="cm-qtd" type="number" min={1} value={qtd} onChange={(e) => setQtd(Number(e.target.value))}
-                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-neutral-400 mb-1" htmlFor="cm-valor">Valor total (R$)</label>
-                    <input id="cm-valor" type="text" value={valor} onChange={(e) => setValor(e.target.value.replace(/[^0-9,\.]/g, ""))}
-                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
-                      placeholder="0,00" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-neutral-400 mb-1" htmlFor="cm-status">Status pagamento</label>
-                    <select id="cm-status" value={status} onChange={(e) => setStatus(e.target.value as StatusPagamento)}
-                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors">
-                      <option value="pendente">Pendente</option>
-                      <option value="pago">Pago</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Elenco */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-neutral-400">Elenco — {bailarinosDaEscola.length} bailarinos cadastrados</span>
-                    <button type="button" onClick={() => setModalBailarino(true)}
-                      className="flex items-center gap-1 text-xs text-axon-gold hover:opacity-80 transition-opacity">
-                      <UserPlus size={13} /> Novo bailarino
-                    </button>
-                  </div>
-                  {bailarinosDaEscola.length === 0 ? (
-                    <p className="text-xs text-neutral-600 bg-axon-bg border border-axon-border rounded-lg px-3 py-3">
-                      Nenhum bailarino cadastrado para esta escola.
-                    </p>
-                  ) : (
-                    <div className="bg-axon-bg border border-axon-border rounded-lg divide-y divide-axon-border max-h-44 overflow-y-auto">
-                      {bailarinosDaEscola.map((b) => (
-                        <label key={b.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-white/[0.03] transition-colors">
-                          <input type="checkbox" checked={elencoSelecionado.includes(b.id)}
-                            onChange={() => setElencoSelecionado((p) => p.includes(b.id) ? p.filter((x) => x !== b.id) : [...p, b.id])}
-                            className="w-4 h-4 accent-axon-gold rounded" />
-                          <span className="text-sm text-white">{b.nome}</span>
-                          {b.cpf && <span className="text-xs text-neutral-500 ml-auto tabular-nums">{cpfFormatado(b.cpf)}</span>}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {erro && <p className="flex items-center gap-2 text-xs text-red-400"><AlertCircle size={14} />{erro}</p>}
-              </>
-            )}
-          </div>
-
-          <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
-            {etapa === "coreografia" && (
-              <button onClick={() => { setEtapa("escola"); setErro(null); }}
-                className="px-4 py-2 rounded-lg border border-axon-border text-sm text-neutral-400 hover:text-white hover:border-neutral-500 transition-colors">
-                Voltar
-              </button>
-            )}
-            <button onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-axon-border text-sm text-neutral-400 hover:text-white hover:border-neutral-500 transition-colors">
-              Cancelar
-            </button>
-            <button
-              onClick={etapa === "escola" ? confirmarEscola : salvarCoreografia}
-              disabled={salvando}
-              className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2">
-              {salvando && <Loader2 size={14} className="animate-spin" />}
-              {etapa === "escola" ? "Continuar" : "Confirmar inscricao"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ── Card de Escola (expansivel) ────────────────────────────────────────────
-
-interface CardEscolaProps {
+interface CardGrupoProps {
   escola: EscolaComDados;
+  termo: Terminologia;
 }
 
-function CardEscola({ escola }: CardEscolaProps) {
+function CardGrupo({ escola, termo }: CardGrupoProps) {
   const [expandido, setExpandido] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<"coreografias" | "bailarinos">("coreografias");
+  const [abaAtiva, setAbaAtiva] = useState<"apresentacoes" | "participantes">("apresentacoes");
 
   const totalCoreos = escola.coreografias.length;
   const totalBailarinos = escola.bailarinos.length;
@@ -494,7 +321,7 @@ function CardEscola({ escola }: CardEscolaProps) {
         className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-colors text-left"
       >
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-semibold text-white truncate">{escola.nome}</span>
             {tudoPago ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-axon-green-dim text-axon-green">
@@ -513,11 +340,11 @@ function CardEscola({ escola }: CardEscolaProps) {
 
         <div className="hidden sm:flex items-center gap-6 shrink-0">
           <div className="text-center">
-            <p className="text-xs text-neutral-500">Coreografias</p>
+            <p className="text-xs text-neutral-500">{termo.apresentacao}s</p>
             <p className="text-sm font-semibold text-white tabular-nums">{totalCoreos}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-neutral-500">Bailarinos</p>
+            <p className="text-xs text-neutral-500">{termo.participante}s</p>
             <p className="text-sm font-semibold text-white tabular-nums">{totalBailarinos}</p>
           </div>
           <div className="text-center">
@@ -539,37 +366,41 @@ function CardEscola({ escola }: CardEscolaProps) {
 
       {/* Resumo mobile */}
       <div className="sm:hidden flex items-center gap-4 px-5 pb-3 text-xs text-neutral-500">
-        <span>{totalCoreos} coreografias</span>
-        <span>{totalBailarinos} bailarinos</span>
+        <span>{totalCoreos} {termo.apresentacao.toLowerCase()}s</span>
+        <span>{totalBailarinos} {termo.participante.toLowerCase()}s</span>
         <span className="ml-auto tabular-nums">{formatMoeda(totalValor)}</span>
       </div>
 
       {/* Conteudo expandido */}
       {expandido && (
         <div className="border-t border-axon-border">
-          {/* Tabs internas */}
           <div className="flex border-b border-axon-border px-5">
-            {(["coreografias", "bailarinos"] as const).map((aba) => (
-              <button key={aba} onClick={() => setAbaAtiva(aba)}
-                className={`px-4 py-3 text-xs font-medium border-b-2 transition-colors capitalize ${
-                  abaAtiva === aba
+            {([
+              { id: "apresentacoes", label: `${termo.apresentacao}s` },
+              { id: "participantes", label: `${termo.participante}s` },
+            ] as const).map(({ id, label }) => (
+              <button key={id} onClick={() => setAbaAtiva(id)}
+                className={`px-4 py-3 text-xs font-medium border-b-2 transition-colors ${
+                  abaAtiva === id
                     ? "border-axon-gold text-axon-gold"
                     : "border-transparent text-neutral-500 hover:text-white"
                 }`}>
-                {aba}
+                {label}
               </button>
             ))}
           </div>
 
-          {/* Aba Coreografias */}
-          {abaAtiva === "coreografias" && (
+          {/* Aba Apresentacoes */}
+          {abaAtiva === "apresentacoes" && (
             <div className="p-5">
               {escola.coreografias.length === 0 ? (
-                <p className="text-sm text-neutral-600 text-center py-6">Nenhuma coreografia inscrita.</p>
+                <p className="text-sm text-neutral-600 text-center py-6">
+                  Nenhuma {termo.apresentacao.toLowerCase()} inscrita.
+                </p>
               ) : (
                 <div className="space-y-3">
                   {escola.coreografias.map((c) => {
-                    const bailarinosNaCoreo = escola.elenco
+                    const participantesNaCoreo = escola.elenco
                       .filter((e) => e.coreografia_id === c.id)
                       .map((e) => escola.bailarinos.find((b) => b.id === e.bailarino_id))
                       .filter(Boolean) as Bailarino[];
@@ -588,11 +419,15 @@ function CardEscola({ escola }: CardEscolaProps) {
                                 </>
                               )}
                               <span className="text-neutral-700">·</span>
-                              <span className="text-xs text-neutral-500">{c.quantidade_bailarinos} bailarino{c.quantidade_bailarinos !== 1 ? "s" : ""}</span>
+                              <span className="text-xs text-neutral-500">
+                                {c.quantidade_bailarinos} {termo.participante.toLowerCase()}{c.quantidade_bailarinos !== 1 ? "s" : ""}
+                              </span>
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
-                            <span className="text-sm font-semibold text-white tabular-nums">{formatMoeda(c.valor_total ?? 0)}</span>
+                            <span className="text-sm font-semibold text-white tabular-nums">
+                              {formatMoeda(c.valor_total ?? 0)}
+                            </span>
                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
                               c.status_pagamento === "pago"
                                 ? "bg-axon-green-dim text-axon-green"
@@ -603,12 +438,15 @@ function CardEscola({ escola }: CardEscolaProps) {
                           </div>
                         </div>
 
-                        {bailarinosNaCoreo.length > 0 && (
+                        {participantesNaCoreo.length > 0 && (
                           <div className="mt-3 pt-3 border-t border-axon-border/50">
-                            <p className="text-xs text-neutral-500 mb-2">Elenco</p>
+                            <p className="text-xs text-neutral-500 mb-2">
+                              {termo.participante}s
+                            </p>
                             <div className="flex flex-wrap gap-2">
-                              {bailarinosNaCoreo.map((b) => (
-                                <span key={b.id} className="text-xs bg-white/5 border border-axon-border rounded-full px-2.5 py-1 text-neutral-300">
+                              {participantesNaCoreo.map((b) => (
+                                <span key={b.id}
+                                  className="text-xs bg-white/5 border border-axon-border rounded-full px-2.5 py-1 text-neutral-300">
                                   {b.nome}
                                 </span>
                               ))}
@@ -623,15 +461,17 @@ function CardEscola({ escola }: CardEscolaProps) {
             </div>
           )}
 
-          {/* Aba Bailarinos */}
-          {abaAtiva === "bailarinos" && (
+          {/* Aba Participantes */}
+          {abaAtiva === "participantes" && (
             <div className="p-5">
               {escola.bailarinos.length === 0 ? (
-                <p className="text-sm text-neutral-600 text-center py-6">Nenhum bailarino cadastrado.</p>
+                <p className="text-sm text-neutral-600 text-center py-6">
+                  Nenhum {termo.participante.toLowerCase()} cadastrado.
+                </p>
               ) : (
                 <div className="space-y-2">
                   {escola.bailarinos.map((b) => {
-                    const coreografiasDoB = escola.elenco
+                    const apresentacoesDoP = escola.elenco
                       .filter((e) => e.bailarino_id === b.id)
                       .map((e) => escola.coreografias.find((c) => c.id === e.coreografia_id))
                       .filter(Boolean) as Coreografia[];
@@ -642,10 +482,12 @@ function CardEscola({ escola }: CardEscolaProps) {
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-white">{b.nome}</p>
                             {b.cpf && (
-                              <p className="text-xs text-neutral-500 tabular-nums mt-0.5">{cpfFormatado(b.cpf)}</p>
+                              <p className="text-xs text-neutral-500 tabular-nums mt-0.5">
+                                {cpfFormatado(b.cpf)}
+                              </p>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="shrink-0">
                             {b.termo_assinado ? (
                               <span className="text-xs text-axon-green">Termo OK</span>
                             ) : (
@@ -654,10 +496,11 @@ function CardEscola({ escola }: CardEscolaProps) {
                           </div>
                         </div>
 
-                        {coreografiasDoB.length > 0 && (
+                        {apresentacoesDoP.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
-                            {coreografiasDoB.map((c) => (
-                              <span key={c.id} className="text-xs bg-axon-gold-dim text-axon-gold rounded-full px-2.5 py-0.5 border border-axon-gold/20">
+                            {apresentacoesDoP.map((c) => (
+                              <span key={c.id}
+                                className="text-xs bg-axon-gold-dim text-axon-gold rounded-full px-2.5 py-0.5 border border-axon-gold/20">
                                 {c.nome}
                               </span>
                             ))}
@@ -682,15 +525,21 @@ export default function InscricoesPage() {
   const supabase = createClient();
 
   const [escolasComDados, setEscolasComDados] = useState<EscolaComDados[]>([]);
+  const [termo, setTermo] = useState<Terminologia>({
+    grupo: "Escola",
+    participante: "Bailarino",
+    apresentacao: "Coreografia",
+    inscricao: "Inscricao",
+    organizacao: "Organizacao",
+  });
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
-  const [modalEmergencia, setModalEmergencia] = useState(false);
+  const [modalGrupo, setModalGrupo] = useState(false);
 
-  // KPIs globais
   const [kpis, setKpis] = useState({
-    escolas: 0,
-    coreografias: 0,
-    bailarinos: 0,
+    grupos: 0,
+    apresentacoes: 0,
+    participantes: 0,
     totalPago: 0,
     totalPendente: 0,
   });
@@ -699,27 +548,39 @@ export default function InscricoesPage() {
     setCarregando(true);
 
     const [
+      { data: config },
       { data: escolas },
       { data: coreografias },
       { data: bailarinos },
       { data: elenco },
     ] = await Promise.all([
+      supabase.from("tenant_config").select("termo_grupo, termo_participante, termo_apresentacao, termo_inscricao, nome_organizacao").single(),
       supabase.from("escolas").select("*").order("nome"),
       supabase.from("coreografias").select("*").order("created_at", { ascending: false }),
       supabase.from("bailarinos").select("*").order("nome"),
       supabase.from("coreografia_elenco").select("*"),
     ]);
 
+    if (config) {
+      setTermo({
+        grupo:        (config as Record<string, string>).termo_grupo        || "Escola",
+        participante: (config as Record<string, string>).termo_participante || "Bailarino",
+        apresentacao: (config as Record<string, string>).termo_apresentacao || "Coreografia",
+        inscricao:    (config as Record<string, string>).termo_inscricao    || "Inscricao",
+        organizacao:  (config as Record<string, string>).nome_organizacao   || "Organizacao",
+      });
+    }
+
     const escolasArr = (escolas as Escola[]) ?? [];
-    const coreosArr = (coreografias as Coreografia[]) ?? [];
-    const bailArr = (bailarinos as Bailarino[]) ?? [];
-    const elencoArr = (elenco as ElencoRow[]) ?? [];
+    const coreosArr  = (coreografias as Coreografia[]) ?? [];
+    const bailArr    = (bailarinos as Bailarino[]) ?? [];
+    const elencoArr  = (elenco as ElencoRow[]) ?? [];
 
     const compostas: EscolaComDados[] = escolasArr.map((e) => ({
       ...e,
       coreografias: coreosArr.filter((c) => c.escola_id === e.id),
-      bailarinos: bailArr.filter((b) => b.escola_id === e.id),
-      elenco: elencoArr.filter((el) =>
+      bailarinos:   bailArr.filter((b) => b.escola_id === e.id),
+      elenco:       elencoArr.filter((el) =>
         coreosArr.filter((c) => c.escola_id === e.id).some((c) => c.id === el.coreografia_id)
       ),
     }));
@@ -734,9 +595,9 @@ export default function InscricoesPage() {
       .reduce((acc, c) => acc + (c.valor_total ?? 0), 0);
 
     setKpis({
-      escolas: escolasArr.length,
-      coreografias: coreosArr.length,
-      bailarinos: bailArr.length,
+      grupos:        escolasArr.length,
+      apresentacoes: coreosArr.length,
+      participantes: bailArr.length,
       totalPago,
       totalPendente,
     });
@@ -746,17 +607,18 @@ export default function InscricoesPage() {
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  const escolasFiltradas = escolasComDados.filter((e) =>
+  const gruposFiltrados = escolasComDados.filter((e) =>
     e.nome.toLowerCase().includes(busca.toLowerCase()) ||
     (e.responsavel ?? "").toLowerCase().includes(busca.toLowerCase())
   );
 
   return (
     <>
-      {modalEmergencia && (
-        <ModalCadastroManual
-          onClose={() => setModalEmergencia(false)}
-          onSaved={() => { setModalEmergencia(false); carregar(); }}
+      {modalGrupo && (
+        <ModalCadastrarGrupo
+          termo={termo}
+          onClose={() => setModalGrupo(false)}
+          onSaved={() => { carregar(); }}
         />
       )}
 
@@ -765,28 +627,30 @@ export default function InscricoesPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-white">Inscricoes e Elenco</h1>
+            <h1 className="text-xl font-semibold text-white">
+              {termo.inscricao}s e Elenco
+            </h1>
             <p className="text-sm text-neutral-500 mt-0.5">
-              Visualize as inscricoes por escola, coreografias e bailarinos participantes.
+              Visualize as {termo.inscricao.toLowerCase()}s por {termo.grupo.toLowerCase()}, {termo.apresentacao.toLowerCase()}s e {termo.participante.toLowerCase()}s participantes.
             </p>
           </div>
           <button
-            onClick={() => setModalEmergencia(true)}
+            onClick={() => setModalGrupo(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg border border-axon-border text-xs text-neutral-400 hover:text-white hover:border-neutral-500 transition-colors whitespace-nowrap shrink-0"
           >
             <Plus size={14} />
-            Cadastro manual
+            Cadastrar {termo.grupo.toLowerCase()}
           </button>
         </div>
 
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {[
-            { label: "Escolas",       value: kpis.escolas.toString(),           icon: Building2,         cor: "" },
-            { label: "Coreografias",  value: kpis.coreografias.toString(),       icon: Music4,            cor: "" },
-            { label: "Bailarinos",    value: kpis.bailarinos.toString(),          icon: Users,             cor: "" },
-            { label: "Total pago",    value: formatMoeda(kpis.totalPago),         icon: CircleDollarSign,  cor: "green" },
-            { label: "A receber",     value: formatMoeda(kpis.totalPendente),     icon: CircleDollarSign,  cor: "gold" },
+            { label: `${termo.grupo}s`,        value: kpis.grupos.toString(),             icon: Users,            cor: "" },
+            { label: `${termo.apresentacao}s`, value: kpis.apresentacoes.toString(),      icon: Music4,           cor: "" },
+            { label: `${termo.participante}s`, value: kpis.participantes.toString(),      icon: Users,            cor: "" },
+            { label: "Total pago",             value: formatMoeda(kpis.totalPago),        icon: CircleDollarSign, cor: "green" },
+            { label: "A receber",              value: formatMoeda(kpis.totalPendente),    icon: CircleDollarSign, cor: "gold" },
           ].map(({ label, value, icon: Icon, cor }) => (
             <div key={label} className="bg-axon-panel border border-axon-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -809,12 +673,12 @@ export default function InscricoesPage() {
             type="text"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar escola ou responsavel..."
+            placeholder={`Buscar ${termo.grupo.toLowerCase()} ou responsavel...`}
             className="w-full bg-axon-panel border border-axon-border rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
           />
         </div>
 
-        {/* Lista de escolas */}
+        {/* Lista de grupos */}
         {carregando ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -827,17 +691,19 @@ export default function InscricoesPage() {
               </div>
             ))}
           </div>
-        ) : escolasFiltradas.length === 0 ? (
+        ) : gruposFiltrados.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-neutral-600">
-            <Building2 size={36} className="mb-3 opacity-30" />
+            <Users size={36} className="mb-3 opacity-30" />
             <p className="text-sm">
-              {busca ? "Nenhuma escola encontrada para esta busca." : "Nenhuma escola inscrita ainda."}
+              {busca
+                ? `Nenhum ${termo.grupo.toLowerCase()} encontrado para esta busca.`
+                : `Nenhum ${termo.grupo.toLowerCase()} cadastrado ainda.`}
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {escolasFiltradas.map((escola) => (
-              <CardEscola key={escola.id} escola={escola} />
+            {gruposFiltrados.map((escola) => (
+              <CardGrupo key={escola.id} escola={escola} termo={termo} />
             ))}
           </div>
         )}
