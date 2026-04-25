@@ -40,6 +40,7 @@ interface Coreografia {
   id: string;
   nome: string;
   escola_id: string;
+  categoria: string;
   tipo: string;
   quantidade_bailarinos: number;
   valor_total: number;
@@ -58,18 +59,6 @@ function maskCPF(value: string): string {
     .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
 }
 
-function maskPhone(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 11);
-  if (digits.length <= 10) {
-    return digits
-      .replace(/(\d{2})(\d)/, "($1) $2")
-      .replace(/(\d{4})(\d)/, "$1-$2");
-  }
-  return digits
-    .replace(/(\d{2})(\d)/, "($1) $2")
-    .replace(/(\d{5})(\d)/, "$1-$2");
-}
-
 function maskDate(value: string): string {
   const digits = value.replace(/\D/g, "").slice(0, 8);
   return digits
@@ -78,7 +67,6 @@ function maskDate(value: string): string {
 }
 
 function dateMaskToISO(masked: string): string {
-  // dd/mm/yyyy -> yyyy-mm-dd
   const [d, m, y] = masked.split("/");
   if (!d || !m || !y || y.length < 4) return "";
   return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
@@ -124,7 +112,7 @@ function ModalBailarino({ escolaId, onClose, onSaved }: ModalBailarinoProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md mx-4 p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-base font-semibold text-white">Cadastrar Bailarino</h2>
@@ -230,13 +218,13 @@ function ModalInscricao({ escolas, onClose, onSaved }: ModalInscricaoProps) {
   const supabase = createClient();
 
   const [nome, setNome] = useState("");
+  const [categoria, setCategoria] = useState("");
   const [escolaId, setEscolaId] = useState<string>("");
   const [tipo, setTipo] = useState("solo");
   const [qtdBailarinos, setQtdBailarinos] = useState(1);
   const [valorTotal, setValorTotal] = useState("");
   const [statusPagamento, setStatusPagamento] = useState<StatusPagamento>("pendente");
 
-  const [bailarinos, setBailarinos] = useState<Bailarino[]>([]);
   const [bailarinosDaEscola, setBailarinos_escola] = useState<Bailarino[]>([]);
   const [elencoSelecionado, setElencoSelecionado] = useState<string[]>([]);
 
@@ -245,7 +233,7 @@ function ModalInscricao({ escolas, onClose, onSaved }: ModalInscricaoProps) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const carregarBailarinoBailarinos = useCallback(async (id: string) => {
+  const carregarBailarinos = useCallback(async (id: string) => {
     setCarregandoBailarinos(true);
     const { data } = await supabase
       .from("bailarinos")
@@ -257,10 +245,10 @@ function ModalInscricao({ escolas, onClose, onSaved }: ModalInscricaoProps) {
   }, [supabase]);
 
   useEffect(() => {
-    if (escolaId) carregarBailarinoBailarinos(escolaId);
+    if (escolaId) carregarBailarinos(escolaId);
     else setBailarinos_escola([]);
     setElencoSelecionado([]);
-  }, [escolaId, carregarBailarinoBailarinos]);
+  }, [escolaId, carregarBailarinos]);
 
   function toggleElenco(id: string) {
     setElencoSelecionado((prev) =>
@@ -279,6 +267,7 @@ function ModalInscricao({ escolas, onClose, onSaved }: ModalInscricaoProps) {
       .from("coreografias")
       .insert({
         nome: nome.trim(),
+        categoria: categoria.trim() || "Geral",
         escola_id: escolaId || null,
         tipo,
         quantidade_bailarinos: qtdBailarinos,
@@ -318,9 +307,9 @@ function ModalInscricao({ escolas, onClose, onSaved }: ModalInscricaoProps) {
         />
       )}
 
-      <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-10 px-4">
+      <div className="fixed inset-0 z-[50] flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-10 px-4">
         <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-2xl shadow-2xl">
-          {/* Header */}
+          {/* Header do modal */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
             <h2 className="text-base font-semibold text-white">Nova Inscricao</h2>
             <button
@@ -345,6 +334,22 @@ function ModalInscricao({ escolas, onClose, onSaved }: ModalInscricaoProps) {
                 onChange={(e) => setNome(e.target.value)}
                 className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
                 placeholder="Ex: Alma Livre"
+              />
+            </div>
+
+            {/* Categoria */}
+            <div>
+              <label className="block text-xs text-neutral-400 mb-1" htmlFor="coreo-categoria">
+                Categoria
+                <span className="text-neutral-600 ml-1">(opcional — padrao: Geral)</span>
+              </label>
+              <input
+                id="coreo-categoria"
+                type="text"
+                value={categoria}
+                onChange={(e) => setCategoria(e.target.value)}
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+                placeholder="Ex: Infantil, Juvenil..."
               />
             </div>
 
@@ -472,7 +477,7 @@ function ModalInscricao({ escolas, onClose, onSaved }: ModalInscricaoProps) {
                   {bailarinosDaEscola.map((b) => (
                     <label
                       key={b.id}
-                      className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-white/3 transition-colors"
+                      className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-white/[0.03] transition-colors"
                     >
                       <input
                         type="checkbox"
@@ -499,7 +504,7 @@ function ModalInscricao({ escolas, onClose, onSaved }: ModalInscricaoProps) {
             )}
           </div>
 
-          {/* Footer */}
+          {/* Footer do modal */}
           <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
             <button
               onClick={onClose}
@@ -565,19 +570,32 @@ export default function InscricoesPage() {
       setTotalPaginas(Math.max(1, Math.ceil(total / PER_PAGE)));
     }
 
-    // KPIs
-    const [{ count: totalCoreo }, { count: totalBail }, { data: pagos }, { data: pendentes }] =
-      await Promise.all([
-        supabase.from("coreografias").select("id", { count: "exact", head: true }),
-        supabase.from("bailarinos").select("id", { count: "exact", head: true }),
-        supabase.from("coreografias").select("valor_total").eq("status_pagamento", "pago"),
-        supabase.from("coreografias").select("valor_total").eq("status_pagamento", "pendente"),
-      ]);
+    const [
+      { count: totalCoreo },
+      { count: totalBail },
+      { data: pagos },
+      { data: pendentes },
+    ] = await Promise.all([
+      supabase.from("coreografias").select("id", { count: "exact", head: true }),
+      supabase.from("bailarinos").select("id", { count: "exact", head: true }),
+      supabase.from("coreografias").select("valor_total").eq("status_pagamento", "pago"),
+      supabase.from("coreografias").select("valor_total").eq("status_pagamento", "pendente"),
+    ]);
 
     setTotalCoreografias(totalCoreo ?? 0);
     setTotalBailarinos(totalBail ?? 0);
-    setTotalPago((pagos ?? []).reduce((acc: number, c: { valor_total: number }) => acc + (c.valor_total ?? 0), 0));
-    setTotalPendente((pendentes ?? []).reduce((acc: number, c: { valor_total: number }) => acc + (c.valor_total ?? 0), 0));
+    setTotalPago(
+      (pagos ?? []).reduce(
+        (acc: number, c: { valor_total: number }) => acc + (c.valor_total ?? 0),
+        0
+      )
+    );
+    setTotalPendente(
+      (pendentes ?? []).reduce(
+        (acc: number, c: { valor_total: number }) => acc + (c.valor_total ?? 0),
+        0
+      )
+    );
 
     setCarregando(false);
   }, [supabase, busca, pagina]);
@@ -589,8 +607,6 @@ export default function InscricoesPage() {
 
   useEffect(() => { carregarDados(); }, [carregarDados]);
   useEffect(() => { carregarEscolas(); }, [carregarEscolas]);
-
-  // Reset pagina quando busca muda
   useEffect(() => { setPagina(1); }, [busca]);
 
   function formatMoeda(value: number): string {
@@ -598,7 +614,8 @@ export default function InscricoesPage() {
   }
 
   return (
-    <AdminShell>
+    <>
+      {/* Modais ficam FORA do AdminShell para nao herdar o layout de shell */}
       {modalAberto && (
         <ModalInscricao
           escolas={escolas}
@@ -610,170 +627,184 @@ export default function InscricoesPage() {
         />
       )}
 
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-white">Inscricoes e Elenco</h1>
-            <p className="text-sm text-neutral-500 mt-0.5">
-              Gerencie coreografias e bailarinos inscritos
-            </p>
-          </div>
-          <button
-            onClick={() => setModalAberto(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-axon-gold text-black text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
-          >
-            <Plus size={16} />
-            Nova Inscricao
-          </button>
-        </div>
-
-        {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: "Coreografias", value: totalCoreografias.toString() },
-            { label: "Bailarinos", value: totalBailarinos.toString() },
-            { label: "Total pago", value: formatMoeda(totalPago), destaque: "green" },
-            { label: "A receber", value: formatMoeda(totalPendente), destaque: "gold" },
-          ].map((kpi) => (
-            <div
-              key={kpi.label}
-              className="bg-axon-panel border border-axon-border rounded-xl p-4"
-            >
-              <p className="text-xs text-neutral-500 mb-1">{kpi.label}</p>
-              <p
-                className={
-                  kpi.destaque === "green"
-                    ? "text-lg font-semibold text-axon-green tabular-nums"
-                    : kpi.destaque === "gold"
-                    ? "text-lg font-semibold text-axon-gold tabular-nums"
-                    : "text-lg font-semibold text-white tabular-nums"
-                }
-              >
-                {kpi.value}
+      <AdminShell>
+        <div className="p-6 space-y-6">
+          {/* Header da pagina */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-semibold text-white">Inscricoes e Elenco</h1>
+              <p className="text-sm text-neutral-500 mt-0.5">
+                Gerencie coreografias e bailarinos inscritos
               </p>
             </div>
-          ))}
-        </div>
-
-        {/* Busca */}
-        <div className="relative max-w-sm">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
-          <input
-            type="text"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome..."
-            className="w-full bg-axon-panel border border-axon-border rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
-          />
-        </div>
-
-        {/* Tabela */}
-        <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-axon-border">
-                  <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
-                    Coreografia
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
-                    Escola
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
-                    Tipo
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs text-neutral-500 font-medium tabular-nums">
-                    Bailarinos
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs text-neutral-500 font-medium tabular-nums">
-                    Valor
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {carregando ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={i} className="border-b border-axon-border/50">
-                      {Array.from({ length: 6 }).map((_, j) => (
-                        <td key={j} className="px-4 py-3">
-                          <div className="h-4 bg-white/5 rounded animate-pulse" />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                ) : coreografias.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-neutral-600 text-sm">
-                      Nenhuma inscricao encontrada.
-                    </td>
-                  </tr>
-                ) : (
-                  coreografias.map((c) => (
-                    <tr
-                      key={c.id}
-                      className="border-b border-axon-border/50 hover:bg-white/2 transition-colors"
-                    >
-                      <td className="px-4 py-3 text-white font-medium">{c.nome}</td>
-                      <td className="px-4 py-3 text-neutral-400">
-                        {c.escolas?.nome ?? <span className="text-neutral-600 italic">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-neutral-400 capitalize">{c.tipo}</td>
-                      <td className="px-4 py-3 text-right text-neutral-400 tabular-nums">
-                        {c.quantidade_bailarinos}
-                      </td>
-                      <td className="px-4 py-3 text-right text-neutral-300 tabular-nums">
-                        {formatMoeda(c.valor_total ?? 0)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={
-                            c.status_pagamento === "pago"
-                              ? "inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-axon-green-dim text-axon-green"
-                              : "inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-axon-gold-dim text-axon-gold"
-                          }
-                        >
-                          {c.status_pagamento === "pago" ? "Pago" : "Pendente"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+            <button
+              onClick={() => setModalAberto(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-axon-gold text-black text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
+            >
+              <Plus size={16} />
+              Nova Inscricao
+            </button>
           </div>
 
-          {/* Paginacao */}
-          {totalPaginas > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-axon-border">
-              <span className="text-xs text-neutral-500">
-                Pagina {pagina} de {totalPaginas}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPagina((p) => Math.max(1, p - 1))}
-                  disabled={pagina === 1}
-                  className="p-1.5 rounded-md border border-axon-border text-neutral-400 hover:text-white hover:border-neutral-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Pagina anterior"
+          {/* KPIs */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { label: "Coreografias", value: totalCoreografias.toString(), destaque: "" },
+              { label: "Bailarinos", value: totalBailarinos.toString(), destaque: "" },
+              { label: "Total pago", value: formatMoeda(totalPago), destaque: "green" },
+              { label: "A receber", value: formatMoeda(totalPendente), destaque: "gold" },
+            ].map((kpi) => (
+              <div
+                key={kpi.label}
+                className="bg-axon-panel border border-axon-border rounded-xl p-4"
+              >
+                <p className="text-xs text-neutral-500 mb-1">{kpi.label}</p>
+                <p
+                  className={
+                    kpi.destaque === "green"
+                      ? "text-lg font-semibold text-axon-green tabular-nums"
+                      : kpi.destaque === "gold"
+                      ? "text-lg font-semibold text-axon-gold tabular-nums"
+                      : "text-lg font-semibold text-white tabular-nums"
+                  }
                 >
-                  <ChevronLeft size={15} />
-                </button>
-                <button
-                  onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
-                  disabled={pagina === totalPaginas}
-                  className="p-1.5 rounded-md border border-axon-border text-neutral-400 hover:text-white hover:border-neutral-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Proxima pagina"
-                >
-                  <ChevronRight size={15} />
-                </button>
+                  {kpi.value}
+                </p>
               </div>
+            ))}
+          </div>
+
+          {/* Busca */}
+          <div className="relative max-w-sm">
+            <Search
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
+            />
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por nome..."
+              className="w-full bg-axon-panel border border-axon-border rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+            />
+          </div>
+
+          {/* Tabela */}
+          <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-axon-border">
+                    <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
+                      Coreografia
+                    </th>
+                    <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
+                      Escola
+                    </th>
+                    <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
+                      Categoria
+                    </th>
+                    <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
+                      Tipo
+                    </th>
+                    <th className="text-right px-4 py-3 text-xs text-neutral-500 font-medium tabular-nums">
+                      Bailarinos
+                    </th>
+                    <th className="text-right px-4 py-3 text-xs text-neutral-500 font-medium tabular-nums">
+                      Valor
+                    </th>
+                    <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {carregando ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <tr key={i} className="border-b border-axon-border/50">
+                        {Array.from({ length: 7 }).map((_, j) => (
+                          <td key={j} className="px-4 py-3">
+                            <div className="h-4 bg-white/5 rounded animate-pulse" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : coreografias.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-4 py-12 text-center text-neutral-600 text-sm"
+                      >
+                        Nenhuma inscricao encontrada.
+                      </td>
+                    </tr>
+                  ) : (
+                    coreografias.map((c) => (
+                      <tr
+                        key={c.id}
+                        className="border-b border-axon-border/50 hover:bg-white/[0.02] transition-colors"
+                      >
+                        <td className="px-4 py-3 text-white font-medium">{c.nome}</td>
+                        <td className="px-4 py-3 text-neutral-400">
+                          {c.escolas?.nome ?? (
+                            <span className="text-neutral-600 italic">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-neutral-400">{c.categoria}</td>
+                        <td className="px-4 py-3 text-neutral-400 capitalize">{c.tipo}</td>
+                        <td className="px-4 py-3 text-right text-neutral-400 tabular-nums">
+                          {c.quantidade_bailarinos}
+                        </td>
+                        <td className="px-4 py-3 text-right text-neutral-300 tabular-nums">
+                          {formatMoeda(c.valor_total ?? 0)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={
+                              c.status_pagamento === "pago"
+                                ? "inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-axon-green-dim text-axon-green"
+                                : "inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-axon-gold-dim text-axon-gold"
+                            }
+                          >
+                            {c.status_pagamento === "pago" ? "Pago" : "Pendente"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
+
+            {/* Paginacao */}
+            {totalPaginas > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-axon-border">
+                <span className="text-xs text-neutral-500">
+                  Pagina {pagina} de {totalPaginas}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPagina((p) => Math.max(1, p - 1))}
+                    disabled={pagina === 1}
+                    className="p-1.5 rounded-md border border-axon-border text-neutral-400 hover:text-white hover:border-neutral-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Pagina anterior"
+                  >
+                    <ChevronLeft size={15} />
+                  </button>
+                  <button
+                    onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+                    disabled={pagina === totalPaginas}
+                    className="p-1.5 rounded-md border border-axon-border text-neutral-400 hover:text-white hover:border-neutral-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Proxima pagina"
+                  >
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </AdminShell>
+      </AdminShell>
+    </>
   );
 }
