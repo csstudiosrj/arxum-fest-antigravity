@@ -2,8 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-// Caminho relativo à prova de falhas (ignora o alias @)
-import { createClient } from "../../../lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
 
 export default function AdminLoginPage() {

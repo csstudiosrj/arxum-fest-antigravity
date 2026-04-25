@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-// Caminho relativo corrigido para evitar erros de alias
-import { createClient } from "../../lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 import {
   LayoutDashboard, CalendarDays, Users, Mic2, Ticket,
   Settings, LogOut, ChevronLeft, ChevronRight, ChevronDown,

@@ -5,7 +5,7 @@ import {
   User, Mail, Phone, Lock, Camera,
   Save, Eye, EyeOff, CheckCircle, AlertCircle, Loader2
 } from "lucide-react";
-import { createClient } from "../../lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
