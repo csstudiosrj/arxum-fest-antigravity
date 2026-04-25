@@ -1,429 +1,520 @@
+// app/(admin)/inscricoes/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import AdminShell from "../_components/AdminShell";
 import {
-  Search, Filter, MoreHorizontal, Users, Music,
-  DollarSign, CheckCircle2, Clock, Loader2, X, Plus,
-  ChevronRight, ChevronLeft, Building2, UserPlus, Trash2
+  Plus,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  UserPlus,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type Coreografia = {
-  id: string; nome: string; categoria: string; tipo: string;
-  quantidade_bailarinos: number | null; valor_total: number | null;
-  status_pagamento: string | null; escolas: { nome: string } | null;
-};
+type StatusPagamento = "pago" | "pendente";
 
-type Bailarino = {
-  id: string; nome: string; data_nascimento: string;
-  cpf: string | null; termo_assinado: boolean | null;
-  escolas: { nome: string } | null; inscricoes_count?: number;
-};
-
-type Escola = { id: string; nome: string; responsavel: string | null; email: string; };
-type Categoria = { id: string; nome: string; valor_solo: number | null; valor_duo: number | null; valor_conjunto: number | null; };
-type BailarinoElenco = { id?: string; nome: string; cpf: string; data_nascimento: string; ja_existe: boolean; };
-
-type KPIs = { total_coreografias: number; bailarinos_unicos: number; receita_confirmada: number; };
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function calcularIdade(data: string) {
-  const hoje = new Date(); const nasc = new Date(data);
-  let idade = hoje.getFullYear() - nasc.getFullYear();
-  if (hoje.getMonth() - nasc.getMonth() < 0 || (hoje.getMonth() === nasc.getMonth() && hoje.getDate() < nasc.getDate())) idade--;
-  return idade;
+interface Escola {
+  id: string;
+  nome: string;
+  responsavel: string;
+  telefone: string;
+  email: string;
 }
 
-function formatarReais(v: number) {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+interface Bailarino {
+  id: string;
+  nome: string;
+  cpf: string;
+  data_nascimento: string;
+  escola_id: string;
+  termo_assinado: boolean;
 }
 
-function calcularValor(cat: Categoria | null, tipo: string): number {
-  if (!cat) return 0;
-  if (tipo === "Solo") return cat.valor_solo ?? 0;
-  if (tipo === "Duo") return cat.valor_duo ?? 0;
-  return cat.valor_conjunto ?? 0;
+interface Coreografia {
+  id: string;
+  nome: string;
+  escola_id: string;
+  tipo: string;
+  quantidade_bailarinos: number;
+  valor_total: number;
+  status_pagamento: StatusPagamento;
+  created_at: string;
+  escolas?: { nome: string };
 }
 
-// ─── Modal Nova Inscrição ─────────────────────────────────────────────────────
+// ─── Masks ────────────────────────────────────────────────────────────────────
 
-function ModalNovaInscricao({ onClose, onSucesso, eventoId }: {
-  onClose: () => void; onSucesso: () => void; eventoId: string | null;
-}) {
+function maskCPF(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  return digits
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+}
+
+function maskPhone(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 10) {
+    return digits
+      .replace(/(\d{2})(\d)/, "($1) $2")
+      .replace(/(\d{4})(\d)/, "$1-$2");
+  }
+  return digits
+    .replace(/(\d{2})(\d)/, "($1) $2")
+    .replace(/(\d{5})(\d)/, "$1-$2");
+}
+
+function maskDate(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  return digits
+    .replace(/(\d{2})(\d)/, "$1/$2")
+    .replace(/(\d{2})(\d)/, "$1/$2");
+}
+
+function dateMaskToISO(masked: string): string {
+  // dd/mm/yyyy -> yyyy-mm-dd
+  const [d, m, y] = masked.split("/");
+  if (!d || !m || !y || y.length < 4) return "";
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
+
+// ─── Modal de Novo Bailarino ──────────────────────────────────────────────────
+
+interface ModalBailarinoProps {
+  escolaId: string | null;
+  onClose: () => void;
+  onSaved: (bailarino: Bailarino) => void;
+}
+
+function ModalBailarino({ escolaId, onClose, onSaved }: ModalBailarinoProps) {
   const supabase = createClient();
-  const [etapa, setEtapa] = useState(1);
+  const [nome, setNome] = useState("");
+  const [cpf, setCpf] = useState("");
+  const [dataNasc, setDataNasc] = useState("");
+  const [termoAssinado, setTermoAssinado] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
-  // Etapa 1 — Escola
-  const [buscaEscola, setBuscaEscola] = useState("");
-  const [escolasEncontradas, setEscolasEncontradas] = useState<Escola[]>([]);
-  const [escolaSelecionada, setEscolaSelecionada] = useState<Escola | null>(null);
-  const [novaEscola, setNovaEscola] = useState({ nome: "", email: "", responsavel: "" });
-  const [modoNovaEscola, setModoNovaEscola] = useState(false);
-  const [buscandoEscola, setBuscandoEscola] = useState(false);
-
-  // Etapa 2 — Coreografia
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [categoriaSelecionada, setCategoriaSelecionada] = useState<Categoria | null>(null);
-  const [formCor, setFormCor] = useState({ nome: "", tipo: "Solo", quantidade_bailarinos: 1 });
-
-  // Etapa 3 — Elenco
-  const [elenco, setElenco] = useState<BailarinoElenco[]>([]);
-  const [buscaCpf, setBuscaCpf] = useState("");
-  const [novoBailarino, setNovoBailarino] = useState({ nome: "", cpf: "", data_nascimento: "" });
-  const [buscandoBailarino, setBuscandoBailarino] = useState(false);
-  const [erroBailarino, setErroBailarino] = useState("");
-
-  // Etapa 4 — Pagamento
-  const [statusPagamento, setStatusPagamento] = useState("pendente");
-
-  const valorTotal = calcularValor(categoriaSelecionada, formCor.tipo);
-
-  // Busca escolas
-  useEffect(() => {
-    if (buscaEscola.length < 2) { setEscolasEncontradas([]); return; }
-    setBuscandoEscola(true);
-    const timeout = setTimeout(async () => {
-      const { data } = await supabase.from("escolas").select("id, nome, responsavel, email").ilike("nome", `%${buscaEscola}%`).limit(5);
-      setEscolasEncontradas(data ?? []);
-      setBuscandoEscola(false);
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [buscaEscola, supabase]);
-
-  // Carrega categorias do evento
-  useEffect(() => {
-    if (!eventoId) return;
-    supabase.from("categorias").select("id, nome, valor_solo, valor_duo, valor_conjunto").eq("evento_id", eventoId)
-      .then(({ data }) => setCategorias(data ?? []));
-  }, [eventoId, supabase]);
-
-  async function buscarBailarinoPorCpf() {
-    if (!buscaCpf.trim()) return;
-    setBuscandoBailarino(true); setErroBailarino("");
-    const { data } = await supabase.from("bailarinos").select("id, nome, cpf, data_nascimento").eq("cpf", buscaCpf.trim()).maybeSingle();
-    if (data) {
-      if (elenco.find((b) => b.cpf === data.cpf)) { setErroBailarino("Bailarino já adicionado."); }
-      else { setElenco((prev) => [...prev, { id: data.id, nome: data.nome, cpf: data.cpf ?? "", data_nascimento: data.data_nascimento, ja_existe: true }]); setBuscaCpf(""); }
-    } else {
-      setNovoBailarino((p) => ({ ...p, cpf: buscaCpf }));
-      setErroBailarino("CPF não encontrado. Preencha os dados abaixo para cadastrar.");
-    }
-    setBuscandoBailarino(false);
+  async function salvarBailarino() {
+    setErro(null);
+    if (!nome.trim()) { setErro("Nome obrigatorio."); return; }
+    if (!escolaId) { setErro("Selecione uma escola antes de adicionar bailarino."); return; }
+    setSalvando(true);
+    const isoDate = dateMaskToISO(dataNasc);
+    const { data, error } = await supabase
+      .from("bailarinos")
+      .insert({
+        nome: nome.trim(),
+        cpf: cpf.replace(/\D/g, ""),
+        data_nascimento: isoDate || null,
+        escola_id: escolaId,
+        termo_assinado: termoAssinado,
+      })
+      .select()
+      .single();
+    setSalvando(false);
+    if (error) { setErro(error.message); return; }
+    onSaved(data as Bailarino);
   }
 
-  function adicionarNovoBailarino() {
-    if (!novoBailarino.nome || !novoBailarino.cpf || !novoBailarino.data_nascimento) return;
-    if (elenco.find((b) => b.cpf === novoBailarino.cpf)) { setErroBailarino("CPF já adicionado."); return; }
-    setElenco((prev) => [...prev, { ...novoBailarino, ja_existe: false }]);
-    setNovoBailarino({ nome: "", cpf: "", data_nascimento: "" });
-    setBuscaCpf(""); setErroBailarino("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md mx-4 p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-base font-semibold text-white">Cadastrar Bailarino</h2>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-md text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+            aria-label="Fechar modal"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-neutral-400 mb-1" htmlFor="bail-nome">
+              Nome completo *
+            </label>
+            <input
+              id="bail-nome"
+              type="text"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+              placeholder="Nome do bailarino"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-400 mb-1" htmlFor="bail-cpf">
+              CPF
+            </label>
+            <input
+              id="bail-cpf"
+              type="text"
+              value={cpf}
+              onChange={(e) => setCpf(maskCPF(e.target.value))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+              placeholder="000.000.000-00"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-neutral-400 mb-1" htmlFor="bail-nasc">
+              Data de nascimento
+            </label>
+            <input
+              id="bail-nasc"
+              type="text"
+              value={dataNasc}
+              onChange={(e) => setDataNasc(maskDate(e.target.value))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+              placeholder="dd/mm/aaaa"
+            />
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={termoAssinado}
+              onChange={(e) => setTermoAssinado(e.target.checked)}
+              className="w-4 h-4 accent-axon-gold rounded"
+            />
+            <span className="text-sm text-neutral-300">Termo assinado</span>
+          </label>
+
+          {erro && (
+            <p className="flex items-center gap-2 text-xs text-red-400">
+              <AlertCircle size={14} /> {erro}
+            </p>
+          )}
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-sm text-neutral-400 hover:text-white hover:border-neutral-500 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={salvarBailarino}
+            disabled={salvando}
+            className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
+          >
+            {salvando && <Loader2 size={14} className="animate-spin" />}
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal Nova Inscricao ─────────────────────────────────────────────────────
+
+interface ModalInscricaoProps {
+  escolas: Escola[];
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function ModalInscricao({ escolas, onClose, onSaved }: ModalInscricaoProps) {
+  const supabase = createClient();
+
+  const [nome, setNome] = useState("");
+  const [escolaId, setEscolaId] = useState<string>("");
+  const [tipo, setTipo] = useState("solo");
+  const [qtdBailarinos, setQtdBailarinos] = useState(1);
+  const [valorTotal, setValorTotal] = useState("");
+  const [statusPagamento, setStatusPagamento] = useState<StatusPagamento>("pendente");
+
+  const [bailarinos, setBailarinos] = useState<Bailarino[]>([]);
+  const [bailarinosDaEscola, setBailarinos_escola] = useState<Bailarino[]>([]);
+  const [elencoSelecionado, setElencoSelecionado] = useState<string[]>([]);
+
+  const [modalBailarino, setModalBailarino] = useState(false);
+  const [carregandoBailarinos, setCarregandoBailarinos] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const carregarBailarinoBailarinos = useCallback(async (id: string) => {
+    setCarregandoBailarinos(true);
+    const { data } = await supabase
+      .from("bailarinos")
+      .select("*")
+      .eq("escola_id", id)
+      .order("nome");
+    setBailarinos_escola((data as Bailarino[]) ?? []);
+    setCarregandoBailarinos(false);
+  }, [supabase]);
+
+  useEffect(() => {
+    if (escolaId) carregarBailarinoBailarinos(escolaId);
+    else setBailarinos_escola([]);
+    setElencoSelecionado([]);
+  }, [escolaId, carregarBailarinoBailarinos]);
+
+  function toggleElenco(id: string) {
+    setElencoSelecionado((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   }
 
   async function salvar() {
-    if (!escolaSelecionada && !modoNovaEscola) return;
+    setErro(null);
+    if (!nome.trim()) { setErro("Nome da coreografia e obrigatorio."); return; }
     setSalvando(true);
-    try {
-      let escola_id = escolaSelecionada?.id ?? "";
 
-      // Cria escola se necessário
-      if (modoNovaEscola) {
-        const { data, error } = await supabase.from("escolas").insert(novaEscola).select("id").single();
-        if (error || !data) throw new Error("Erro ao criar escola");
-        escola_id = data.id;
-      }
+    const valor = parseFloat(valorTotal.replace(",", ".")) || 0;
 
-      // Cria coreografia
-      const { data: cor, error: corError } = await supabase.from("coreografias").insert({
-        escola_id, evento_id: eventoId,
-        nome: formCor.nome, categoria: categoriaSelecionada?.nome ?? "",
-        tipo: formCor.tipo, quantidade_bailarinos: formCor.quantidade_bailarinos,
-        valor_total: valorTotal, status_pagamento: statusPagamento,
-      }).select("id").single();
+    const { data: coreo, error: coreoErr } = await supabase
+      .from("coreografias")
+      .insert({
+        nome: nome.trim(),
+        escola_id: escolaId || null,
+        tipo,
+        quantidade_bailarinos: qtdBailarinos,
+        valor_total: valor,
+        status_pagamento: statusPagamento,
+      })
+      .select()
+      .single();
 
-      if (corError || !cor) throw new Error("Erro ao criar coreografia");
+    if (coreoErr) { setErro(coreoErr.message); setSalvando(false); return; }
 
-      // Cria bailarinos novos e monta elenco
-      const bailarinoIds: string[] = [];
-      for (const b of elenco) {
-        if (b.ja_existe && b.id) { bailarinoIds.push(b.id); continue; }
-        const { data: bd, error: be } = await supabase.from("bailarinos")
-          .insert({ nome: b.nome, cpf: b.cpf, data_nascimento: b.data_nascimento, escola_id })
-          .select("id").single();
-        if (be || !bd) throw new Error("Erro ao cadastrar bailarino");
-        bailarinoIds.push(bd.id);
-      }
-
-      // Insere elenco
-      if (bailarinoIds.length > 0) {
-        await supabase.from("coreografia_elenco").insert(bailarinoIds.map((id) => ({ coreografia_id: cor.id, bailarino_id: id })));
-      }
-
-      onSucesso();
-    } catch (e) {
-      console.error(e);
-      setSalvando(false);
+    if (elencoSelecionado.length > 0) {
+      const elencoRows = elencoSelecionado.map((bid) => ({
+        coreografia_id: coreo.id,
+        bailarino_id: bid,
+      }));
+      const { error: elencoErr } = await supabase
+        .from("coreografia_elenco")
+        .insert(elencoRows);
+      if (elencoErr) { setErro(elencoErr.message); setSalvando(false); return; }
     }
-  }
 
-  const etapas = ["Escola", "Coreografia", "Elenco", "Confirmação"];
+    setSalvando(false);
+    onSaved();
+  }
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/70 z-50" onClick={() => !salvando && onClose()} />
-      <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-        <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+      {modalBailarino && (
+        <ModalBailarino
+          escolaId={escolaId || null}
+          onClose={() => setModalBailarino(false)}
+          onSaved={(b) => {
+            setBailarinos_escola((prev) => [...prev, b]);
+            setModalBailarino(false);
+          }}
+        />
+      )}
 
+      <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-10 px-4">
+        <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-2xl shadow-2xl">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-axon-border shrink-0">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
+            <h2 className="text-base font-semibold text-white">Nova Inscricao</h2>
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+              aria-label="Fechar"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-5">
+            {/* Nome da coreografia */}
             <div>
-              <h3 className="text-lg font-semibold text-white">Nova Inscrição Manual</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Etapa {etapa} de 4 — {etapas[etapa - 1]}</p>
+              <label className="block text-xs text-neutral-400 mb-1" htmlFor="coreo-nome">
+                Nome da coreografia *
+              </label>
+              <input
+                id="coreo-nome"
+                type="text"
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+                placeholder="Ex: Alma Livre"
+              />
             </div>
-            {!salvando && <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors"><X size={20} /></button>}
-          </div>
 
-          {/* Progress */}
-          <div className="flex px-6 pt-4 gap-2 shrink-0">
-            {etapas.map((_, i) => (
-              <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i + 1 <= etapa ? "bg-axon-green" : "bg-axon-border"}`} />
-            ))}
-          </div>
+            {/* Escola */}
+            <div>
+              <label className="block text-xs text-neutral-400 mb-1" htmlFor="coreo-escola">
+                Escola
+              </label>
+              <select
+                id="coreo-escola"
+                value={escolaId}
+                onChange={(e) => setEscolaId(e.target.value)}
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors"
+              >
+                <option value="">Sem escola vinculada</option>
+                {escolas.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Conteúdo */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {/* Tipo e Qtd */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-neutral-400 mb-1" htmlFor="coreo-tipo">
+                  Tipo
+                </label>
+                <select
+                  id="coreo-tipo"
+                  value={tipo}
+                  onChange={(e) => setTipo(e.target.value)}
+                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors"
+                >
+                  <option value="solo">Solo</option>
+                  <option value="duo">Duo</option>
+                  <option value="conjunto">Conjunto</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-400 mb-1" htmlFor="coreo-qtd">
+                  Qtd. bailarinos
+                </label>
+                <input
+                  id="coreo-qtd"
+                  type="number"
+                  min={1}
+                  value={qtdBailarinos}
+                  onChange={(e) => setQtdBailarinos(Number(e.target.value))}
+                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors"
+                />
+              </div>
+            </div>
 
-            {/* ── ETAPA 1: ESCOLA ── */}
-            {etapa === 1 && (
-              <>
-                {!modoNovaEscola ? (
-                  <>
-                    <p className="text-sm text-gray-400">Busque a escola pelo nome ou cadastre uma nova.</p>
-                    <div className="relative">
-                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                      <input type="text" placeholder="Nome da escola..." value={buscaEscola}
-                        onChange={(e) => { setBuscaEscola(e.target.value); setEscolaSelecionada(null); }}
-                        className="w-full bg-axon-bg border border-axon-border rounded-md pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green transition-colors" />
-                    </div>
-                    {buscandoEscola && <div className="flex justify-center py-2"><Loader2 size={18} className="animate-spin text-gray-400" /></div>}
-                    {escolasEncontradas.length > 0 && !escolaSelecionada && (
-                      <div className="bg-axon-bg border border-axon-border rounded-lg overflow-hidden">
-                        {escolasEncontradas.map((e) => (
-                          <button key={e.id} onClick={() => { setEscolaSelecionada(e); setBuscaEscola(e.nome); setEscolasEncontradas([]); }}
-                            className="w-full text-left px-4 py-3 text-sm text-gray-200 hover:bg-white/5 transition-colors border-b border-axon-border last:border-0">
-                            <p className="font-medium">{e.nome}</p>
-                            <p className="text-xs text-gray-500">{e.responsavel ?? e.email}</p>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {escolaSelecionada && (
-                      <div className="bg-axon-green/10 border border-axon-green/20 rounded-lg px-4 py-3 flex items-center gap-3">
-                        <Building2 size={18} className="text-axon-green shrink-0" />
-                        <div>
-                          <p className="text-sm font-medium text-white">{escolaSelecionada.nome}</p>
-                          <p className="text-xs text-gray-400">{escolaSelecionada.responsavel ?? escolaSelecionada.email}</p>
-                        </div>
-                        <button onClick={() => { setEscolaSelecionada(null); setBuscaEscola(""); }} className="ml-auto text-gray-500 hover:text-white"><X size={16} /></button>
-                      </div>
-                    )}
-                    <button onClick={() => setModoNovaEscola(true)}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 border border-dashed border-axon-border rounded-lg text-sm text-gray-400 hover:text-white hover:border-axon-green/40 transition-colors">
-                      <Plus size={16} /> Cadastrar nova escola
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => setModoNovaEscola(false)} className="flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors mb-2">
-                      <ChevronLeft size={16} /> Voltar para busca
-                    </button>
-                    <p className="text-sm text-gray-400">Preencha os dados da nova escola.</p>
-                    {[
-                      { label: "Nome da Escola *", key: "nome", placeholder: "Ex: Studio Alpha Dança" },
-                      { label: "E-mail *", key: "email", placeholder: "contato@escola.com" },
-                      { label: "Responsável", key: "responsavel", placeholder: "Nome do responsável" },
-                    ].map((f) => (
-                      <div key={f.key} className="space-y-1.5">
-                        <label className="text-xs text-gray-400">{f.label}</label>
-                        <input type="text" placeholder={f.placeholder}
-                          value={novaEscola[f.key as keyof typeof novaEscola]}
-                          onChange={(e) => setNovaEscola((p) => ({ ...p, [f.key]: e.target.value }))}
-                          className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green transition-colors" />
-                      </div>
-                    ))}
-                  </>
-                )}
-              </>
-            )}
+            {/* Valor e Status */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-neutral-400 mb-1" htmlFor="coreo-valor">
+                  Valor total (R$)
+                </label>
+                <input
+                  id="coreo-valor"
+                  type="text"
+                  value={valorTotal}
+                  onChange={(e) => setValorTotal(e.target.value.replace(/[^0-9,\.]/g, ""))}
+                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+                  placeholder="0,00"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-400 mb-1" htmlFor="coreo-status">
+                  Status pagamento
+                </label>
+                <select
+                  id="coreo-status"
+                  value={statusPagamento}
+                  onChange={(e) => setStatusPagamento(e.target.value as StatusPagamento)}
+                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors"
+                >
+                  <option value="pendente">Pendente</option>
+                  <option value="pago">Pago</option>
+                </select>
+              </div>
+            </div>
 
-            {/* ── ETAPA 2: COREOGRAFIA ── */}
-            {etapa === 2 && (
-              <>
-                <p className="text-sm text-gray-400">Informe os dados da coreografia.</p>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-gray-400">Nome da Coreografia *</label>
-                  <input type="text" placeholder="Ex: O Despertar" value={formCor.nome}
-                    onChange={(e) => setFormCor((p) => ({ ...p, nome: e.target.value }))}
-                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green transition-colors" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-gray-400">Categoria *</label>
-                  <select value={categoriaSelecionada?.id ?? ""}
-                    onChange={(e) => setCategoriaSelecionada(categorias.find((c) => c.id === e.target.value) ?? null)}
-                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green transition-colors">
-                    <option value="">Selecione uma categoria...</option>
-                    {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                  </select>
-                  {categorias.length === 0 && <p className="text-xs text-yellow-500">Nenhuma categoria cadastrada neste evento.</p>}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-gray-400">Tipo *</label>
-                    <select value={formCor.tipo} onChange={(e) => setFormCor((p) => ({ ...p, tipo: e.target.value }))}
-                      className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green transition-colors">
-                      <option>Solo</option>
-                      <option>Duo</option>
-                      <option>Conjunto</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-gray-400">Nº de Bailarinos</label>
-                    <input type="number" min={1} value={formCor.quantidade_bailarinos}
-                      onChange={(e) => setFormCor((p) => ({ ...p, quantidade_bailarinos: Number(e.target.value) }))}
-                      className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green transition-colors" />
-                  </div>
-                </div>
-                {valorTotal > 0 && (
-                  <div className="bg-axon-green/10 border border-axon-green/20 rounded-lg px-4 py-3 flex items-center justify-between">
-                    <span className="text-sm text-gray-300">Valor calculado</span>
-                    <span className="text-lg font-bold text-axon-green">{formatarReais(valorTotal)}</span>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* ── ETAPA 3: ELENCO ── */}
-            {etapa === 3 && (
-              <>
-                <p className="text-sm text-gray-400">Adicione os bailarinos pelo CPF. Se não existir no banco, cadastre na hora.</p>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                    <input type="text" placeholder="Digite o CPF..." value={buscaCpf}
-                      onChange={(e) => { setBuscaCpf(e.target.value); setErroBailarino(""); }}
-                      onKeyDown={(e) => e.key === "Enter" && buscarBailarinoPorCpf()}
-                      className="w-full bg-axon-bg border border-axon-border rounded-md pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green transition-colors" />
-                  </div>
-                  <button onClick={buscarBailarinoPorCpf} disabled={buscandoBailarino}
-                    className="bg-axon-green/10 border border-axon-green/20 text-axon-green px-4 py-2.5 rounded-md text-sm hover:bg-axon-green/20 transition-colors disabled:opacity-50">
-                    {buscandoBailarino ? <Loader2 size={16} className="animate-spin" /> : "Buscar"}
+            {/* Elenco */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-neutral-400">
+                  Elenco{escolaId ? ` — ${bailarinosDaEscola.length} bailarinos` : ""}
+                </span>
+                {escolaId && (
+                  <button
+                    type="button"
+                    onClick={() => setModalBailarino(true)}
+                    className="flex items-center gap-1 text-xs text-axon-gold hover:opacity-80 transition-opacity"
+                  >
+                    <UserPlus size={13} />
+                    Cadastrar bailarino
                   </button>
+                )}
+              </div>
+
+              {!escolaId && (
+                <p className="text-xs text-neutral-600 bg-axon-bg border border-axon-border rounded-lg px-3 py-3">
+                  Selecione uma escola para escolher o elenco.
+                </p>
+              )}
+
+              {escolaId && carregandoBailarinos && (
+                <div className="flex items-center gap-2 text-xs text-neutral-500 py-3">
+                  <Loader2 size={13} className="animate-spin" /> Carregando bailarinos...
                 </div>
+              )}
 
-                {erroBailarino && (
-                  <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 space-y-3">
-                    <p className="text-xs text-yellow-400">{erroBailarino}</p>
-                    {erroBailarino.includes("Preencha") && (
-                      <div className="space-y-2">
-                        {[
-                          { label: "Nome completo *", key: "nome", type: "text", placeholder: "Nome do bailarino" },
-                          { label: "Data de nascimento *", key: "data_nascimento", type: "date", placeholder: "" },
-                        ].map((f) => (
-                          <input key={f.key} type={f.type} placeholder={f.placeholder}
-                            value={novoBailarino[f.key as keyof typeof novoBailarino]}
-                            onChange={(e) => setNovoBailarino((p) => ({ ...p, [f.key]: e.target.value }))}
-                            className="w-full bg-axon-bg border border-axon-border rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-green transition-colors" />
-                        ))}
-                        <button onClick={adicionarNovoBailarino}
-                          className="w-full flex items-center justify-center gap-2 bg-axon-green text-black font-semibold py-2 rounded-md text-sm hover:bg-axon-green/90 transition-colors">
-                          <UserPlus size={16} /> Cadastrar e Adicionar
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+              {escolaId && !carregandoBailarinos && bailarinosDaEscola.length === 0 && (
+                <p className="text-xs text-neutral-600 bg-axon-bg border border-axon-border rounded-lg px-3 py-3">
+                  Nenhum bailarino cadastrado para esta escola.
+                </p>
+              )}
 
-                {elenco.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{elenco.length} bailarino(s) adicionado(s)</p>
-                    {elenco.map((b, i) => (
-                      <div key={i} className="flex items-center gap-3 bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5">
-                        <div className="w-8 h-8 rounded-full bg-axon-border flex items-center justify-center text-xs font-bold text-gray-300 shrink-0">
-                          {b.nome.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-white font-medium truncate">{b.nome}</p>
-                          <p className="text-xs text-gray-500">{b.cpf} · {calcularIdade(b.data_nascimento)} anos {b.ja_existe ? "· já cadastrado" : "· novo"}</p>
-                        </div>
-                        <button onClick={() => setElenco((prev) => prev.filter((_, idx) => idx !== i))} className="text-gray-600 hover:text-red-400 transition-colors">
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* ── ETAPA 4: CONFIRMAÇÃO ── */}
-            {etapa === 4 && (
-              <>
-                <p className="text-sm text-gray-400">Revise os dados antes de salvar.</p>
-                <div className="bg-axon-bg border border-axon-border rounded-xl divide-y divide-axon-border overflow-hidden">
-                  {[
-                    { label: "Escola", value: escolaSelecionada?.nome ?? novaEscola.nome },
-                    { label: "Coreografia", value: formCor.nome },
-                    { label: "Categoria", value: `${categoriaSelecionada?.nome ?? "—"} · ${formCor.tipo}` },
-                    { label: "Bailarinos", value: `${elenco.length} no elenco` },
-                    { label: "Valor Total", value: formatarReais(valorTotal) },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center justify-between px-4 py-3">
-                      <span className="text-xs text-gray-500">{item.label}</span>
-                      <span className="text-sm text-white font-medium">{item.value}</span>
-                    </div>
+              {escolaId && !carregandoBailarinos && bailarinosDaEscola.length > 0 && (
+                <div className="bg-axon-bg border border-axon-border rounded-lg divide-y divide-axon-border max-h-48 overflow-y-auto">
+                  {bailarinosDaEscola.map((b) => (
+                    <label
+                      key={b.id}
+                      className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-white/3 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={elencoSelecionado.includes(b.id)}
+                        onChange={() => toggleElenco(b.id)}
+                        className="w-4 h-4 accent-axon-gold rounded"
+                      />
+                      <span className="text-sm text-white">{b.nome}</span>
+                      {b.cpf && (
+                        <span className="text-xs text-neutral-500 ml-auto tabular-nums">
+                          {b.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}
+                        </span>
+                      )}
+                    </label>
                   ))}
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-gray-400">Status do Pagamento</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {["pendente", "pago"].map((s) => (
-                      <button key={s} onClick={() => setStatusPagamento(s)}
-                        className={`py-2.5 rounded-lg text-sm font-medium border transition-colors capitalize ${statusPagamento === s ? (s === "pago" ? "bg-axon-green/10 border-axon-green text-axon-green" : "bg-yellow-500/10 border-yellow-500 text-yellow-400") : "bg-axon-bg border-axon-border text-gray-400 hover:text-white"}`}>
-                        {s === "pago" ? "✓ Pago" : "⏳ Pendente"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
+              )}
+            </div>
+
+            {erro && (
+              <p className="flex items-center gap-2 text-xs text-red-400">
+                <AlertCircle size={14} /> {erro}
+              </p>
             )}
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between p-6 border-t border-axon-border shrink-0">
-            <button onClick={() => etapa > 1 ? setEtapa((p) => p - 1) : onClose()}
-              disabled={salvando}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-50">
-              <ChevronLeft size={16} /> {etapa === 1 ? "Cancelar" : "Voltar"}
+          <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-sm text-neutral-400 hover:text-white hover:border-neutral-500 transition-colors"
+            >
+              Cancelar
             </button>
-            {etapa < 4 ? (
-              <button
-                onClick={() => setEtapa((p) => p + 1)}
-                disabled={
-                  (etapa === 1 && !escolaSelecionada && !(modoNovaEscola && novaEscola.nome && novaEscola.email)) ||
-                  (etapa === 2 && (!formCor.nome || !categoriaSelecionada))
-                }
-                className="flex items-center gap-2 bg-axon-green text-black font-semibold px-5 py-2.5 rounded-md text-sm hover:bg-axon-green/90 transition-colors disabled:opacity-40">
-                Próximo <ChevronRight size={16} />
-              </button>
-            ) : (
-              <button onClick={salvar} disabled={salvando}
-                className="flex items-center gap-2 bg-axon-green text-black font-semibold px-5 py-2.5 rounded-md text-sm hover:bg-axon-green/90 transition-colors disabled:opacity-50 min-w-[130px] justify-center">
-                {salvando ? <><Loader2 size={16} className="animate-spin" /> Salvando...</> : <><CheckCircle2 size={16} /> Confirmar</>}
-              </button>
-            )}
+            <button
+              onClick={salvar}
+              disabled={salvando}
+              className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
+            >
+              {salvando && <Loader2 size={14} className="animate-spin" />}
+              Confirmar inscricao
+            </button>
           </div>
         </div>
       </div>
@@ -431,242 +522,258 @@ function ModalNovaInscricao({ onClose, onSucesso, eventoId }: {
   );
 }
 
-// ─── Página Principal ─────────────────────────────────────────────────────────
+// ─── Pagina Principal ──────────────────────────────────────────────────────────
+
+const PER_PAGE = 15;
 
 export default function InscricoesPage() {
   const supabase = createClient();
 
-  const [abaAtiva, setAbaAtiva]             = useState("coreografias");
-  const [busca, setBusca]                   = useState("");
-  const [coreografias, setCoreografias]     = useState<Coreografia[]>([]);
-  const [bailarinos, setBailarinos]         = useState<Bailarino[]>([]);
-  const [kpis, setKpis]                     = useState<KPIs>({ total_coreografias: 0, bailarinos_unicos: 0, receita_confirmada: 0 });
-  const [loading, setLoading]               = useState(true);
-  const [pagina, setPagina]                 = useState(1);
-  const [totalRegistros, setTotalRegistros] = useState(0);
-  const [modalAberto, setModalAberto]       = useState(false);
-  const [eventoAtivo, setEventoAtivo]       = useState<string | null>(null);
-  const POR_PAGINA = 20;
+  const [coreografias, setCoreografias] = useState<Coreografia[]>([]);
+  const [escolas, setEscolas] = useState<Escola[]>([]);
+  const [totalCoreografias, setTotalCoreografias] = useState(0);
+  const [totalBailarinos, setTotalBailarinos] = useState(0);
+  const [totalPago, setTotalPago] = useState(0);
+  const [totalPendente, setTotalPendente] = useState(0);
 
-  // Pega evento ativo (mais recente com inscrições abertas)
-  useEffect(() => {
-    supabase.from("eventos").select("id").eq("status", "inscricoes_abertas").order("data_inicio", { ascending: false }).limit(1).maybeSingle()
-      .then(({ data }) => setEventoAtivo(data?.id ?? null));
-  }, [supabase]);
+  const [busca, setBusca] = useState("");
+  const [pagina, setPagina] = useState(1);
+  const [totalPaginas, setTotalPaginas] = useState(1);
+  const [carregando, setCarregando] = useState(true);
+  const [modalAberto, setModalAberto] = useState(false);
 
-  const carregarKpis = useCallback(async () => {
-    const [{ count: totalCor }, { count: totalBail }, { data: receita }] = await Promise.all([
-      supabase.from("coreografias").select("*", { count: "exact", head: true }),
-      supabase.from("bailarinos").select("*", { count: "exact", head: true }),
-      supabase.from("coreografias").select("valor_total").eq("status_pagamento", "pago"),
-    ]);
-    setKpis({
-      total_coreografias: totalCor ?? 0,
-      bailarinos_unicos: totalBail ?? 0,
-      receita_confirmada: (receita ?? []).reduce((acc, c) => acc + (c.valor_total ?? 0), 0),
-    });
-  }, [supabase]);
+  const carregarDados = useCallback(async () => {
+    setCarregando(true);
 
-  const carregarCoreografias = useCallback(async () => {
-    setLoading(true);
-    let query = supabase.from("coreografias")
-      .select("id, nome, categoria, tipo, quantidade_bailarinos, valor_total, status_pagamento, escolas(nome)", { count: "exact" })
+    const from = (pagina - 1) * PER_PAGE;
+    const to = from + PER_PAGE - 1;
+
+    let query = supabase
+      .from("coreografias")
+      .select("*, escolas(nome)", { count: "exact" })
       .order("created_at", { ascending: false })
-      .range((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA - 1);
-    if (busca.trim()) query = query.or(`nome.ilike.%${busca}%,categoria.ilike.%${busca}%`);
-    const { data, count } = await query;
-    setCoreografias((data as unknown as Coreografia[]) ?? []);
-    setTotalRegistros(count ?? 0);
-    setLoading(false);
-  }, [supabase, pagina, busca]);
+      .range(from, to);
 
-  const carregarBailarinos = useCallback(async () => {
-    setLoading(true);
-    let query = supabase.from("bailarinos")
-      .select("id, nome, data_nascimento, cpf, termo_assinado, escolas(nome)", { count: "exact" })
-      .order("nome", { ascending: true })
-      .range((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA - 1);
-    if (busca.trim()) query = query.or(`nome.ilike.%${busca}%,cpf.ilike.%${busca}%`);
-    const { data, count } = await query;
-    const ids = (data ?? []).map((b: { id: string }) => b.id);
-    const { data: elenco } = await supabase.from("coreografia_elenco").select("bailarino_id").in("bailarino_id", ids);
-    const contagem: Record<string, number> = {};
-    (elenco ?? []).forEach((e: { bailarino_id: string }) => { contagem[e.bailarino_id] = (contagem[e.bailarino_id] ?? 0) + 1; });
-    setBailarinos(((data ?? []) as { id: string }[]).map((b) => ({ ...(b as object), inscricoes_count: contagem[b.id] ?? 0 })) as Bailarino[]);
-    setTotalRegistros(count ?? 0);
-    setLoading(false);
-  }, [supabase, pagina, busca]);
+    if (busca.trim()) {
+      query = query.ilike("nome", `%${busca.trim()}%`);
+    }
 
-  useEffect(() => { void carregarKpis(); }, [carregarKpis]);
-  useEffect(() => { setPagina(1); }, [busca, abaAtiva]);
-  useEffect(() => {
-    if (abaAtiva === "coreografias") void carregarCoreografias();
-    else void carregarBailarinos();
-  }, [abaAtiva, pagina, busca, carregarCoreografias, carregarBailarinos]);
+    const { data, count, error } = await query;
+    if (!error) {
+      setCoreografias((data as Coreografia[]) ?? []);
+      const total = count ?? 0;
+      setTotalPaginas(Math.max(1, Math.ceil(total / PER_PAGE)));
+    }
 
-  const totalPaginas = Math.ceil(totalRegistros / POR_PAGINA);
-  const inicio = totalRegistros === 0 ? 0 : (pagina - 1) * POR_PAGINA + 1;
-  const fim = Math.min(pagina * POR_PAGINA, totalRegistros);
+    // KPIs
+    const [{ count: totalCoreo }, { count: totalBail }, { data: pagos }, { data: pendentes }] =
+      await Promise.all([
+        supabase.from("coreografias").select("id", { count: "exact", head: true }),
+        supabase.from("bailarinos").select("id", { count: "exact", head: true }),
+        supabase.from("coreografias").select("valor_total").eq("status_pagamento", "pago"),
+        supabase.from("coreografias").select("valor_total").eq("status_pagamento", "pendente"),
+      ]);
+
+    setTotalCoreografias(totalCoreo ?? 0);
+    setTotalBailarinos(totalBail ?? 0);
+    setTotalPago((pagos ?? []).reduce((acc: number, c: { valor_total: number }) => acc + (c.valor_total ?? 0), 0));
+    setTotalPendente((pendentes ?? []).reduce((acc: number, c: { valor_total: number }) => acc + (c.valor_total ?? 0), 0));
+
+    setCarregando(false);
+  }, [supabase, busca, pagina]);
+
+  const carregarEscolas = useCallback(async () => {
+    const { data } = await supabase.from("escolas").select("*").order("nome");
+    setEscolas((data as Escola[]) ?? []);
+  }, [supabase]);
+
+  useEffect(() => { carregarDados(); }, [carregarDados]);
+  useEffect(() => { carregarEscolas(); }, [carregarEscolas]);
+
+  // Reset pagina quando busca muda
+  useEffect(() => { setPagina(1); }, [busca]);
+
+  function formatMoeda(value: number): string {
+    return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
-
+    <AdminShell>
       {modalAberto && (
-        <ModalNovaInscricao
-          eventoId={eventoAtivo}
+        <ModalInscricao
+          escolas={escolas}
           onClose={() => setModalAberto(false)}
-          onSucesso={() => { setModalAberto(false); void carregarKpis(); void carregarCoreografias(); }}
+          onSaved={() => {
+            setModalAberto(false);
+            carregarDados();
+          }}
         />
       )}
 
-      {/* CABEÇALHO */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Inscrições & Elenco</h1>
-          <p className="text-gray-400 mt-1">Gestão de coreografias, bailarinos e status financeiro.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="bg-axon-panel border border-axon-border text-white px-4 py-2 rounded-md font-medium hover:bg-white/5 transition-colors">
-            Exportar Excel
-          </button>
-          <button onClick={() => setModalAberto(true)}
-            className="bg-axon-green text-black px-4 py-2 rounded-md font-medium hover:bg-[#00c866] transition-colors flex items-center gap-2">
-            <Plus size={18} /> Nova Inscrição Manual
-          </button>
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[
-          { label: "Total de Coreografias", value: kpis.total_coreografias, icon: Music, cor: "text-blue-500 bg-blue-500/10" },
-          { label: "Bailarinos Únicos", value: kpis.bailarinos_unicos, icon: Users, cor: "text-purple-400 bg-purple-500/10" },
-          { label: "Receita Confirmada", value: formatarReais(kpis.receita_confirmada), icon: DollarSign, cor: "text-axon-green bg-axon-green/10" },
-        ].map((k) => (
-          <div key={k.label} className="bg-axon-panel border border-axon-border rounded-xl p-5 flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${k.cor}`}>
-              <k.icon size={24} />
-            </div>
-            <div>
-              <p className="text-sm text-gray-400">{k.label}</p>
-              <p className="text-2xl font-bold text-white">{k.value}</p>
-            </div>
+      <div className="p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-white">Inscricoes e Elenco</h1>
+            <p className="text-sm text-neutral-500 mt-0.5">
+              Gerencie coreografias e bailarinos inscritos
+            </p>
           </div>
-        ))}
-      </div>
+          <button
+            onClick={() => setModalAberto(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-axon-gold text-black text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
+          >
+            <Plus size={16} />
+            Nova Inscricao
+          </button>
+        </div>
 
-      {/* TABELAS */}
-      <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
-        <div className="flex border-b border-axon-border px-4">
-          {[{ key: "coreografias", label: "Coreografias Inscritas", icon: Music }, { key: "elenco", label: "Banco de Elenco", icon: Users }].map((aba) => (
-            <button key={aba.key} onClick={() => setAbaAtiva(aba.key)}
-              className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors ${abaAtiva === aba.key ? "border-axon-green text-axon-green" : "border-transparent text-gray-400 hover:text-white"}`}>
-              <aba.icon size={18} /> {aba.label}
-            </button>
+        {/* KPIs */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { label: "Coreografias", value: totalCoreografias.toString() },
+            { label: "Bailarinos", value: totalBailarinos.toString() },
+            { label: "Total pago", value: formatMoeda(totalPago), destaque: "green" },
+            { label: "A receber", value: formatMoeda(totalPendente), destaque: "gold" },
+          ].map((kpi) => (
+            <div
+              key={kpi.label}
+              className="bg-axon-panel border border-axon-border rounded-xl p-4"
+            >
+              <p className="text-xs text-neutral-500 mb-1">{kpi.label}</p>
+              <p
+                className={
+                  kpi.destaque === "green"
+                    ? "text-lg font-semibold text-axon-green tabular-nums"
+                    : kpi.destaque === "gold"
+                    ? "text-lg font-semibold text-axon-gold tabular-nums"
+                    : "text-lg font-semibold text-white tabular-nums"
+                }
+              >
+                {kpi.value}
+              </p>
+            </div>
           ))}
         </div>
 
-        <div className="p-4 border-b border-axon-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="relative w-full sm:w-96">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-            <input type="text" value={busca} onChange={(e) => setBusca(e.target.value)}
-              placeholder={abaAtiva === "coreografias" ? "Buscar por coreografia ou categoria..." : "Buscar por nome ou CPF..."}
-              className="w-full bg-axon-bg border border-axon-border rounded-md pl-10 pr-10 py-2 text-sm text-white focus:outline-none focus:border-axon-green transition-colors" />
-            {busca && <button onClick={() => setBusca("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"><X size={16} /></button>}
-          </div>
-          <button className="flex items-center justify-center gap-2 px-4 py-2 bg-axon-bg border border-axon-border rounded-md text-sm text-gray-300 hover:text-white transition-colors">
-            <Filter size={16} /> Filtros Avançados
-          </button>
+        {/* Busca */}
+        <div className="relative max-w-sm">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por nome..."
+            className="w-full bg-axon-panel border border-axon-border rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
+          />
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center h-48"><Loader2 size={28} className="animate-spin text-axon-gold" /></div>
-        ) : (
-          <>
-            {abaAtiva === "coreografias" && (
-              <div className="overflow-x-auto">
-                {coreografias.length === 0 ? (
-                  <div className="text-center py-16 text-gray-500"><Music size={40} className="mx-auto mb-3 opacity-20" /><p>Nenhuma coreografia encontrada.</p></div>
-                ) : (
-                  <table className="w-full text-left text-sm whitespace-nowrap">
-                    <thead className="bg-axon-bg/50 text-gray-400 border-b border-axon-border">
-                      <tr>
-                        {["Escola / Grupo", "Coreografia", "Categoria", "Pax", "Valor", "Status", "Ações"].map((h, i) => (
-                          <th key={h} className={`px-6 py-4 font-medium ${i === 3 || i === 6 ? "text-center" : ""} ${i === 6 ? "text-right" : ""}`}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-axon-border">
-                      {coreografias.map((item) => (
-                        <tr key={item.id} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="px-6 py-4 text-white font-medium">{item.escolas?.nome ?? "—"}</td>
-                          <td className="px-6 py-4 text-gray-300">{item.nome}</td>
-                          <td className="px-6 py-4 text-gray-400">{item.categoria}<span className="text-xs text-gray-500 block">{item.tipo}</span></td>
-                          <td className="px-6 py-4 text-center text-gray-300">{item.quantidade_bailarinos ?? "—"}</td>
-                          <td className="px-6 py-4 text-gray-300">{item.valor_total != null ? formatarReais(item.valor_total) : "—"}</td>
-                          <td className="px-6 py-4">
-                            {item.status_pagamento === "pago" ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-axon-green bg-axon-green/10 border border-axon-green/20"><CheckCircle2 size={12} /> Pago</span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-yellow-500 bg-yellow-500/10 border border-yellow-500/20"><Clock size={12} /> {item.status_pagamento ?? "Pendente"}</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-right"><button className="text-gray-500 hover:text-white transition-colors p-1"><MoreHorizontal size={18} /></button></td>
-                        </tr>
+        {/* Tabela */}
+        <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-axon-border">
+                  <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
+                    Coreografia
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
+                    Escola
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
+                    Tipo
+                  </th>
+                  <th className="text-right px-4 py-3 text-xs text-neutral-500 font-medium tabular-nums">
+                    Bailarinos
+                  </th>
+                  <th className="text-right px-4 py-3 text-xs text-neutral-500 font-medium tabular-nums">
+                    Valor
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {carregando ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i} className="border-b border-axon-border/50">
+                      {Array.from({ length: 6 }).map((_, j) => (
+                        <td key={j} className="px-4 py-3">
+                          <div className="h-4 bg-white/5 rounded animate-pulse" />
+                        </td>
                       ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
-
-            {abaAtiva === "elenco" && (
-              <div className="overflow-x-auto">
-                {bailarinos.length === 0 ? (
-                  <div className="text-center py-16 text-gray-500"><Users size={40} className="mx-auto mb-3 opacity-20" /><p>Nenhum bailarino encontrado.</p></div>
+                    </tr>
+                  ))
+                ) : coreografias.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center text-neutral-600 text-sm">
+                      Nenhuma inscricao encontrada.
+                    </td>
+                  </tr>
                 ) : (
-                  <table className="w-full text-left text-sm whitespace-nowrap">
-                    <thead className="bg-axon-bg/50 text-gray-400 border-b border-axon-border">
-                      <tr>
-                        {["Nome do Bailarino", "Escola Vinculada", "Idade", "CPF", "Coreografias", "Termo", "Ações"].map((h, i) => (
-                          <th key={h} className={`px-6 py-4 font-medium ${[2, 4, 5, 6].includes(i) ? "text-center" : ""} ${i === 6 ? "text-right" : ""}`}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-axon-border">
-                      {bailarinos.map((item) => (
-                        <tr key={item.id} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="px-6 py-4 text-white font-medium">{item.nome}</td>
-                          <td className="px-6 py-4 text-gray-300">{item.escolas?.nome ?? "—"}</td>
-                          <td className="px-6 py-4 text-center text-gray-300">{calcularIdade(item.data_nascimento)} anos</td>
-                          <td className="px-6 py-4 text-gray-400">{item.cpf ?? "—"}</td>
-                          <td className="px-6 py-4 text-center"><span className="bg-white/5 text-gray-300 px-2.5 py-1 rounded-md text-xs font-medium">{item.inscricoes_count ?? 0}</span></td>
-                          <td className="px-6 py-4 text-center">
-                            {item.termo_assinado
-                              ? <span className="inline-flex items-center gap-1 text-xs text-axon-green"><CheckCircle2 size={14} /> Assinado</span>
-                              : <span className="inline-flex items-center gap-1 text-xs text-yellow-500"><Clock size={14} /> Pendente</span>}
-                          </td>
-                          <td className="px-6 py-4 text-right"><button className="text-gray-500 hover:text-white transition-colors p-1"><MoreHorizontal size={18} /></button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  coreografias.map((c) => (
+                    <tr
+                      key={c.id}
+                      className="border-b border-axon-border/50 hover:bg-white/2 transition-colors"
+                    >
+                      <td className="px-4 py-3 text-white font-medium">{c.nome}</td>
+                      <td className="px-4 py-3 text-neutral-400">
+                        {c.escolas?.nome ?? <span className="text-neutral-600 italic">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-neutral-400 capitalize">{c.tipo}</td>
+                      <td className="px-4 py-3 text-right text-neutral-400 tabular-nums">
+                        {c.quantidade_bailarinos}
+                      </td>
+                      <td className="px-4 py-3 text-right text-neutral-300 tabular-nums">
+                        {formatMoeda(c.valor_total ?? 0)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={
+                            c.status_pagamento === "pago"
+                              ? "inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-axon-green-dim text-axon-green"
+                              : "inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-axon-gold-dim text-axon-gold"
+                          }
+                        >
+                          {c.status_pagamento === "pago" ? "Pago" : "Pendente"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
                 )}
-              </div>
-            )}
-          </>
-        )}
-
-        <div className="p-4 border-t border-axon-border flex items-center justify-between text-sm text-gray-400">
-          <span>{totalRegistros === 0 ? "Nenhum registro" : `Mostrando ${inicio} a ${fim} de ${totalRegistros} registros`}</span>
-          <div className="flex gap-2">
-            <button onClick={() => setPagina((p) => Math.max(1, p - 1))} disabled={pagina === 1}
-              className="px-3 py-1 border border-axon-border rounded hover:bg-white/5 disabled:opacity-30 transition-colors">Anterior</button>
-            <button onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))} disabled={pagina >= totalPaginas}
-              className="px-3 py-1 border border-axon-border rounded hover:bg-white/5 disabled:opacity-30 transition-colors">Próxima</button>
+              </tbody>
+            </table>
           </div>
+
+          {/* Paginacao */}
+          {totalPaginas > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-axon-border">
+              <span className="text-xs text-neutral-500">
+                Pagina {pagina} de {totalPaginas}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPagina((p) => Math.max(1, p - 1))}
+                  disabled={pagina === 1}
+                  className="p-1.5 rounded-md border border-axon-border text-neutral-400 hover:text-white hover:border-neutral-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Pagina anterior"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <button
+                  onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+                  disabled={pagina === totalPaginas}
+                  className="p-1.5 rounded-md border border-axon-border text-neutral-400 hover:text-white hover:border-neutral-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Proxima pagina"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </AdminShell>
   );
 }
