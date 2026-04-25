@@ -129,8 +129,8 @@ function ModalCadastrarGrupo({ termo, onClose, onSaved }: ModalCadastrarGrupoPro
 
     if (escolaErr) { setErro(escolaErr.message); setSalvando(false); return; }
 
-    // 2. Chama a Edge Function para disparar o convite e criar o usuario
-    const { error: fnErr } = await supabase.functions.invoke("bright-handler", {
+    // 2. Criar usuário admin da escola via API de invite
+    const { error: userError } = await supabase.functions.invoke("bright-handler", {
       body: {
         email: email.trim(),
         escola_id: escola.id,
@@ -138,11 +138,25 @@ function ModalCadastrarGrupo({ termo, onClose, onSaved }: ModalCadastrarGrupoPro
       },
     });
 
-    setSalvando(false);
+    if (userError) {
+      // Tentar criar usuário diretamente via API
+      const inviteRes = await fetch("/api/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          role: "escola_admin",
+          action: "invite",
+          inviterRole: "admin" // Assumindo que quem cadastra é admin
+        }),
+      });
 
-    if (fnErr) {
-      // Escola ja foi criada — avisa mas nao bloqueia
-      setErro(`${termo.grupo} cadastrado, mas o convite nao foi enviado: ${fnErr.message}. Copie o link manualmente.`);
+      if (!inviteRes.ok) {
+        const inviteData = await inviteRes.json();
+        setErro(`${termo.grupo} cadastrado, mas erro ao criar usuário: ${inviteData.error || "Erro desconhecido"}`);
+        setSalvando(false);
+        return;
+      }
     }
 
     setEscolaSalva(escola as Escola);

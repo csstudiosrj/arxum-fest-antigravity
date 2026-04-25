@@ -27,12 +27,14 @@ const CARGOS: Record<string, { label: string; descricao: string; cor: string }> 
   produtor:    { label: "Produtor",    descricao: "PDV, Loja, Inscrições e Dashboard",              cor: "text-blue-400 bg-blue-400/10 border-blue-400/30" },
   marketing:   { label: "Marketing",  descricao: "Marketing, Dashboard e Inscrições (sem valores)",cor: "text-pink-400 bg-pink-400/10 border-pink-400/30" },
   assistente:  { label: "Assistente", descricao: "Inscrições & Elenco e Mídias & Áudio",           cor: "text-green-400 bg-green-400/10 border-green-400/30" },
+  escola_admin: { label: "Escola Admin", descricao: "Administração da escola (elenco, inscrições)", cor: "text-orange-400 bg-orange-400/10 border-orange-400/30" },
+  coreografo:  { label: "Coreógrafo",  descricao: "Gestão artística da escola",                     cor: "text-cyan-400 bg-cyan-400/10 border-cyan-400/30" },
 };
 
 const HIERARQUIA: Record<string, string[]> = {
-  super_admin: ["super_admin", "admin", "produtor", "marketing", "assistente"],
-  admin:       ["produtor", "marketing", "assistente"],
-  produtor:    [], marketing: [], assistente: [],
+  super_admin: ["super_admin", "admin", "produtor", "marketing", "assistente", "escola_admin", "coreografo"],
+  admin:       ["produtor", "marketing", "assistente", "escola_admin", "coreografo"],
+  produtor:    [], marketing: [], assistente: [], escola_admin: [], coreografo: [],
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

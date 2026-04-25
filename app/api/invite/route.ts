@@ -2,9 +2,9 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
 const HIERARQUIA: Record<string, string[]> = {
-  super_admin: ["super_admin", "admin", "produtor", "marketing", "assistente"],
-  admin:       ["produtor", "marketing", "assistente"],
-  produtor:    [], marketing: [], assistente: [],
+  super_admin: ["super_admin", "admin", "produtor", "marketing", "assistente", "escola_admin", "coreografo"],
+  admin:       ["produtor", "marketing", "assistente", "escola_admin", "coreografo"],
+  produtor:    [], marketing: [], assistente: [], escola_admin: [], coreografo: [],
 };
 
 export async function POST(req: NextRequest) {
