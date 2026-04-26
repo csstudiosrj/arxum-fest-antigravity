@@ -70,19 +70,6 @@ export default function ConvitePage() {
 
       if (authError) throw authError;
 
-      // Criar usuário na tabela usuarios com role escola_admin
-      const { error: userError } = await supabase
-        .from("usuarios")
-        .insert({
-          id: authData.user?.id,
-          email: escola.email,
-          role: "escola_admin",
-          nome: escola.responsavel || null,
-          telefone: escola.telefone || null,
-        });
-
-      if (userError) throw userError;
-
       setSucesso(true);
 
       // Redirecionar após 2 segundos

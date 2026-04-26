@@ -99,18 +99,6 @@ export default function EscolaLoginPage() {
 
         if (escolaError) throw escolaError;
 
-        // Inserir usuário
-        const { error: userError } = await supabase
-          .from("usuarios")
-          .insert({
-            email: email.trim(),
-            nome: nome.trim(),
-            role: 'escola_admin',
-            escola_id: escolaData.id,
-          });
-
-        if (userError) throw userError;
-
         setError("Cadastro realizado com sucesso! Verifique seu email para confirmar a conta.");
       }
     } catch (err) {
