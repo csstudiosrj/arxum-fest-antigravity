@@ -76,9 +76,28 @@ export default function EscolaLoginPage() {
     }
 
     try {
+      const emailValue = email.trim();
+      const nomeEscolaValue = nomeEscola.trim();
+      const responsavelValue = responsavel.trim();
+      const telefoneValue = telefone.trim();
+
+      // Verificar se já existe escola com esse e-mail para evitar conflito
+      const { data: existingEscola, error: existingError } = await supabase
+        .from("escolas")
+        .select("id")
+        .eq("email", emailValue)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+      if (existingEscola) {
+        setError("Já existe uma escola cadastrada com esse email.");
+        setLoading(false);
+        return;
+      }
+
       // Criar usuário no auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: emailValue,
         password: password,
       });
 
@@ -89,13 +108,13 @@ export default function EscolaLoginPage() {
         const { data: escolaData, error: escolaError } = await supabase
           .from("escolas")
           .insert({
-            nome: nomeEscola.trim(),
-            responsavel: responsavel.trim(),
-            telefone: telefone.trim(),
-            email: email.trim(),
+            nome: nomeEscolaValue,
+            responsavel: responsavelValue,
+            telefone: telefoneValue,
+            email: emailValue,
           })
           .select()
-          .single();
+          .maybeSingle();
 
         if (escolaError) throw escolaError;
 
