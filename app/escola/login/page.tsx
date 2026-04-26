@@ -99,6 +99,9 @@ export default function EscolaLoginPage() {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: emailValue,
         password: password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/escola/login`,
+        },
       });
 
       if (authError) throw authError;

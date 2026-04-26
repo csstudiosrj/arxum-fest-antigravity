@@ -66,6 +66,9 @@ export default function ConvitePage() {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: escola.email,
         password: senha,
+        options: {
+          emailRedirectTo: `${window.location.origin}/escola/login`,
+        },
       });
 
       if (authError) throw authError;
