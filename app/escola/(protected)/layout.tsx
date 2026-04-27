@@ -14,8 +14,8 @@ export default async function EscolaProtectedLayout({
 }) {
   const role = await getUserRole();
 
-  if (!role) redirect("/login");
-  if (role !== "escola_admin" && role !== "coreografo") redirect("/login");
+ if (!role) redirect("/escola/login");
+if (role !== "escola_admin" && role !== "coreografo") redirect("/escola/login");
 
   return <EscolaShell>{children}</EscolaShell>;
 }
