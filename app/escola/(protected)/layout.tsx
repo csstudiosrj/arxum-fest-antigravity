@@ -1,12 +1,9 @@
-import { redirect } from "next/navigation";
-import { getUserRole } from "@/lib/supabase/server";
-import EscolaShell from "@/app/escola/_components/EscolaShell";
+import type { Metadata } from "next";
 
-export default async function EscolaProtectedLayout({ children }: { children: React.ReactNode }) {
-  const role = await getUserRole();
+export const metadata: Metadata = {
+  title: "AXON Fest — Portal da Escola",
+};
 
-  if (!role) redirect("/escola/login");
-  if (role !== "escola_admin" && role !== "coreografo") redirect("/escola/login");
-
-  return <EscolaShell>{children}</EscolaShell>;
+export default function EscolaProtectedLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }

@@ -1,41 +1,80 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   Users, ClipboardList, ShoppingBag, Music,
   ChevronDown, LogOut, User, Settings,
-  GraduationCap, LayoutDashboard,
+  GraduationCap, LayoutDashboard, Loader2,
 } from "lucide-react";
 
 const navLinks = [
-  { name: "Início",           href: "/escola/dashboard",         icon: LayoutDashboard },
-  { name: "Banco de Elenco",  href: "/escola/elenco",            icon: Users },
-  { name: "Inscrições",       href: "/escola/inscricoes-escola",  icon: ClipboardList },
-  { name: "Músicas",          href: "/escola/musicas",           icon: Music },
-  { name: "Loja",             href: "/escola/loja-escola",       icon: ShoppingBag },
+  { name: "Início",          href: "/escola/dashboard",        icon: LayoutDashboard },
+  { name: "Banco de Elenco", href: "/escola/elenco",           icon: Users },
+  { name: "Inscrições",      href: "/escola/inscricoes-escola", icon: ClipboardList },
+  { name: "Músicas",         href: "/escola/musicas",          icon: Music },
+  { name: "Loja",            href: "/escola/loja-escola",      icon: ShoppingBag },
 ];
 
 export default function EscolaShell({ children }: { children: React.ReactNode }) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
   const pathname = usePathname();
   const router = useRouter();
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        router.push("/escola/login");
+        return;
+      }
+
+      const { data: userData } = await supabase
+        .from("usuarios")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+      if (!userData || (userData.role !== "escola_admin" && userData.role !== "coreografo")) {
+        await supabase.auth.signOut();
+        router.push("/escola/login");
+        return;
+      }
+
+      setUserEmail(session.user.email || "");
+      setAuthorized(true);
+      setLoading(false);
+    };
+
+    checkUser();
+  }, [router]);
 
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
-    window.location.href = "/escola/login";
+    router.push("/escola/login");
   };
+
+  if (loading) {
+    return (
+      <div className="h-screen w-full bg-axon-bg flex items-center justify-center">
+        <Loader2 className="animate-spin text-axon-green" size={40} />
+      </div>
+    );
+  }
+
+  if (!authorized) return null;
 
   return (
     <div className="min-h-screen bg-axon-bg text-white flex flex-col">
-
-      {/* Topbar */}
       <header className="h-16 bg-axon-panel border-b border-axon-border flex items-center justify-between px-6 sticky top-0 z-20">
-
-        {/* Logo + Nav */}
         <div className="flex items-center gap-8">
           <div className="flex items-center gap-2.5 shrink-0">
             <div className="w-7 h-7 rounded-lg bg-axon-green-dim flex items-center justify-center">
@@ -68,15 +107,13 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
           </nav>
         </div>
 
-        {/* User menu */}
         <div className="relative">
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
             className="flex items-center gap-2.5 hover:bg-white/5 px-2 py-1.5 rounded-xl transition-colors border border-transparent hover:border-axon-border"
-            aria-expanded={isUserMenuOpen}
           >
             <div className="w-8 h-8 rounded-full bg-axon-green-dim border border-axon-green/20 flex items-center justify-center text-axon-green font-bold text-xs">
-              EC
+              {userEmail.substring(0, 2).toUpperCase()}
             </div>
             <div className="text-left hidden sm:block">
               <div className="text-sm font-medium text-white leading-tight">Minha Escola</div>
@@ -119,7 +156,6 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
         </div>
       </header>
 
-      {/* Conteúdo */}
       <div className="flex-1 p-8">{children}</div>
     </div>
   );
