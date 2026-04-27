@@ -1,10 +1,413 @@
-export default function EscolaDashboardPage() {
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import {
+  Music2,
+  Users,
+  Upload,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  FileMusic,
+  TrendingUp,
+} from 'lucide-react'
+
+interface Stats {
+  coreografias: number
+  bailarinos: number
+  musicasEnviadas: number
+  pagamentosPendentes: number
+  pagamentosConfirmados: number
+  valorPendente: number
+  valorPago: number
+}
+
+interface Coreografia {
+  id: string
+  nome: string
+  tipo: string
+  categoria: string
+  status_pagamento: string
+  valor_total: number | null
+  arquivo_audio: string | null
+  created_at: string
+}
+
+const INITIAL_STATS: Stats = {
+  coreografias: 0,
+  bailarinos: 0,
+  musicasEnviadas: 0,
+  pagamentosPendentes: 0,
+  pagamentosConfirmados: 0,
+  valorPendente: 0,
+  valorPago: 0,
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(value)
+}
+
+function formatDate(dateStr: string): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(dateStr))
+}
+
+function SkeletonCard() {
   return (
-    <div className="flex flex-col gap-2">
-      <h1 className="text-2xl font-bold text-white">Portal da Escola</h1>
-      <p className="text-gray-400 text-sm">
-        Bem-vinda ao painel. Use o menu acima para navegar.
-      </p>
+    <div className="rounded-xl border border-axon-border bg-axon-panel p-5 animate-pulse">
+      <div className="flex items-start justify-between">
+        <div className="h-4 w-32 rounded bg-white/10" />
+        <div className="h-4 w-4 rounded bg-white/10" />
+      </div>
+      <div className="mt-3 h-8 w-20 rounded bg-white/10" />
+      <div className="mt-2 h-3 w-36 rounded bg-white/10" />
     </div>
-  );
+  )
+}
+
+function KpiCard({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
+  accent = 'default',
+}: {
+  title: string
+  value: string | number
+  subtitle: string
+  icon: React.ElementType
+  accent?: 'gold' | 'green' | 'red' | 'default'
+}) {
+  const valueClass: Record<string, string> = {
+    gold: 'text-axon-gold',
+    green: 'text-[var(--color-axon-green)]',
+    red: 'text-red-400',
+    default: 'text-white',
+  }
+  return (
+    <div className="rounded-xl border border-axon-border bg-axon-panel p-5">
+      <div className="flex items-start justify-between">
+        <span className="text-sm text-white/50">{title}</span>
+        <Icon size={18} className="text-white/25" />
+      </div>
+      <div className={`mt-2 text-3xl font-bold ${valueClass[accent]}`}>{value}</div>
+      <div className="mt-1 text-xs text-white/40">{subtitle}</div>
+    </div>
+  )
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const isPago = status === 'pago'
+  return (
+    <span
+      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+        isPago
+          ? 'bg-[var(--color-axon-green-dim)] text-[var(--color-axon-green)]'
+          : 'bg-yellow-500/10 text-yellow-400'
+      }`}
+    >
+      {status}
+    </span>
+  )
+}
+
+export default function EscolaDashboardPage() {
+  const [stats, setStats] = useState<Stats>(INITIAL_STATS)
+  const [escolaNome, setEscolaNome] = useState<string>('')
+  const [recentes, setRecentes] = useState<Coreografia[]>([])
+  const [loading, setLoading] = useState(true)
+  const [semEscola, setSemEscola] = useState(false)
+
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient()
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: usuario } = await supabase
+        .from('usuarios')
+        .select('escola_id')
+        .eq('id', user.id)
+        .single()
+
+      if (!usuario?.escola_id) {
+        setSemEscola(true)
+        setLoading(false)
+        return
+      }
+
+      const eId = usuario.escola_id
+
+      const [escolaRes, coreografiasRes, bailarinosRes] = await Promise.all([
+        supabase.from('escolas').select('nome').eq('id', eId).single(),
+        supabase
+          .from('coreografias')
+          .select(
+            'id, nome, tipo, categoria, status_pagamento, valor_total, arquivo_audio, created_at'
+          )
+          .eq('escola_id', eId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('bailarinos')
+          .select('id', { count: 'exact', head: true })
+          .eq('escola_id', eId),
+      ])
+
+      if (escolaRes.data) setEscolaNome(escolaRes.data.nome)
+
+      const coreografias = coreografiasRes.data ?? []
+      const bailarinosCount = bailarinosRes.count ?? 0
+
+      const musicasEnviadas = coreografias.filter((c) => c.arquivo_audio).length
+      const pendentes = coreografias.filter((c) => c.status_pagamento === 'pendente')
+      const pagos = coreografias.filter((c) => c.status_pagamento === 'pago')
+
+      setStats({
+        coreografias: coreografias.length,
+        bailarinos: bailarinosCount,
+        musicasEnviadas,
+        pagamentosPendentes: pendentes.length,
+        pagamentosConfirmados: pagos.length,
+        valorPendente: pendentes.reduce((acc, c) => acc + (c.valor_total ?? 0), 0),
+        valorPago: pagos.reduce((acc, c) => acc + (c.valor_total ?? 0), 0),
+      })
+
+      setRecentes(coreografias.slice(0, 6))
+      setLoading(false)
+    }
+
+    load()
+  }, [])
+
+  if (semEscola) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <AlertTriangle size={40} className="text-yellow-500 mb-4" />
+        <h2 className="text-lg font-semibold text-white">Escola nao vinculada</h2>
+        <p className="mt-2 text-sm text-white/40 max-w-sm">
+          Seu usuario nao esta vinculado a nenhuma escola. Entre em contato com o administrador do
+          festival.
+        </p>
+      </div>
+    )
+  }
+
+  const progressoMusicas =
+    stats.coreografias > 0
+      ? Math.round((stats.musicasEnviadas / stats.coreografias) * 100)
+      : 0
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Cabecalho */}
+      <div>
+        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+        <p className="text-sm text-white/40">
+          {escolaNome ? `Painel da escola ${escolaNome}` : 'Visao geral da sua escola'}
+        </p>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+        ) : (
+          <>
+            <KpiCard
+              title="Coreografias"
+              value={stats.coreografias}
+              subtitle="cadastradas no portal"
+              icon={Music2}
+              accent="gold"
+            />
+            <KpiCard
+              title="Bailarinos"
+              value={stats.bailarinos}
+              subtitle="no banco de elenco"
+              icon={Users}
+            />
+            <KpiCard
+              title="Musicas Enviadas"
+              value={`${stats.musicasEnviadas}/${stats.coreografias}`}
+              subtitle={`${progressoMusicas}% das coreografias`}
+              icon={Upload}
+              accent={
+                stats.musicasEnviadas === stats.coreografias && stats.coreografias > 0
+                  ? 'green'
+                  : 'default'
+              }
+            />
+            <KpiCard
+              title="Pagamentos Pendentes"
+              value={stats.pagamentosPendentes}
+              subtitle={formatCurrency(stats.valorPendente)}
+              icon={Clock}
+              accent={stats.pagamentosPendentes > 0 ? 'red' : 'green'}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Financeiro + Progresso de midias */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Situacao financeira */}
+        <div className="rounded-xl border border-axon-border bg-axon-panel p-5">
+          <h2 className="mb-4 text-sm font-semibold text-white/60">Situacao Financeira</h2>
+          {loading ? (
+            <div className="flex flex-col gap-3 animate-pulse">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-5 rounded bg-white/10" />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={14} className="text-[var(--color-axon-green)]" />
+                  <span className="text-sm text-white/60">Confirmados</span>
+                </div>
+                <span className="text-sm font-semibold text-[var(--color-axon-green)]">
+                  {formatCurrency(stats.valorPago)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-yellow-500" />
+                  <span className="text-sm text-white/60">Aguardando pagamento</span>
+                </div>
+                <span className="text-sm font-semibold text-yellow-400">
+                  {formatCurrency(stats.valorPendente)}
+                </span>
+              </div>
+              <div className="mt-1 border-t border-axon-border pt-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={14} className="text-axon-gold" />
+                  <span className="text-xs text-white/40">Total geral</span>
+                </div>
+                <span className="text-sm font-bold text-axon-gold">
+                  {formatCurrency(stats.valorPago + stats.valorPendente)}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Progresso de envio de midias */}
+        <div className="rounded-xl border border-axon-border bg-axon-panel p-5">
+          <h2 className="mb-4 text-sm font-semibold text-white/60">Envio de Musicas</h2>
+          {loading ? (
+            <div className="flex flex-col gap-3 animate-pulse">
+              <div className="h-5 rounded bg-white/10" />
+              <div className="h-2 rounded-full bg-white/10" />
+              <div className="h-4 w-3/4 rounded bg-white/10" />
+            </div>
+          ) : stats.coreografias === 0 ? (
+            <div className="flex flex-col items-center justify-center py-4 text-center">
+              <FileMusic size={28} className="text-white/15 mb-2" />
+              <p className="text-sm text-white/40">Nenhuma coreografia cadastrada ainda</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-white/60">Musicas enviadas</span>
+                <span className="font-semibold text-white">
+                  {stats.musicasEnviadas} de {stats.coreografias}
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-2 rounded-full bg-axon-gold transition-all duration-500"
+                  style={{ width: `${progressoMusicas}%` }}
+                />
+              </div>
+              <p className="text-xs text-white/40">
+                {stats.coreografias - stats.musicasEnviadas > 0
+                  ? `${stats.coreografias - stats.musicasEnviadas} coreografia(s) aguardando envio de musica`
+                  : 'Todas as musicas foram enviadas'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Coreografias recentes */}
+      <div className="rounded-xl border border-axon-border bg-axon-panel overflow-hidden">
+        <div className="border-b border-axon-border px-5 py-4">
+          <h2 className="text-sm font-semibold text-white/60">Ultimas Coreografias</h2>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col gap-2 p-5">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-10 rounded bg-white/5 animate-pulse" />
+            ))}
+          </div>
+        ) : recentes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Music2 size={36} className="text-white/15 mb-3" />
+            <p className="text-sm text-white/40">Nenhuma coreografia cadastrada</p>
+            <p className="mt-1 text-xs text-white/25">
+              Acesse Coreografias no menu lateral para comecar
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-axon-border">
+                  <th className="px-5 py-3 text-left text-xs font-medium text-white/40">Nome</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-white/40">Tipo</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-white/40">Musica</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-white/40">
+                    Pagamento
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-white/40">
+                    Cadastro
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentes.map((c) => (
+                  <tr
+                    key={c.id}
+                    className="border-b border-axon-border/40 last:border-0 hover:bg-white/[0.025] transition-colors"
+                  >
+                    <td className="px-5 py-3 font-medium text-white">{c.nome}</td>
+                    <td className="px-5 py-3 text-white/50 capitalize">{c.tipo ?? '-'}</td>
+                    <td className="px-5 py-3">
+                      {c.arquivo_audio ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-axon-green)]">
+                          <CheckCircle2 size={12} />
+                          enviada
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs text-yellow-500/80">
+                          <Clock size={12} />
+                          pendente
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      <StatusBadge status={c.status_pagamento} />
+                    </td>
+                    <td className="px-5 py-3 text-xs text-white/40">{formatDate(c.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
