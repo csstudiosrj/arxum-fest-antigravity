@@ -55,7 +55,8 @@ export default function EscolaLoginPage() {
           return;
         }
 
-        router.push("/escola/dashboard");
+        router.refresh();
+router.push("/escola/dashboard");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado");
