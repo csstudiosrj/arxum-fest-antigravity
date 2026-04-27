@@ -48,6 +48,11 @@ export default function ConvitePage() {
   }, [email]);
 
   async function criarConta() {
+    if (!escola) {
+      setError("Escola não carregada.");
+      return;
+    }
+
     if (!senha || senha.length < 6) {
       setError("Senha deve ter pelo menos 6 caracteres");
       return;
@@ -62,7 +67,6 @@ export default function ConvitePage() {
     setError("");
 
     try {
-      // Criar usuário no auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: escola.email,
         password: senha,
@@ -72,14 +76,33 @@ export default function ConvitePage() {
       });
 
       if (authError) throw authError;
+      if (!authData.user) throw new Error("Usuário não retornado pelo Supabase.");
+
+      const { data: escolaAtualizada, error: updateEscolaError } = await supabase
+        .from("escolas")
+        .update({
+          responsavel: escola.responsavel ?? null,
+          telefone: escola.telefone ?? null,
+          email: escola.email,
+        })
+        .eq("id", escola.id)
+        .select()
+        .single();
+
+      if (updateEscolaError) throw updateEscolaError;
+
+      const { error: usuarioError } = await supabase
+        .from("usuarios")
+        .update({ escola_id: escolaAtualizada.id })
+        .eq("id", authData.user.id);
+
+      if (usuarioError) throw usuarioError;
 
       setSucesso(true);
 
-      // Redirecionar após 2 segundos
       setTimeout(() => {
         router.push("/escola/dashboard");
       }, 2000);
-
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao criar conta");
     } finally {
@@ -91,7 +114,7 @@ export default function ConvitePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-axon-bg to-black">
         <div className="text-center">
-          <Loader2 size={48} className="animate-spin text-axon-green mx-auto mb-4" />
+          <Loader2 size={48} className="animate-spin text-axon-gold mx-auto mb-4" />
           <p className="text-white">Verificando convite...</p>
         </div>
       </div>
@@ -107,7 +130,7 @@ export default function ConvitePage() {
           <p className="text-gray-400 text-sm">{error}</p>
           <button
             onClick={() => router.push("/")}
-            className="mt-6 w-full bg-axon-green text-black font-semibold py-3 rounded-lg hover:bg-[#d4af6a] transition-colors"
+            className="mt-6 w-full bg-axon-gold text-black font-semibold py-3 rounded-lg hover:bg-[#d4af6a] transition-colors"
           >
             Voltar ao Início
           </button>
@@ -119,15 +142,13 @@ export default function ConvitePage() {
   if (sucesso) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-axon-bg to-black p-4">
-        <div className="bg-axon-panel border border-green-500/30 rounded-2xl p-8 w-full max-w-md text-center">
-          <CheckCircle size={48} className="text-green-400 mx-auto mb-4" />
+        <div className="bg-axon-panel border border-axon-gold/30 rounded-2xl p-8 w-full max-w-md text-center">
+          <CheckCircle size={48} className="text-axon-gold mx-auto mb-4" />
           <h1 className="text-xl font-bold text-white mb-2">Conta Criada!</h1>
           <p className="text-gray-400 text-sm mb-4">
-            Bem-vindo à plataforma, {escola.responsavel || "Responsável"}!
+            Bem-vindo à plataforma, {escola?.responsavel || "Responsável"}!
           </p>
-          <p className="text-gray-500 text-xs">
-            Redirecionando para o painel da escola...
-          </p>
+          <p className="text-gray-500 text-xs">Redirecionando para o painel da escola...</p>
         </div>
       </div>
     );
@@ -137,7 +158,7 @@ export default function ConvitePage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-axon-bg to-black p-4">
       <div className="bg-axon-panel border border-axon-border rounded-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
-          <Mail size={48} className="text-axon-green mx-auto mb-4" />
+          <Mail size={48} className="text-axon-gold mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-white mb-2">Convite para Escola</h1>
           <p className="text-gray-400 text-sm">
             Crie sua senha para acessar o sistema da escola <strong className="text-white">{escola.nome}</strong>
@@ -172,7 +193,7 @@ export default function ConvitePage() {
                 type="password"
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
-                className="w-full bg-axon-bg border border-axon-border rounded-lg pl-10 pr-4 py-3 text-white focus:outline-none focus:border-axon-green"
+                className="w-full bg-axon-bg border border-axon-border rounded-lg pl-10 pr-4 py-3 text-white focus:outline-none focus:border-axon-gold"
                 placeholder="Mínimo 6 caracteres"
                 required
               />
@@ -189,7 +210,7 @@ export default function ConvitePage() {
                 type="password"
                 value={confirmarSenha}
                 onChange={(e) => setConfirmarSenha(e.target.value)}
-                className="w-full bg-axon-bg border border-axon-border rounded-lg pl-10 pr-4 py-3 text-white focus:outline-none focus:border-axon-green"
+                className="w-full bg-axon-bg border border-axon-border rounded-lg pl-10 pr-4 py-3 text-white focus:outline-none focus:border-axon-gold"
                 placeholder="Digite a senha novamente"
                 required
               />
@@ -206,7 +227,7 @@ export default function ConvitePage() {
         <button
           onClick={criarConta}
           disabled={criando || !senha || !confirmarSenha}
-          className="w-full mt-6 bg-axon-green text-black font-semibold py-3 rounded-lg hover:bg-[#d4af6a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full mt-6 bg-axon-gold text-black font-semibold py-3 rounded-lg hover:bg-[#d4af6a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {criando ? <Loader2 size={18} className="animate-spin" /> : null}
           {criando ? "Criando Conta..." : "Criar Conta"}
