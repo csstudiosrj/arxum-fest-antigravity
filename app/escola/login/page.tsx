@@ -47,7 +47,8 @@ export default function EscolaLoginPage() {
         return;
       }
 
-      window.location.href = "/escola/dashboard";
+      await new Promise(resolve => setTimeout(resolve, 500));
+window.location.href = "/escola/dashboard";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado");
     } finally {
