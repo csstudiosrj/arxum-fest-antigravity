@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 
   Users, Plus, Search, Trash2, Edit2, 
-  Loader2, UserPlus, Save, X, Tag, AlertTriangle
+  Loader2, UserPlus, Save, X, Tag, AlertTriangle,
+  Calendar as CalendarIcon
 } from "lucide-react";
 
 interface Bailarino {
@@ -12,7 +13,7 @@ interface Bailarino {
   nome: string;
   data_nascimento: string;
   cpf: string | null;
-  modalidades: string[] | null;
+  modalidades: string | null; // No banco é TEXT
 }
 
 interface EstiloAtivo {
@@ -35,19 +36,16 @@ export default function BailarinosPage() {
     nome: "",
     data_nascimento: "",
     cpf: "",
-    modalidades: [] as string[]
+    modalidades: [] as string[] // Na UI usamos Array para as pills
   });
 
-  // MÁSCARA DE CPF: Apenas números e formatação automática
+  // MÁSCARA DE CPF
   const handleCPFChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, ""); // Remove tudo que não é número
-    if (value.length > 11) value = value.slice(0, 11); // Limita a 11 dígitos
-    
-    // Aplica a máscara 000.000.000-00
+    let value = e.target.value.replace(/\D/g, "");
+    if (value.length > 11) value = value.slice(0, 11);
     value = value.replace(/(\d{3})(\d)/, "$1.$2");
     value = value.replace(/(\d{3})(\d)/, "$1.$2");
     value = value.replace(/(\d{3})(\d{1,2})$/, "$1-$2");
-    
     setFormData({ ...formData, cpf: value });
   };
 
@@ -70,18 +68,18 @@ export default function BailarinosPage() {
       if (userData?.escola_id) {
         setEscolaId(userData.escola_id);
         
-        // Busca estilos ativos vinculados ao tenant
+        // Busca estilos ativos
         const { data: ativos } = await supabase
           .from("tenant_estilos_ativos")
           .select("estilo_id")
+          .eq("escola_id", userData.escola_id)
           .eq("ativo", true);
 
         if (ativos && ativos.length > 0) {
-          const ids = ativos.map(a => a.estilo_id);
           const { data: estilos } = await supabase
             .from("estilos")
             .select("id, nome")
-            .in("id", ids)
+            .in("id", ativos.map(a => a.estilo_id))
             .order("nome");
           setEstilosDisponiveis(estilos || []);
         }
@@ -95,7 +93,7 @@ export default function BailarinosPage() {
         setBailarinos(list || []);
       }
     } catch (error) {
-      console.error("Erro fatal ao carregar dados:", error);
+      console.error("Erro ao carregar:", error);
     } finally {
       setLoading(false);
     }
@@ -107,25 +105,31 @@ export default function BailarinosPage() {
     setSaving(true);
 
     try {
+      // CONVERSÃO CRUCIAL: Array da UI -> String do Banco
+      const modalidadesString = formData.modalidades.join(", ");
+
       const payload = {
         nome: formData.nome,
         data_nascimento: formData.data_nascimento,
         cpf: formData.cpf || null,
-        modalidades: formData.modalidades,
+        modalidades: modalidadesString,
         escola_id: escolaId
       };
 
       if (formData.id) {
-        await supabase.from("bailarinos").update(payload).eq("id", formData.id);
+        const { error } = await supabase.from("bailarinos").update(payload).eq("id", formData.id);
+        if (error) throw error;
       } else {
-        await supabase.from("bailarinos").insert([payload]);
+        const { error } = await supabase.from("bailarinos").insert([payload]);
+        if (error) throw error;
       }
 
       setIsModalOpen(false);
       resetForm();
       fetchData();
     } catch (error) {
-      alert("Erro ao salvar no banco de dados.");
+      console.error(error);
+      alert("Erro ao salvar. Verifique os dados.");
     } finally {
       setSaving(false);
     }
@@ -145,33 +149,42 @@ export default function BailarinosPage() {
   };
 
   const deleteBailarino = async (id: string) => {
-    if (!confirm("Confirmar exclusão definitiva deste registro?")) return;
+    if (!confirm("Confirmar exclusão definitiva?")) return;
     await supabase.from("bailarinos").delete().eq("id", id);
     fetchData();
   };
 
+  // Função segura para transformar a string do banco em array para a tabela
+  const renderModalidades = (modStr: string | null) => {
+    if (!modStr) return null;
+    return modStr.split(", ").map((m, i) => (
+      <span key={i} className="text-[10px] bg-axon-gold/10 text-axon-gold px-2 py-0.5 rounded border border-axon-gold/20 font-bold uppercase mr-1">
+        {m}
+      </span>
+    ));
+  };
+
   const filteredBailarinos = bailarinos.filter(b => 
-    b.nome.toLowerCase().includes(searchTerm.toLowerCase())
+    b.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (b.modalidades && b.modalidades.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
     <div className="space-y-6">
-      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Bailarinos & Elenco</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Bailarinos & Elenco</h1>
           <p className="text-gray-400">Banco de dados oficial da escola.</p>
         </div>
         <button 
           onClick={() => { resetForm(); setIsModalOpen(true); }}
           className="bg-axon-gold text-black px-6 py-3 rounded-lg font-black flex items-center gap-2 hover:bg-[#d4af6a] transition-all shadow-xl"
         >
-          <UserPlus size={20} /> ADICIONAR BAILARINO
+          <UserPlus size={20} /> NOVO BAILARINO
         </button>
       </div>
 
-      {/* BUSCA */}
-      <div className="bg-axon-panel border border-axon-border p-4 rounded-xl">
+      <div className="bg-axon-panel border border-axon-border p-4 rounded-xl shadow-lg">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
           <input 
@@ -184,45 +197,45 @@ export default function BailarinosPage() {
         </div>
       </div>
 
-      {/* TABELA */}
-      <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
+      <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden shadow-2xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-white/5 text-gray-400 text-xs uppercase tracking-widest">
-                <th className="px-6 py-4 font-bold">Nome</th>
-                <th className="px-6 py-4 font-bold">Nascimento</th>
-                <th className="px-6 py-4 font-bold">CPF</th>
-                <th className="px-6 py-4 font-bold">Modalidades</th>
-                <th className="px-6 py-4 font-bold text-right">Ações</th>
+              <tr className="bg-white/5 text-gray-400 text-xs uppercase tracking-widest font-bold">
+                <th className="px-6 py-5">Nome</th>
+                <th className="px-6 py-5">Nascimento</th>
+                <th className="px-6 py-5">CPF</th>
+                <th className="px-6 py-5">Modalidades</th>
+                <th className="px-6 py-5 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-axon-border">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center"><Loader2 className="animate-spin mx-auto text-axon-gold" /></td>
+                  <td colSpan={5} className="px-6 py-16 text-center"><Loader2 className="animate-spin mx-auto text-axon-gold" /></td>
                 </tr>
               ) : filteredBailarinos.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500 italic">Nenhum registro encontrado.</td>
+                  <td colSpan={5} className="px-6 py-16 text-center text-gray-500 italic">Nenhum registro encontrado.</td>
                 </tr>
               ) : (
                 filteredBailarinos.map((b) => (
                   <tr key={b.id} className="hover:bg-white/[0.02] group">
                     <td className="px-6 py-4 text-white font-bold">{b.nome}</td>
-                    <td className="px-6 py-4 text-gray-300">{new Date(b.data_nascimento).toLocaleDateString('pt-BR')}</td>
+                    <td className="px-6 py-4 text-gray-300">
+                      {b.data_nascimento ? new Date(b.data_nascimento + 'T00:00:00').toLocaleDateString('pt-BR') : '---'}
+                    </td>
                     <td className="px-6 py-4 text-gray-400 font-mono text-sm">{b.cpf || "---"}</td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1">
-                        {b.modalidades?.map((m, i) => (
-                          <span key={i} className="text-[10px] bg-axon-gold/10 text-axon-gold px-2 py-0.5 rounded border border-axon-gold/20 font-bold uppercase">{m}</span>
-                        )) || "---"}
+                        {renderModalidades(b.modalidades)}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2">
                         <button onClick={() => {
-                          setFormData({ id: b.id, nome: b.nome, data_nascimento: b.data_nascimento, cpf: b.cpf || "", modalidades: b.modalidades || [] });
+                          const modsArray = b.modalidades ? b.modalidades.split(", ") : [];
+                          setFormData({ id: b.id, nome: b.nome, data_nascimento: b.data_nascimento, cpf: b.cpf || "", modalidades: modsArray });
                           setIsModalOpen(true);
                         }} className="p-2 text-gray-400 hover:text-axon-gold"><Edit2 size={18} /></button>
                         <button onClick={() => deleteBailarino(b.id)} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={18} /></button>
@@ -236,11 +249,10 @@ export default function BailarinosPage() {
         </div>
       </div>
 
-      {/* MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
-          <div className="bg-axon-panel border border-axon-border w-full max-w-2xl rounded-2xl shadow-2xl">
-            <div className="p-6 border-b border-axon-border flex justify-between items-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-axon-panel border border-axon-border w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-axon-border flex justify-between items-center bg-white/5">
               <h2 className="text-xl font-bold text-white uppercase tracking-tighter">Ficha do Bailarino</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-white"><X size={24} /></button>
             </div>
@@ -283,7 +295,7 @@ export default function BailarinosPage() {
                     })
                   ) : (
                     <div className="flex items-center gap-2 text-yellow-500/70 text-xs italic">
-                      <AlertTriangle size={14} /> O organizador ainda não ativou modalidades nas configurações.
+                      <AlertTriangle size={14} /> Ative as modalidades no painel de configurações.
                     </div>
                   )}
                 </div>
