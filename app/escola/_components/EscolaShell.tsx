@@ -16,7 +16,6 @@ import {
   LogOut,
   User,
   Menu,
-  X,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -41,35 +40,45 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [usuario, setUsuario] = useState<Usuario | null>(null)
-  const [escolaNome, setEscolaNome] = useState<string>('')
+  const [organizacaoNome, setOrganizacaoNome] = useState<string>('')
 
   useEffect(() => {
     async function loadUser() {
       const supabase = createClient()
+
       const {
         data: { user },
       } = await supabase.auth.getUser()
+
       if (!user) return
 
       const { data } = await supabase
         .from('usuarios')
-        .select('nome, email, role, escola_id')
+        .select('nome, email, role, organizacao_id')
         .eq('id', user.id)
         .single()
 
       if (data) {
-        setUsuario({ nome: data.nome, email: data.email ?? user.email ?? '', role: data.role })
+        setUsuario({
+          nome: data.nome,
+          email: data.email ?? user.email ?? '',
+          role: data.role,
+        })
 
-        if (data.escola_id) {
-          const { data: escola } = await supabase
-            .from('escolas')
+        if (data.organizacao_id) {
+          const { data: organizacao } = await supabase
+            .from('organizacoes')
             .select('nome')
-            .eq('id', data.escola_id)
+            .eq('id', data.organizacao_id)
             .single()
-          if (escola) setEscolaNome(escola.nome)
+
+          if (organizacao) {
+            setOrganizacaoNome(organizacao.nome)
+          }
         }
       }
     }
+
     loadUser()
   }, [])
 
@@ -81,7 +90,6 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--color-axon-bg)] text-white">
-      {/* Overlay mobile */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-20 bg-black/60 lg:hidden"
@@ -89,27 +97,25 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-30 flex w-60 flex-col border-r border-axon-border bg-axon-panel transition-transform duration-200 lg:static lg:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Logo */}
         <div className="flex h-14 items-center gap-3 border-b border-axon-border px-5">
           <span className="text-base font-bold tracking-tight">
             <span className="text-axon-gold">AXON</span>
             <span className="text-white"> Fest</span>
           </span>
-          {escolaNome && (
-            <span className="truncate text-xs text-white/40">{escolaNome}</span>
+          {organizacaoNome && (
+            <span className="truncate text-xs text-white/40">{organizacaoNome}</span>
           )}
         </div>
 
-        {/* Nav */}
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
           {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(href + '/')
+
             return (
               <Link
                 key={href}
@@ -128,37 +134,42 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        {/* Footer da sidebar */}
         <div className="border-t border-axon-border px-3 py-3">
           <button
             onClick={() => setDropdownOpen((v) => !v)}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/50 hover:bg-white/5 hover:text-white/80 transition-colors"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/50 transition-colors hover:bg-white/5 hover:text-white/80"
           >
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-axon-gold text-xs font-bold text-[var(--color-axon-bg)] uppercase">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-axon-gold text-xs font-bold uppercase text-[var(--color-axon-bg)]">
               {usuario?.nome?.[0] ?? 'U'}
             </div>
+
             <div className="flex flex-1 flex-col text-left">
-              <span className="text-xs font-medium text-white/80 truncate">
+              <span className="truncate text-xs font-medium text-white/80">
                 {usuario?.nome ?? 'Usuario'}
               </span>
-              <span className="text-xs text-white/35 truncate">{usuario?.email ?? ''}</span>
+              <span className="truncate text-xs text-white/35">{usuario?.email ?? ''}</span>
             </div>
-            <ChevronDown size={14} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+
+            <ChevronDown
+              size={14}
+              className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
+            />
           </button>
 
           {dropdownOpen && (
             <div className="mt-1 rounded-lg border border-axon-border bg-[var(--color-axon-bg)] py-1">
               <Link
                 href="/escola/perfil"
-                className="flex items-center gap-2 px-3 py-2 text-xs text-white/60 hover:bg-white/5 hover:text-white/80 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 text-xs text-white/60 transition-colors hover:bg-white/5 hover:text-white/80"
                 onClick={() => setDropdownOpen(false)}
               >
                 <User size={13} />
                 Meu Perfil
               </Link>
+
               <button
                 onClick={handleLogout}
-                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-white/5 transition-colors"
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-400 transition-colors hover:bg-white/5"
               >
                 <LogOut size={13} />
                 Sair da plataforma
@@ -168,25 +179,24 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
         </div>
       </aside>
 
-      {/* Conteudo principal */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Header mobile */}
         <header className="flex h-14 items-center justify-between border-b border-axon-border bg-axon-panel px-4 lg:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="text-white/50 hover:text-white transition-colors"
+            className="text-white/50 transition-colors hover:text-white"
             aria-label="Abrir menu"
           >
             <Menu size={20} />
           </button>
+
           <span className="text-sm font-bold">
             <span className="text-axon-gold">AXON</span>
             <span className="text-white"> Fest</span>
           </span>
+
           <div className="w-5" />
         </header>
 
-        {/* Scrollable area */}
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>

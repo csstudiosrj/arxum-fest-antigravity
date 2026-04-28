@@ -27,7 +27,7 @@ interface Coreografia {
   id: string
   nome: string
   tipo: string
-  categoria: string
+  categoria_id_old: string | null
   status_pagamento: string
   valor_total: number | null
   arquivo_audio: string | null
@@ -61,7 +61,7 @@ function formatDate(dateStr: string): string {
 
 function SkeletonCard() {
   return (
-    <div className="rounded-xl border border-axon-border bg-axon-panel p-5 animate-pulse">
+    <div className="animate-pulse rounded-xl border border-axon-border bg-axon-panel p-5">
       <div className="flex items-start justify-between">
         <div className="h-4 w-32 rounded bg-white/10" />
         <div className="h-4 w-4 rounded bg-white/10" />
@@ -83,14 +83,15 @@ function KpiCard({
   value: string | number
   subtitle: string
   icon: React.ElementType
-  accent?: 'gold' | 'green' | 'red' | 'default'
+  accent?: 'gold' | 'success' | 'alert' | 'default'
 }) {
   const valueClass: Record<string, string> = {
     gold: 'text-axon-gold',
-    green: 'text-[var(--color-axon-green)]',
-    red: 'text-red-400',
+    success: 'text-white',
+    alert: 'text-red-400',
     default: 'text-white',
   }
+
   return (
     <div className="rounded-xl border border-axon-border bg-axon-panel p-5">
       <div className="flex items-start justify-between">
@@ -105,12 +106,11 @@ function KpiCard({
 
 function StatusBadge({ status }: { status: string }) {
   const isPago = status === 'pago'
+
   return (
     <span
       className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-        isPago
-          ? 'bg-[var(--color-axon-green-dim)] text-[var(--color-axon-green)]'
-          : 'bg-yellow-500/10 text-yellow-400'
+        isPago ? 'bg-white/10 text-white' : 'bg-yellow-500/10 text-yellow-400'
       }`}
     >
       {status}
@@ -120,10 +120,10 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function EscolaDashboardPage() {
   const [stats, setStats] = useState<Stats>(INITIAL_STATS)
-  const [escolaNome, setEscolaNome] = useState<string>('')
+  const [organizacaoNome, setOrganizacaoNome] = useState<string>('')
   const [recentes, setRecentes] = useState<Coreografia[]>([])
   const [loading, setLoading] = useState(true)
-  const [semEscola, setSemEscola] = useState(false)
+  const [semOrganizacao, setSemOrganizacao] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -132,71 +132,77 @@ export default function EscolaDashboardPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      if (!user) return
 
-      const { data: usuario } = await supabase
-        .from('usuarios')
-        .select('escola_id')
-        .eq('id', user.id)
-        .single()
-
-      if (!usuario?.escola_id) {
-        setSemEscola(true)
+      if (!user) {
         setLoading(false)
         return
       }
 
-      const eId = usuario.escola_id
+      const { data: usuario } = await supabase
+        .from('usuarios')
+        .select('organizacao_id')
+        .eq('id', user.id)
+        .single()
 
-      const [escolaRes, coreografiasRes, bailarinosRes] = await Promise.all([
-        supabase.from('escolas').select('nome').eq('id', eId).single(),
+      if (!usuario?.organizacao_id) {
+        setSemOrganizacao(true)
+        setLoading(false)
+        return
+      }
+
+      const organizacaoId = usuario.organizacao_id
+
+      const [organizacaoRes, apresentacoesRes, participantesRes] = await Promise.all([
+        supabase.from('organizacoes').select('nome').eq('id', organizacaoId).single(),
         supabase
-          .from('coreografias')
+          .from('apresentacoes')
           .select(
-            'id, nome, tipo, categoria, status_pagamento, valor_total, arquivo_audio, created_at'
+            'id, nome, tipo, categoria_id_old, status_pagamento, valor_total, arquivo_audio, created_at'
           )
-          .eq('escola_id', eId)
+          .eq('organizacao_id', organizacaoId)
           .order('created_at', { ascending: false }),
         supabase
-          .from('bailarinos')
+          .from('participantes')
           .select('id', { count: 'exact', head: true })
-          .eq('escola_id', eId),
+          .eq('organizacao_id', organizacaoId),
       ])
 
-      if (escolaRes.data) setEscolaNome(escolaRes.data.nome)
+      if (organizacaoRes.data) {
+        setOrganizacaoNome(organizacaoRes.data.nome)
+      }
 
-      const coreografias = coreografiasRes.data ?? []
-      const bailarinosCount = bailarinosRes.count ?? 0
+      const apresentacoes = apresentacoesRes.data ?? []
+      const participantesCount = participantesRes.count ?? 0
 
-      const musicasEnviadas = coreografias.filter((c) => c.arquivo_audio).length
-      const pendentes = coreografias.filter((c) => c.status_pagamento === 'pendente')
-      const pagos = coreografias.filter((c) => c.status_pagamento === 'pago')
+      const musicasEnviadas = apresentacoes.filter((item) => item.arquivo_audio).length
+      const pendentes = apresentacoes.filter((item) => item.status_pagamento === 'pendente')
+      const pagos = apresentacoes.filter((item) => item.status_pagamento === 'pago')
 
       setStats({
-        coreografias: coreografias.length,
-        bailarinos: bailarinosCount,
+        coreografias: apresentacoes.length,
+        bailarinos: participantesCount,
         musicasEnviadas,
         pagamentosPendentes: pendentes.length,
         pagamentosConfirmados: pagos.length,
-        valorPendente: pendentes.reduce((acc, c) => acc + (c.valor_total ?? 0), 0),
-        valorPago: pagos.reduce((acc, c) => acc + (c.valor_total ?? 0), 0),
+        valorPendente: pendentes.reduce((acc, item) => acc + (item.valor_total ?? 0), 0),
+        valorPago: pagos.reduce((acc, item) => acc + (item.valor_total ?? 0), 0),
       })
 
-      setRecentes(coreografias.slice(0, 6))
+      setRecentes(apresentacoes.slice(0, 6))
       setLoading(false)
     }
 
     load()
   }, [])
 
-  if (semEscola) {
+  if (semOrganizacao) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <AlertTriangle size={40} className="text-yellow-500 mb-4" />
-        <h2 className="text-lg font-semibold text-white">Escola nao vinculada</h2>
-        <p className="mt-2 text-sm text-white/40 max-w-sm">
-          Seu usuario nao esta vinculado a nenhuma escola. Entre em contato com o administrador do
-          festival.
+        <AlertTriangle size={40} className="mb-4 text-yellow-500" />
+        <h2 className="text-lg font-semibold text-white">Organizacao nao vinculada</h2>
+        <p className="mt-2 max-w-sm text-sm text-white/40">
+          Seu usuario nao esta vinculado a nenhuma organizacao. Entre em contato com o
+          administrador do festival.
         </p>
       </div>
     )
@@ -209,29 +215,27 @@ export default function EscolaDashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Cabecalho */}
       <div>
         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
         <p className="text-sm text-white/40">
-          {escolaNome ? `Painel da escola ${escolaNome}` : 'Visao geral da sua escola'}
+          {organizacaoNome ? `Painel da organizacao ${organizacaoNome}` : 'Visao geral da sua conta'}
         </p>
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>
             <KpiCard
-              title="Coreografias"
+              title="Apresentacoes"
               value={stats.coreografias}
               subtitle="cadastradas no portal"
               icon={Music2}
               accent="gold"
             />
             <KpiCard
-              title="Bailarinos"
+              title="Participantes"
               value={stats.bailarinos}
               subtitle="no banco de elenco"
               icon={Users}
@@ -239,11 +243,11 @@ export default function EscolaDashboardPage() {
             <KpiCard
               title="Musicas Enviadas"
               value={`${stats.musicasEnviadas}/${stats.coreografias}`}
-              subtitle={`${progressoMusicas}% das coreografias`}
+              subtitle={`${progressoMusicas}% das apresentacoes`}
               icon={Upload}
               accent={
                 stats.musicasEnviadas === stats.coreografias && stats.coreografias > 0
-                  ? 'green'
+                  ? 'success'
                   : 'default'
               }
             />
@@ -252,19 +256,17 @@ export default function EscolaDashboardPage() {
               value={stats.pagamentosPendentes}
               subtitle={formatCurrency(stats.valorPendente)}
               icon={Clock}
-              accent={stats.pagamentosPendentes > 0 ? 'red' : 'green'}
+              accent={stats.pagamentosPendentes > 0 ? 'alert' : 'default'}
             />
           </>
         )}
       </div>
 
-      {/* Financeiro + Progresso de midias */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {/* Situacao financeira */}
         <div className="rounded-xl border border-axon-border bg-axon-panel p-5">
           <h2 className="mb-4 text-sm font-semibold text-white/60">Situacao Financeira</h2>
           {loading ? (
-            <div className="flex flex-col gap-3 animate-pulse">
+            <div className="flex animate-pulse flex-col gap-3">
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="h-5 rounded bg-white/10" />
               ))}
@@ -273,13 +275,14 @@ export default function EscolaDashboardPage() {
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 size={14} className="text-[var(--color-axon-green)]" />
+                  <CheckCircle2 size={14} className="text-white/70" />
                   <span className="text-sm text-white/60">Confirmados</span>
                 </div>
-                <span className="text-sm font-semibold text-[var(--color-axon-green)]">
+                <span className="text-sm font-semibold text-white">
                   {formatCurrency(stats.valorPago)}
                 </span>
               </div>
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={14} className="text-yellow-500" />
@@ -289,7 +292,8 @@ export default function EscolaDashboardPage() {
                   {formatCurrency(stats.valorPendente)}
                 </span>
               </div>
-              <div className="mt-1 border-t border-axon-border pt-3 flex items-center justify-between">
+
+              <div className="mt-1 flex items-center justify-between border-t border-axon-border pt-3">
                 <div className="flex items-center gap-2">
                   <TrendingUp size={14} className="text-axon-gold" />
                   <span className="text-xs text-white/40">Total geral</span>
@@ -302,19 +306,18 @@ export default function EscolaDashboardPage() {
           )}
         </div>
 
-        {/* Progresso de envio de midias */}
         <div className="rounded-xl border border-axon-border bg-axon-panel p-5">
           <h2 className="mb-4 text-sm font-semibold text-white/60">Envio de Musicas</h2>
           {loading ? (
-            <div className="flex flex-col gap-3 animate-pulse">
+            <div className="flex animate-pulse flex-col gap-3">
               <div className="h-5 rounded bg-white/10" />
               <div className="h-2 rounded-full bg-white/10" />
               <div className="h-4 w-3/4 rounded bg-white/10" />
             </div>
           ) : stats.coreografias === 0 ? (
             <div className="flex flex-col items-center justify-center py-4 text-center">
-              <FileMusic size={28} className="text-white/15 mb-2" />
-              <p className="text-sm text-white/40">Nenhuma coreografia cadastrada ainda</p>
+              <FileMusic size={28} className="mb-2 text-white/15" />
+              <p className="text-sm text-white/40">Nenhuma apresentacao cadastrada ainda</p>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
@@ -324,15 +327,17 @@ export default function EscolaDashboardPage() {
                   {stats.musicasEnviadas} de {stats.coreografias}
                 </span>
               </div>
-              <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+
+              <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
                 <div
                   className="h-2 rounded-full bg-axon-gold transition-all duration-500"
                   style={{ width: `${progressoMusicas}%` }}
                 />
               </div>
+
               <p className="text-xs text-white/40">
                 {stats.coreografias - stats.musicasEnviadas > 0
-                  ? `${stats.coreografias - stats.musicasEnviadas} coreografia(s) aguardando envio de musica`
+                  ? `${stats.coreografias - stats.musicasEnviadas} apresentacao(oes) aguardando envio de musica`
                   : 'Todas as musicas foram enviadas'}
               </p>
             </div>
@@ -340,22 +345,21 @@ export default function EscolaDashboardPage() {
         </div>
       </div>
 
-      {/* Coreografias recentes */}
-      <div className="rounded-xl border border-axon-border bg-axon-panel overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-axon-border bg-axon-panel">
         <div className="border-b border-axon-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-white/60">Ultimas Coreografias</h2>
+          <h2 className="text-sm font-semibold text-white/60">Ultimas Apresentacoes</h2>
         </div>
 
         {loading ? (
           <div className="flex flex-col gap-2 p-5">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-10 rounded bg-white/5 animate-pulse" />
+              <div key={i} className="h-10 animate-pulse rounded bg-white/5" />
             ))}
           </div>
         ) : recentes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Music2 size={36} className="text-white/15 mb-3" />
-            <p className="text-sm text-white/40">Nenhuma coreografia cadastrada</p>
+            <Music2 size={36} className="mb-3 text-white/15" />
+            <p className="text-sm text-white/40">Nenhuma apresentacao cadastrada</p>
             <p className="mt-1 text-xs text-white/25">
               Acesse Coreografias no menu lateral para comecar
             </p>
@@ -380,13 +384,13 @@ export default function EscolaDashboardPage() {
                 {recentes.map((c) => (
                   <tr
                     key={c.id}
-                    className="border-b border-axon-border/40 last:border-0 hover:bg-white/[0.025] transition-colors"
+                    className="border-b border-axon-border/40 transition-colors last:border-0 hover:bg-white/[0.025]"
                   >
                     <td className="px-5 py-3 font-medium text-white">{c.nome}</td>
-                    <td className="px-5 py-3 text-white/50 capitalize">{c.tipo ?? '-'}</td>
+                    <td className="px-5 py-3 capitalize text-white/50">{c.tipo ?? '-'}</td>
                     <td className="px-5 py-3">
                       {c.arquivo_audio ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-axon-green)]">
+                        <span className="inline-flex items-center gap-1 text-xs text-white/80">
                           <CheckCircle2 size={12} />
                           enviada
                         </span>

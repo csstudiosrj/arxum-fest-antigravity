@@ -12,7 +12,7 @@ export default function ConvitePage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [escola, setEscola] = useState<any>(null);
+  const [organizacao, setOrganizacao] = useState<any>(null);
   const [senha, setSenha] = useState("");
   const [confirmarSenha, setConfirmarSenha] = useState("");
   const [criando, setCriando] = useState(false);
@@ -21,35 +21,35 @@ export default function ConvitePage() {
   const supabase = createClient();
 
   useEffect(() => {
-    async function buscarEscola() {
+    async function buscarOrganizacao() {
       if (!email) {
-        setError("Link inválido - e-mail não encontrado");
+        setError("Link invalido - e-mail nao encontrado");
         setLoading(false);
         return;
       }
 
       const { data, error } = await supabase
-        .from("escolas")
+        .from("organizacoes")
         .select("*")
         .eq("email", email)
         .single();
 
       if (error || !data) {
-        setError("Escola não encontrada ou link expirado");
+        setError("Organizacao nao encontrada ou link expirado");
         setLoading(false);
         return;
       }
 
-      setEscola(data);
+      setOrganizacao(data);
       setLoading(false);
     }
 
-    buscarEscola();
-  }, [email]);
+    buscarOrganizacao();
+  }, [email, supabase]);
 
   async function criarConta() {
-    if (!escola) {
-      setError("Escola não carregada.");
+    if (!organizacao) {
+      setError("Organizacao nao carregada.");
       return;
     }
 
@@ -59,7 +59,7 @@ export default function ConvitePage() {
     }
 
     if (senha !== confirmarSenha) {
-      setError("As senhas não coincidem");
+      setError("As senhas nao coincidem");
       return;
     }
 
@@ -68,7 +68,7 @@ export default function ConvitePage() {
 
     try {
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: escola.email,
+        email: organizacao.email,
         password: senha,
         options: {
           emailRedirectTo: `${window.location.origin}/escola/login`,
@@ -76,24 +76,24 @@ export default function ConvitePage() {
       });
 
       if (authError) throw authError;
-      if (!authData.user) throw new Error("Usuário não retornado pelo Supabase.");
+      if (!authData.user) throw new Error("Usuario nao retornado pelo Supabase.");
 
-      const { data: escolaAtualizada, error: updateEscolaError } = await supabase
-        .from("escolas")
+      const { data: organizacaoAtualizada, error: updateOrganizacaoError } = await supabase
+        .from("organizacoes")
         .update({
-          responsavel: escola.responsavel ?? null,
-          telefone: escola.telefone ?? null,
-          email: escola.email,
+          responsavel: organizacao.responsavel ?? null,
+          telefone: organizacao.telefone ?? null,
+          email: organizacao.email,
         })
-        .eq("id", escola.id)
+        .eq("id", organizacao.id)
         .select()
         .single();
 
-      if (updateEscolaError) throw updateEscolaError;
+      if (updateOrganizacaoError) throw updateOrganizacaoError;
 
       const { error: usuarioError } = await supabase
         .from("usuarios")
-        .update({ escola_id: escolaAtualizada.id })
+        .update({ organizacao_id: organizacaoAtualizada.id })
         .eq("id", authData.user.id);
 
       if (usuarioError) throw usuarioError;
@@ -112,27 +112,27 @@ export default function ConvitePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-axon-bg to-black">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--color-axon-bg)]">
         <div className="text-center">
-          <Loader2 size={48} className="animate-spin text-axon-gold mx-auto mb-4" />
+          <Loader2 size={48} className="mx-auto mb-4 animate-spin text-axon-gold" />
           <p className="text-white">Verificando convite...</p>
         </div>
       </div>
     );
   }
 
-  if (error && !escola) {
+  if (error && !organizacao) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-axon-bg to-black p-4">
-        <div className="bg-axon-panel border border-red-500/30 rounded-2xl p-8 w-full max-w-md text-center">
-          <AlertCircle size={48} className="text-red-400 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-white mb-2">Convite Inválido</h1>
-          <p className="text-gray-400 text-sm">{error}</p>
+      <div className="flex min-h-screen items-center justify-center bg-[var(--color-axon-bg)] p-4">
+        <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-axon-panel p-8 text-center">
+          <AlertCircle size={48} className="mx-auto mb-4 text-red-400" />
+          <h1 className="mb-2 text-xl font-bold text-white">Convite Invalido</h1>
+          <p className="text-sm text-gray-400">{error}</p>
           <button
             onClick={() => router.push("/")}
-            className="mt-6 w-full bg-axon-gold text-black font-semibold py-3 rounded-lg hover:bg-[#d4af6a] transition-colors"
+            className="mt-6 w-full rounded-lg bg-axon-gold py-3 font-semibold text-black transition-colors hover:opacity-90"
           >
-            Voltar ao Início
+            Voltar ao Inicio
           </button>
         </div>
       </div>
@@ -141,50 +141,53 @@ export default function ConvitePage() {
 
   if (sucesso) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-axon-bg to-black p-4">
-        <div className="bg-axon-panel border border-axon-gold/30 rounded-2xl p-8 w-full max-w-md text-center">
-          <CheckCircle size={48} className="text-axon-gold mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-white mb-2">Conta Criada!</h1>
-          <p className="text-gray-400 text-sm mb-4">
-            Bem-vindo à plataforma, {escola?.responsavel || "Responsável"}!
+      <div className="flex min-h-screen items-center justify-center bg-[var(--color-axon-bg)] p-4">
+        <div className="w-full max-w-md rounded-2xl border border-axon-border bg-axon-panel p-8 text-center">
+          <CheckCircle size={48} className="mx-auto mb-4 text-axon-gold" />
+          <h1 className="mb-2 text-xl font-bold text-white">Conta Criada</h1>
+          <p className="mb-4 text-sm text-gray-400">
+            Bem-vindo a plataforma, {organizacao?.responsavel || "Responsavel"}.
           </p>
-          <p className="text-gray-500 text-xs">Redirecionando para o painel da escola...</p>
+          <p className="text-xs text-gray-500">Redirecionando para o painel...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-axon-bg to-black p-4">
-      <div className="bg-axon-panel border border-axon-border rounded-2xl p-8 w-full max-w-md">
-        <div className="text-center mb-8">
-          <Mail size={48} className="text-axon-gold mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Convite para Escola</h1>
-          <p className="text-gray-400 text-sm">
-            Crie sua senha para acessar o sistema da escola <strong className="text-white">{escola.nome}</strong>
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-axon-bg)] p-4">
+      <div className="w-full max-w-md rounded-2xl border border-axon-border bg-axon-panel p-8">
+        <div className="mb-8 text-center">
+          <Mail size={40} className="mx-auto mb-4 text-axon-gold" />
+          <h1 className="mb-2 text-2xl font-bold text-white">Convite de Acesso</h1>
+          <p className="text-sm text-gray-400">
+            Crie sua senha para acessar o sistema da organizacao{" "}
+            <strong className="text-white">{organizacao.nome}</strong>
           </p>
         </div>
 
-        <div className="space-y-4 mb-6">
-          <div className="bg-axon-bg border border-axon-border rounded-lg p-4">
-            <div className="text-sm text-gray-400 mb-1">Escola</div>
-            <div className="text-white font-medium">{escola.nome}</div>
+        <div className="mb-6 space-y-4">
+          <div className="rounded-lg border border-axon-border bg-[var(--color-axon-bg)] p-4">
+            <div className="mb-1 text-sm text-gray-400">Organizacao</div>
+            <div className="font-medium text-white">{organizacao.nome}</div>
           </div>
 
-          <div className="bg-axon-bg border border-axon-border rounded-lg p-4">
-            <div className="text-sm text-gray-400 mb-1">Responsável</div>
-            <div className="text-white font-medium">{escola.responsavel || "Não informado"}</div>
+          <div className="rounded-lg border border-axon-border bg-[var(--color-axon-bg)] p-4">
+            <div className="mb-1 text-sm text-gray-400">Responsavel</div>
+            <div className="font-medium text-white">
+              {organizacao.responsavel || "Nao informado"}
+            </div>
           </div>
 
-          <div className="bg-axon-bg border border-axon-border rounded-lg p-4">
-            <div className="text-sm text-gray-400 mb-1">E-mail</div>
-            <div className="text-white font-medium">{escola.email}</div>
+          <div className="rounded-lg border border-axon-border bg-[var(--color-axon-bg)] p-4">
+            <div className="mb-1 text-sm text-gray-400">E-mail</div>
+            <div className="font-medium text-white">{organizacao.email}</div>
           </div>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="mb-2 block text-sm font-medium text-gray-300">
               Senha <span className="text-red-400">*</span>
             </label>
             <div className="relative">
@@ -193,15 +196,15 @@ export default function ConvitePage() {
                 type="password"
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
-                className="w-full bg-axon-bg border border-axon-border rounded-lg pl-10 pr-4 py-3 text-white focus:outline-none focus:border-axon-gold"
-                placeholder="Mínimo 6 caracteres"
+                className="w-full rounded-lg border border-axon-border bg-[var(--color-axon-bg)] py-3 pl-10 pr-4 text-white focus:border-axon-gold focus:outline-none"
+                placeholder="Minimo 6 caracteres"
                 required
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="mb-2 block text-sm font-medium text-gray-300">
               Confirmar Senha <span className="text-red-400">*</span>
             </label>
             <div className="relative">
@@ -210,7 +213,7 @@ export default function ConvitePage() {
                 type="password"
                 value={confirmarSenha}
                 onChange={(e) => setConfirmarSenha(e.target.value)}
-                className="w-full bg-axon-bg border border-axon-border rounded-lg pl-10 pr-4 py-3 text-white focus:outline-none focus:border-axon-gold"
+                className="w-full rounded-lg border border-axon-border bg-[var(--color-axon-bg)] py-3 pl-10 pr-4 text-white focus:border-axon-gold focus:outline-none"
                 placeholder="Digite a senha novamente"
                 required
               />
@@ -218,8 +221,8 @@ export default function ConvitePage() {
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-              <p className="text-red-400 text-sm">{error}</p>
+            <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+              <p className="text-sm text-red-400">{error}</p>
             </div>
           )}
         </div>
@@ -227,7 +230,7 @@ export default function ConvitePage() {
         <button
           onClick={criarConta}
           disabled={criando || !senha || !confirmarSenha}
-          className="w-full mt-6 bg-axon-gold text-black font-semibold py-3 rounded-lg hover:bg-[#d4af6a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-axon-gold py-3 font-semibold text-black transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {criando ? <Loader2 size={18} className="animate-spin" /> : null}
           {criando ? "Criando Conta..." : "Criar Conta"}
