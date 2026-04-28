@@ -27,7 +27,7 @@ type Usuario = {
 
 type TenantConfig = {
   id: string
-  escola_id: string
+  organizacao_id: string        // ← corrigido (era escola_id)
   perfil_id: string | null
   nome_organizacao: string | null
   logo_url: string | null
@@ -52,10 +52,7 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
     async function loadUser() {
       const supabase = createClient()
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
       const { data } = await supabase
@@ -64,65 +61,53 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
         .eq('id', user.id)
         .single()
 
-      if (data) {
-        setUsuario({
-          nome: data.nome,
-          email: data.email ?? user.email ?? '',
-          role: data.role,
-          organizacao_id: data.organizacao_id,
-        })
+      if (!data) return
 
-        const { data: tenantConfig } = await supabase
-          .from('tenant_config')
-          .select('*')
-          .eq('escola_id', data.id)
-          .single()
+      setUsuario({
+        nome: data.nome,
+        email: data.email ?? user.email ?? '',
+        role: data.role,
+        organizacao_id: data.organizacao_id,
+      })
 
-        if (tenantConfig) {
-          setConfig(tenantConfig as TenantConfig)
-        }
-
-        if (data.organizacao_id) {
-          const { data: organizacao } = await supabase
+      // Carregar config e nome da organização em paralelo
+      if (data.organizacao_id) {
+        const [{ data: tenantConfig }, { data: organizacao }] = await Promise.all([
+          supabase
+            .from('tenant_config')
+            .select('*')
+            .eq('organizacao_id', data.organizacao_id) // ← corrigido (era escola_id com data.id)
+            .single(),
+          supabase
             .from('organizacoes')
             .select('nome')
             .eq('id', data.organizacao_id)
-            .single()
+            .single(),
+        ])
 
-          if (organizacao) {
-            setOrganizacaoNome(organizacao.nome)
-          }
-        }
+        if (tenantConfig) setConfig(tenantConfig as TenantConfig)
+        if (organizacao) setOrganizacaoNome(organizacao.nome)
       }
     }
 
     loadUser()
   }, [])
 
-  const labels = useMemo(() => {
-    const apresentacao = config?.termo_apresentacao?.trim() || 'Apresentações'
-    const participante = config?.termo_participante?.trim() || 'Participantes'
-    const grupo = config?.termo_grupo?.trim() || 'Minha Escola'
+  const labels = useMemo(() => ({
+    apresentacao: config?.termo_apresentacao?.trim() || 'Apresentações',
+    participante:  config?.termo_participante?.trim() || 'Participantes',
+    grupo:         config?.termo_grupo?.trim()        || 'Minha Escola',
+  }), [config])
 
-    return {
-      apresentacao,
-      participante,
-      grupo,
-    }
-  }, [config])
-
-  const navItems = useMemo(
-    () => [
-      { label: 'Dashboard', href: '/escola/dashboard', icon: LayoutDashboard },
-      { label: labels.apresentacao, href: '/escola/apresentacoes', icon: Music2 },
-      { label: labels.participante, href: '/escola/bailarinos', icon: Users },
-      { label: 'Músicas & Áudio', href: '/escola/midias', icon: Upload },
-      { label: 'Mapas de Luz', href: '/escola/mapas-de-luz', icon: Lightbulb },
-      { label: 'Coreógrafos', href: '/escola/coreografos', icon: UserCog },
-      { label: labels.grupo, href: '/escola/perfil', icon: School },
-    ],
-    [labels]
-  )
+  const navItems = useMemo(() => [
+    { label: 'Dashboard',        href: '/escola/dashboard',    icon: LayoutDashboard },
+    { label: labels.apresentacao, href: '/escola/apresentacoes', icon: Music2 },
+    { label: labels.participante, href: '/escola/bailarinos',    icon: Users },
+    { label: 'Músicas & Áudio',  href: '/escola/midias',       icon: Upload },
+    { label: 'Mapas de Luz',     href: '/escola/mapas-de-luz', icon: Lightbulb },
+    { label: 'Coreógrafos',      href: '/escola/coreografos',  icon: UserCog },
+    { label: labels.grupo,        href: '/escola/perfil',        icon: School },
+  ], [labels])
 
   async function handleLogout() {
     const supabase = createClient()
@@ -157,7 +142,6 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
           {navItems.map(({ label, href, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(href + '/')
-
             return (
               <Link
                 key={href}
@@ -184,14 +168,12 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-axon-gold text-xs font-bold uppercase text-[var(--color-axon-bg)]">
               {usuario?.nome?.[0] ?? 'U'}
             </div>
-
             <div className="flex flex-1 flex-col text-left">
               <span className="truncate text-xs font-medium text-white/80">
-                {usuario?.nome ?? 'Usuario'}
+                {usuario?.nome ?? 'Usuário'}
               </span>
               <span className="truncate text-xs text-white/35">{usuario?.email ?? ''}</span>
             </div>
-
             <ChevronDown
               size={14}
               className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
@@ -208,7 +190,6 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
                 <User size={13} />
                 Meu Perfil
               </Link>
-
               <button
                 onClick={handleLogout}
                 className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-400 transition-colors hover:bg-white/5"
@@ -230,12 +211,10 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
           >
             <Menu size={20} />
           </button>
-
           <span className="text-sm font-bold">
             <span className="text-axon-gold">AXON</span>
             <span className="text-white"> Fest</span>
           </span>
-
           <div className="w-5" />
         </header>
 
