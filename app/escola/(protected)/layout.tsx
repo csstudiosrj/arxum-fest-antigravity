@@ -1,80 +1,56 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import EscolaShell from "@/app/escola/_components/EscolaShell";
+import EscolaShell from "../_components/EscolaShell";
+import { Loader2 } from "lucide-react";
 
-export default function EscolaProtectedLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const [authorized, setAuthorized] = useState(false);
+  const supabase = createClient();
   const [loading, setLoading] = useState(true);
+  const [autorizado, setAutorizado] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-
-    async function checkAccess() {
-      const supabase = createClient();
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        if (mounted) {
-          router.replace("/escola/login");
-        }
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        router.push("/escola/login");
         return;
       }
 
-      const { data: usuario, error: usuarioError } = await supabase
+      // Busca usando a nova coluna organizacao_id
+      const { data: userData, error } = await supabase
         .from("usuarios")
-        .select("role, escola_id")
-        .eq("id", user.id)
+        .select("role, organizacao_id")
+        .eq("id", session.user.id)
         .single();
 
-      if (
-        usuarioError ||
-        !usuario ||
-        !["escola_admin", "coreografo"].includes(usuario.role) ||
-        !usuario.escola_id
-      ) {
-        await supabase.auth.signOut();
-        if (mounted) {
-          router.replace("/escola/login");
-        }
+      if (error || !userData) {
+        router.push("/escola/login");
         return;
       }
 
-      if (mounted) {
-        setAuthorized(true);
-        setLoading(false);
+      if (userData.role !== 'escola_admin' && userData.role !== 'coreografo') {
+        router.push("/escola/login");
+        return;
       }
-    }
 
-    checkAccess();
-
-    return () => {
-      mounted = false;
+      setAutorizado(true);
+      setLoading(false);
     };
-  }, [router, pathname]);
 
-  if (loading) {
+    checkAuth();
+  }, [router, supabase]);
+
+  if (loading || !autorizado) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-axon-bg text-white">
-        <div className="text-sm text-white/60">Carregando portal da escola...</div>
+      <div className="min-h-screen bg-axon-bg flex items-center justify-center">
+        <Loader2 className="animate-spin text-axon-gold" size={40} />
       </div>
     );
-  }
-
-  if (!authorized) {
-    return null;
   }
 
   return <EscolaShell>{children}</EscolaShell>;

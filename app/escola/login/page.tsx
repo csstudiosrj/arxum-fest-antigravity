@@ -1,237 +1,228 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, GraduationCap } from "lucide-react";
-
-type Modo = "login" | "cadastro";
+import { Loader2 } from "lucide-react";
 
 export default function EscolaLoginPage() {
-  const [modo, setModo] = useState<Modo>("login");
+  const router = useRouter();
+  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmarSenha, setConfirmarSenha] = useState("");
-  const [error, setError] = useState("");
-  const [sucesso, setSucesso] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [nome, setNome] = useState("");
+  const [nomeOrganizacao, setNomeOrganizacao] = useState("");
+  const[responsavel, setResponsavel] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const[error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleLogin(e: React.FormEvent) {
+  const supabase = createClient();
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setSucesso("");
 
     try {
-      const supabase = createClient();
-
-      const { data: authData, error: authError } =
-        await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
+      });
 
       if (authError) throw authError;
-      if (!authData.session) throw new Error("Sessão não iniciada.");
 
-      const { data: userData, error: userError } = await supabase
-        .from("usuarios")
-        .select("role")
-        .eq("id", authData.session.user.id)
-        .single();
+      if (authData.session) {
+        // Busca usando a nova coluna organizacao_id
+        const { data: userData, error: userError } = await supabase
+          .from("usuarios")
+          .select("role, organizacao_id")
+          .eq("id", authData.session.user.id)
+          .single();
 
-      if (userError || !userData) {
-        await supabase.auth.signOut();
-        setError("Erro ao verificar permissões. Contate o suporte.");
-        return;
+        if (userError || !userData) {
+          await supabase.auth.signOut();
+          setError("Erro ao verificar permissões. Contate o suporte.");
+          setLoading(false);
+          return;
+        }
+
+        if (userData.role !== 'escola_admin' && userData.role !== 'coreografo') {
+          await supabase.auth.signOut();
+          setError("Acesso negado. Área restrita às organizações participantes.");
+          setLoading(false);
+          return;
+        }
+
+        router.push("/escola/dashboard");
       }
-
-      if (userData.role !== "escola_admin" && userData.role !== "coreografo") {
-        await supabase.auth.signOut();
-        setError("Acesso negado. Área restrita às escolas participantes.");
-        return;
-      }
-
-      window.location.href = "/escola/dashboard";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function handleCadastro(e: React.FormEvent) {
+  const handleCadastro = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setSucesso("");
+
+    if (password !== confirmPassword) {
+      setError("As senhas não coincidem.");
+      setLoading(false);
+      return;
+    }
 
     try {
-      if (!email.trim()) {
-        throw new Error("Informe o e-mail.");
+      const emailValue = email.trim();
+      const nomeOrgValue = nomeOrganizacao.trim();
+      const responsavelValue = responsavel.trim();
+      const telefoneValue = telefone.trim();
+
+      // Verificar na nova tabela organizacoes
+      const { data: existingOrg, error: existingError } = await supabase
+        .from("organizacoes")
+        .select("id")
+        .eq("email", emailValue)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+      if (existingOrg) {
+        setError("Já existe uma organização cadastrada com esse email.");
+        setLoading(false);
+        return;
       }
 
-      if (!password || password.length < 6) {
-        throw new Error("A senha deve ter pelo menos 6 caracteres.");
-      }
-
-      if (password !== confirmarSenha) {
-        throw new Error("As senhas não coincidem.");
-      }
-
-      const supabase = createClient();
-
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
+      // 1. Criar usuário no auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: emailValue,
+        password: password,
         options: {
           emailRedirectTo: `${window.location.origin}/escola/login`,
         },
       });
 
-      if (error) throw error;
+      if (authError) throw authError;
 
-      if (!data.user) {
-        throw new Error("Não foi possível criar a conta.");
+      if (authData.user) {
+        // 2. Inserir na nova tabela organizacoes
+        const { data: orgData, error: orgError } = await supabase
+          .from("organizacoes")
+          .insert({
+            nome: nomeOrgValue,
+            responsavel: responsavelValue,
+            telefone: telefoneValue,
+            email: emailValue,
+          })
+          .select()
+          .single();
+
+        if (orgError) throw orgError;
+
+        // 3. O ELO PERDIDO: Atualiza a tabela usuarios com o organizacao_id
+        if (orgData) {
+          await supabase
+            .from("usuarios")
+            .update({ organizacao_id: orgData.id })
+            .eq("id", authData.user.id);
+        }
+
+        setError("Cadastro realizado com sucesso! Verifique seu email para confirmar a conta.");
       }
-
-      setSucesso("Conta criada. Agora teste o login com este e-mail.");
-      setModo("login");
-      setPassword("");
-      setConfirmarSenha("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao criar conta.");
+      setError(err instanceof Error ? err.message : "Erro inesperado");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-axon-bg p-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-axon-green-dim border border-axon-green/20 mb-4">
-            <GraduationCap size={28} className="text-axon-green" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
-            AXON <span className="text-axon-green font-light">Fest</span>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-axon-bg to-black p-4">
+      <div className="w-full max-w-md bg-axon-panel border border-axon-border rounded-2xl p-8 shadow-2xl">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-white mb-2">
+            {isLogin ? "Acesso da Organização" : "Cadastro de Organização"}
           </h1>
-          <p className="text-gray-500 text-sm mt-1">Portal das Escolas</p>
+          <p className="text-gray-400">
+            {isLogin ? "Acesse o seu painel" : "Cadastre-se para participar"}
+          </p>
         </div>
 
-        <div className="bg-axon-panel border border-axon-border rounded-2xl p-8">
-          <div className="flex rounded-lg bg-axon-bg border border-axon-border p-1 mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                setModo("login");
-                setError("");
-                setSucesso("");
-              }}
-              className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
-                modo === "login"
-                  ? "bg-axon-green text-white"
-                  : "text-gray-400 hover:text-white"
-              }`}
-            >
-              Entrar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setModo("cadastro");
-                setError("");
-                setSucesso("");
-              }}
-              className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
-                modo === "cadastro"
-                  ? "bg-axon-green text-white"
-                  : "text-gray-400 hover:text-white"
-              }`}
-            >
-              Criar conta
-            </button>
+        <div className="flex mb-6">
+          <button
+            onClick={() => setIsLogin(true)}
+            className={`flex-1 py-2 px-4 rounded-l-lg font-medium transition-colors ${
+              isLogin ? "bg-axon-gold text-black" : "bg-axon-bg text-gray-400 hover:bg-gray-700"
+            }`}
+          >
+            Entrar
+          </button>
+          <button
+            onClick={() => setIsLogin(false)}
+            className={`flex-1 py-2 px-4 rounded-r-lg font-medium transition-colors ${
+              !isLogin ? "bg-axon-gold text-black" : "bg-axon-bg text-gray-400 hover:bg-gray-700"
+            }`}
+          >
+            Cadastrar
+          </button>
+        </div>
+
+        <form onSubmit={isLogin ? handleLogin : handleCadastro} className="space-y-6">
+          {!isLogin && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Seu Nome</label>
+                <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-axon-gold" placeholder="Seu nome completo" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Nome da Organização/Grupo</label>
+                <input type="text" value={nomeOrganizacao} onChange={(e) => setNomeOrganizacao(e.target.value)} className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-axon-gold" placeholder="Nome do grupo ou escola" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Responsável</label>
+                <input type="text" value={responsavel} onChange={(e) => setResponsavel(e.target.value)} className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-axon-gold" placeholder="Nome do responsável" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Telefone</label>
+                <input type="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-axon-gold" placeholder="(11) 99999-9999" required />
+              </div>
+            </>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-axon-gold" placeholder="seu@email.com" required />
           </div>
 
-          <h2 className="text-lg font-semibold text-white mb-6">
-            {modo === "login" ? "Entrar na sua conta" : "Criar nova conta"}
-          </h2>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Senha</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-axon-gold" placeholder="••••••••" required />
+          </div>
 
-          <form
-            onSubmit={modo === "login" ? handleLogin : handleCadastro}
-            className="space-y-4"
-          >
+          {!isLogin && (
             <div>
-              <label className="block text-sm text-gray-400 mb-1.5">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-axon-green transition-colors"
-                placeholder="seu@email.com"
-                required
-              />
+              <label className="block text-sm font-medium text-gray-300 mb-2">Confirmar Senha</label>
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-axon-gold" placeholder="••••••••" required />
             </div>
+          )}
 
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5">Senha</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-axon-green transition-colors"
-                placeholder="••••••••"
-                required
-              />
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+              <p className="text-red-400 text-sm">{error}</p>
             </div>
+          )}
 
-            {modo === "cadastro" && (
-              <div>
-                <label className="block text-sm text-gray-400 mb-1.5">
-                  Confirmar senha
-                </label>
-                <input
-                  type="password"
-                  value={confirmarSenha}
-                  onChange={(e) => setConfirmarSenha(e.target.value)}
-                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-axon-green transition-colors"
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-            )}
+          <button type="submit" disabled={loading} className="w-full bg-axon-gold text-black font-bold py-3 rounded-lg hover:bg-[#d4af6a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            {loading ? <Loader2 size={18} className="animate-spin" /> : null}
+            {isLogin ? "Entrar" : "Cadastrar"}
+          </button>
+        </form>
 
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-                <p className="text-red-400 text-sm">{error}</p>
-              </div>
-            )}
-
-            {sucesso && (
-              <div className="bg-[var(--color-axon-green-dim)] border border-[var(--color-axon-green)]/20 rounded-lg px-4 py-3">
-                <p className="text-[var(--color-axon-green)] text-sm">{sucesso}</p>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-axon-green text-white font-semibold py-2.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm mt-2"
-            >
-              {loading && <Loader2 size={16} className="animate-spin" />}
-              {loading
-                ? modo === "login"
-                  ? "Verificando..."
-                  : "Criando conta..."
-                : modo === "login"
-                ? "Entrar"
-                : "Criar conta"}
-            </button>
-          </form>
+        <div className="mt-6 text-center">
+          <a href="/" className="text-axon-gold hover:underline text-sm">Voltar ao início</a>
         </div>
-
-        <p className="text-center text-gray-600 text-xs mt-6">
-          Problemas com acesso? Fale com o organizador do evento.
-        </p>
       </div>
     </div>
   );
