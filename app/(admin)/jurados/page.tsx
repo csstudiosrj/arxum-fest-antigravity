@@ -36,7 +36,7 @@ interface Jurado {
   cache_status: "pago" | "pendente";
 }
 
-interface Coreografia {
+interface Apresentação {
   id: string;
   nome: string;
   organizacao_id: string;
@@ -541,14 +541,14 @@ export default function JuradosPage() {
 
   const [termo, setTermo] = useState<Terminologia>({
     grupo: "Escola",
-    participante: "Bailarino",
-    apresentacao: "Coreografia",
+    participante: "Participante",
+    apresentacao: "Apresentação",
     organizacao: "Organizacao",
   });
 
   const [eventoAtivo, setEventoAtivo] = useState<EventoAtivo | null>(null);
   const [jurados, setJurados] = useState<Jurado[]>([]);
-  const [coreografias, setCoreografias] = useState<Coreografia[]>([]);
+  const [apresentaçãos, setApresentaçãos] = useState<Apresentação[]>([]);
   const [escolas, setEscolas] = useState<Escola[]>([]);
   const [criterios, setCriterios] = useState<Criterio[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
@@ -571,8 +571,8 @@ export default function JuradosPage() {
     if (config) {
       setTermo({
         grupo: (config as Record<string, string>).termo_grupo ?? "Escola",
-        participante: (config as Record<string, string>).termo_participante ?? "Bailarino",
-        apresentacao: (config as Record<string, string>).termo_apresentacao ?? "Coreografia",
+        participante: (config as Record<string, string>).termo_participante ?? "Participante",
+        apresentacao: (config as Record<string, string>).termo_apresentacao ?? "Apresentação",
         organizacao: (config as Record<string, string>).nome_organizacao ?? "Organizacao",
       });
     }
@@ -615,13 +615,13 @@ export default function JuradosPage() {
           supabase.from("organizacoes").select("id, nome"),
         ]);
 
-      setCoreografias((coreos as Coreografia[]) ?? []);
+      setApresentaçãos((coreos as Apresentação[]) ?? []);
       setCriterios((crits as Criterio[]) ?? []);
       setAvaliacoes((avals as Avaliacao[]) ?? []);
       setEscolas((escs as Escola[]) ?? []);
 
       const obsInit: Record<string, string> = {};
-      ((coreos as Coreografia[]) ?? []).forEach((c) => {
+      ((coreos as Apresentação[]) ?? []).forEach((c) => {
         obsInit[c.id] = c.observacoes ?? "";
       });
       setObservacoes(obsInit);
@@ -867,13 +867,13 @@ export default function JuradosPage() {
                       </button>
                     </div>
 
-                    {coreografias.length === 0 ? (
+                    {apresentaçãos.length === 0 ? (
                       <p className="text-sm text-neutral-600 text-center py-8">
                         Nenhuma {termo.apresentacao.toLowerCase()} no evento ativo.
                       </p>
                     ) : (
                       <div className="space-y-3">
-                        {coreografias.map((c) => {
+                        {apresentaçãos.map((c) => {
                           const escola = escolas.find((e) => e.id === c.organizacao_id);
                           const expandida = coreoExpandida === c.id;
 
@@ -1001,12 +1001,12 @@ export default function JuradosPage() {
                     <AlertCircle size={16} className="text-axon-gold shrink-0" />
                     <p className="text-sm text-neutral-400">Nenhum evento ativo.</p>
                   </div>
-                ) : coreografias.length === 0 ? (
+                ) : apresentaçãos.length === 0 ? (
                   <p className="text-sm text-neutral-600 text-center py-8">
                     Nenhuma {termo.apresentacao.toLowerCase()} no evento ativo.
                   </p>
                 ) : (
-                  coreografias.map((c) => {
+                  apresentaçãos.map((c) => {
                     const escola = escolas.find((e) => e.id === c.organizacao_id);
 
                     return (

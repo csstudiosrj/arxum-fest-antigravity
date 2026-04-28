@@ -35,7 +35,7 @@ const steps = [
       "O AXON Fest é white-label de verdade. Você define identidade visual, logo, cores e até a terminologia usada no sistema para que cada cliente, festival ou modalidade tenha uma experiência alinhada à própria operação.",
     highlights: [
       "Portal com cara da sua marca",
-      'Termos dinâmicos como “Bailarino”, “Atleta”, “Coreografia” ou “Peça”',
+      'Termos dinâmicos como “Participante”, “Atleta”, “Apresentação” ou “Peça”',
       "Experiência mais profissional para escolas, grupos e participantes",
     ],
   },

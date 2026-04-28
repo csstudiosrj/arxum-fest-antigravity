@@ -20,7 +20,7 @@ const features = [
     icon: Sparkles,
     title: "Terminologia dinâmica",
     description:
-      "Chame cada etapa do jeito que faz sentido para o seu evento: bailarino, atleta, elenco, coreografia, peça, apresentação ou qualquer outro termo da sua operação.",
+      "Chame cada etapa do jeito que faz sentido para o seu evento: participante, atleta, elenco, apresentação, peça, apresentação ou qualquer outro termo da sua operação.",
   },
   {
     icon: Settings2,

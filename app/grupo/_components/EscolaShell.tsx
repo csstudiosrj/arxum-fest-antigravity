@@ -102,7 +102,7 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
   const navItems = useMemo(() => [
     { label: 'Dashboard',        href: '/escola/dashboard',    icon: LayoutDashboard },
     { label: labels.apresentacao, href: '/escola/apresentacoes', icon: Music2 },
-    { label: labels.participante, href: '/escola/bailarinos',    icon: Users },
+    { label: labels.participante, href: '/escola/participantes',    icon: Users },
     { label: 'Músicas & Áudio',  href: '/escola/midias',       icon: Upload },
     { label: 'Mapas de Luz',     href: '/escola/mapas-de-luz', icon: Lightbulb },
     

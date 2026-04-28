@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 
-interface Coreografia {
+interface Apresentação {
   id: string;
   nome: string;
   organizacao_id: string;
@@ -37,14 +37,14 @@ interface EventoAtivo {
   nome: string;
 }
 
-function nomeAutoRename(ordem: number | null, escola: string, coreografia: string) {
+function nomeAutoRename(ordem: number | null, escola: string, apresentação: string) {
   const ord = String(ordem ?? 0).padStart(3, "0");
   const esc = escola.replace(/\s+/g, "").slice(0, 20);
-  const cor = coreografia.replace(/\s+/g, "").slice(0, 30);
+  const cor = apresentação.replace(/\s+/g, "").slice(0, 30);
   return `${ord}_${esc}_${cor}`;
 }
 
-function badgeStatus(status: Coreografia["status_audio"]) {
+function badgeStatus(status: Apresentação["status_audio"]) {
   if (status === "validado") return "border-axon-green/30 text-axon-green bg-axon-green-dim";
   if (status === "erro") return "border-red-400/30 text-red-400 bg-red-400/10";
   return "border-axon-gold/30 text-axon-gold bg-axon-gold-dim";
@@ -54,7 +54,7 @@ export default function MidiasPage() {
   const supabase = createClient();
 
   const [eventoAtivo, setEventoAtivo] = useState<EventoAtivo | null>(null);
-  const [coreografias, setCoreografias] = useState<Coreografia[]>([]);
+  const [apresentaçãos, setApresentaçãos] = useState<Apresentação[]>([]);
   const [escolas, setEscolas] = useState<Escola[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
@@ -80,14 +80,14 @@ export default function MidiasPage() {
     if (evento) {
       const [{ data: coreos }, { data: escs }] = await Promise.all([
         supabase
-          .from("coreografias")
+          .from("apresentaçãos")
           .select("id, nome, organizacao_id, ordem_apresentacao, arquivo_audio_url, audio_nome_original, audio_duracao, audio_tamanho, status_audio")
           .eq("evento_id", evento.id)
           .order("ordem_apresentacao", { ascending: true }),
         supabase.from("escolas").select("id, nome"),
       ]);
 
-      setCoreografias((coreos as Coreografia[]) ?? []);
+      setApresentaçãos((coreos as Apresentação[]) ?? []);
       setEscolas((escs as Escola[]) ?? []);
     }
 
@@ -116,13 +116,13 @@ export default function MidiasPage() {
     setTocando(true);
   }
 
-  async function alterarStatus(id: string, status: Coreografia["status_audio"]) {
-    await supabase.from("coreografias").update({ status_audio: status }).eq("id", id);
-    setCoreografias((p) => p.map((c) => (c.id === id ? { ...c, status_audio: status } : c)));
+  async function alterarStatus(id: string, status: Apresentação["status_audio"]) {
+    await supabase.from("apresentaçãos").update({ status_audio: status }).eq("id", id);
+    setApresentaçãos((p) => p.map((c) => (c.id === id ? { ...c, status_audio: status } : c)));
   }
 
   async function exportarZip() {
-    const validadas = coreografias.filter((c) => c.arquivo_audio_url && c.status_audio === "validado");
+    const validadas = apresentaçãos.filter((c) => c.arquivo_audio_url && c.status_audio === "validado");
     if (!validadas.length) { alert("Nenhuma midia validada para exportar."); return; }
 
     setExportando(true);
@@ -148,7 +148,7 @@ export default function MidiasPage() {
     setExportando(false);
   }
 
-  const coreosFiltradas = coreografias.filter((c) => {
+  const coreosFiltradas = apresentaçãos.filter((c) => {
     const escola = nomeEscola(c.organizacao_id).toLowerCase();
     const q = busca.toLowerCase();
     const matchBusca = !q || c.nome.toLowerCase().includes(q) || escola.includes(q);
@@ -156,9 +156,9 @@ export default function MidiasPage() {
     return matchBusca && matchFiltro;
   });
 
-  const totalValidados = coreografias.filter((c) => c.status_audio === "validado").length;
-  const totalPendentes = coreografias.filter((c) => c.status_audio === "pendente").length;
-  const totalErros = coreografias.filter((c) => c.status_audio === "erro").length;
+  const totalValidados = apresentaçãos.filter((c) => c.status_audio === "validado").length;
+  const totalPendentes = apresentaçãos.filter((c) => c.status_audio === "pendente").length;
+  const totalErros = apresentaçãos.filter((c) => c.status_audio === "erro").length;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 p-6">
@@ -187,7 +187,7 @@ export default function MidiasPage() {
             <FileAudio size={14} className="text-neutral-500" />
             <p className="text-xs text-neutral-500">Total</p>
           </div>
-          <p className="text-lg font-semibold tabular-nums text-white">{coreografias.length}</p>
+          <p className="text-lg font-semibold tabular-nums text-white">{apresentaçãos.length}</p>
         </div>
         <div className="bg-axon-panel border border-axon-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -219,7 +219,7 @@ export default function MidiasPage() {
             type="text"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por coreografia ou escola..."
+            placeholder="Buscar por apresentação ou escola..."
             className="w-full bg-axon-panel border border-axon-border rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
           />
           {busca && (
@@ -267,7 +267,7 @@ export default function MidiasPage() {
             <thead className="border-b border-axon-border">
               <tr>
                 <th className="text-left text-xs text-neutral-500 font-medium px-5 py-3">Ordem</th>
-                <th className="text-left text-xs text-neutral-500 font-medium px-5 py-3">Coreografia / Escola</th>
+                <th className="text-left text-xs text-neutral-500 font-medium px-5 py-3">Apresentação / Escola</th>
                 <th className="text-left text-xs text-neutral-500 font-medium px-5 py-3 hidden md:table-cell">Nome exportado</th>
                 <th className="text-center text-xs text-neutral-500 font-medium px-4 py-3 hidden sm:table-cell">Dur.</th>
                 <th className="text-left text-xs text-neutral-500 font-medium px-4 py-3">Status</th>
@@ -305,7 +305,7 @@ export default function MidiasPage() {
                     <td className="px-4 py-3.5">
                       <select
                         value={c.status_audio}
-                        onChange={(e) => alterarStatus(c.id, e.target.value as Coreografia["status_audio"])}
+                        onChange={(e) => alterarStatus(c.id, e.target.value as Apresentação["status_audio"])}
                         className={`text-xs font-medium px-2.5 py-1 rounded-full border bg-transparent cursor-pointer focus:outline-none transition-colors ${badgeStatus(c.status_audio)}`}
                       >
                         <option value="validado" className="bg-axon-panel text-white">Validado</option>
@@ -343,7 +343,7 @@ export default function MidiasPage() {
           <div className="w-2 h-2 rounded-full bg-axon-gold animate-pulse shrink-0" />
           <p className="text-xs text-neutral-400 max-w-xs truncate">
             {(() => {
-              const c = coreografias.find((x) => x.arquivo_audio_url === audioAtivo);
+              const c = apresentaçãos.find((x) => x.arquivo_audio_url === audioAtivo);
               return c ? `${c.nome} — ${nomeEscola(c.organizacao_id)}` : "Tocando...";
             })()}
           </p>

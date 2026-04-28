@@ -43,7 +43,7 @@ interface Escola {
   email: string;
 }
 
-interface Bailarino {
+interface Participante {
   id: string;
   nome: string;
   cpf: string;
@@ -52,26 +52,26 @@ interface Bailarino {
   termo_assinado: boolean;
 }
 
-interface Coreografia {
+interface Apresentação {
   id: string;
   nome: string;
   organizacao_id: string;
   categoria: string;
   tipo: string;
-  quantidade_bailarinos: number;
+  quantidade_participantes: number;
   valor_total: number;
   status_pagamento: StatusPagamento;
   created_at: string;
 }
 
 interface ElencoRow {
-  coreografia_id: string;
-  bailarino_id: string;
+  apresentação_id: string;
+  participante_id: string;
 }
 
 interface EscolaComDados extends Escola {
-  coreografias: Coreografia[];
-  bailarinos: Bailarino[];
+  apresentaçãos: Apresentação[];
+  participantes: Participante[];
   elenco: ElencoRow[];
 }
 
@@ -341,10 +341,10 @@ function CardGrupo({ escola, termo, onEdit, onDelete }: CardGrupoProps) {
   const [expandido, setExpandido] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"apresentacoes" | "participantes">("apresentacoes");
 
-  const totalCoreos = escola.coreografias.length;
-  const totalBailarinos = escola.bailarinos.length;
-  const totalValor = escola.coreografias.reduce((acc, c) => acc + (c.valor_total ?? 0), 0);
-  const totalPago = escola.coreografias
+  const totalCoreos = escola.apresentaçãos.length;
+  const totalParticipantes = escola.participantes.length;
+  const totalValor = escola.apresentaçãos.reduce((acc, c) => acc + (c.valor_total ?? 0), 0);
+  const totalPago = escola.apresentaçãos
     .filter((c) => c.status_pagamento === "pago")
     .reduce((acc, c) => acc + (c.valor_total ?? 0), 0);
   const totalPendente = totalValor - totalPago;
@@ -383,7 +383,7 @@ function CardGrupo({ escola, termo, onEdit, onDelete }: CardGrupoProps) {
           </div>
           <div className="text-center">
             <p className="text-xs text-neutral-500">{termo.participante}s</p>
-            <p className="text-sm font-semibold text-white tabular-nums">{totalBailarinos}</p>
+            <p className="text-sm font-semibold text-white tabular-nums">{totalParticipantes}</p>
           </div>
           <div className="text-center">
             <p className="text-xs text-neutral-500">Total</p>
@@ -421,7 +421,7 @@ function CardGrupo({ escola, termo, onEdit, onDelete }: CardGrupoProps) {
       {/* Resumo mobile */}
       <div className="sm:hidden flex items-center gap-4 px-5 pb-3 text-xs text-neutral-500">
         <span>{totalCoreos} {termo.apresentacao.toLowerCase()}s</span>
-        <span>{totalBailarinos} {termo.participante.toLowerCase()}s</span>
+        <span>{totalParticipantes} {termo.participante.toLowerCase()}s</span>
         <span className="ml-auto tabular-nums">{formatMoeda(totalValor)}</span>
       </div>
 
@@ -447,17 +447,17 @@ function CardGrupo({ escola, termo, onEdit, onDelete }: CardGrupoProps) {
           {/* Aba Apresentacoes */}
           {abaAtiva === "apresentacoes" && (
             <div className="p-5">
-              {escola.coreografias.length === 0 ? (
+              {escola.apresentaçãos.length === 0 ? (
                 <p className="text-sm text-neutral-600 text-center py-6">
                   Nenhuma {termo.apresentacao.toLowerCase()} inscrita.
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {escola.coreografias.map((c) => {
+                  {escola.apresentaçãos.map((c) => {
                     const participantesNaCoreo = escola.elenco
-                      .filter((e) => e.coreografia_id === c.id)
-                      .map((e) => escola.bailarinos.find((b) => b.id === e.bailarino_id))
-                      .filter(Boolean) as Bailarino[];
+                      .filter((e) => e.apresentação_id === c.id)
+                      .map((e) => escola.participantes.find((b) => b.id === e.participante_id))
+                      .filter(Boolean) as Participante[];
 
                     return (
                       <div key={c.id} className="bg-axon-bg border border-axon-border rounded-lg p-4">
@@ -474,7 +474,7 @@ function CardGrupo({ escola, termo, onEdit, onDelete }: CardGrupoProps) {
                               )}
                               <span className="text-neutral-700">·</span>
                               <span className="text-xs text-neutral-500">
-                                {c.quantidade_bailarinos} {termo.participante.toLowerCase()}{c.quantidade_bailarinos !== 1 ? "s" : ""}
+                                {c.quantidade_participantes} {termo.participante.toLowerCase()}{c.quantidade_participantes !== 1 ? "s" : ""}
                               </span>
                             </div>
                           </div>
@@ -518,17 +518,17 @@ function CardGrupo({ escola, termo, onEdit, onDelete }: CardGrupoProps) {
           {/* Aba Participantes */}
           {abaAtiva === "participantes" && (
             <div className="p-5">
-              {escola.bailarinos.length === 0 ? (
+              {escola.participantes.length === 0 ? (
                 <p className="text-sm text-neutral-600 text-center py-6">
                   Nenhum {termo.participante.toLowerCase()} cadastrado.
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {escola.bailarinos.map((b) => {
+                  {escola.participantes.map((b) => {
                     const apresentacoesDoP = escola.elenco
-                      .filter((e) => e.bailarino_id === b.id)
-                      .map((e) => escola.coreografias.find((c) => c.id === e.coreografia_id))
-                      .filter(Boolean) as Coreografia[];
+                      .filter((e) => e.participante_id === b.id)
+                      .map((e) => escola.apresentaçãos.find((c) => c.id === e.apresentação_id))
+                      .filter(Boolean) as Apresentação[];
 
                     return (
                       <div key={b.id} className="bg-axon-bg border border-axon-border rounded-lg px-4 py-3">
@@ -645,8 +645,8 @@ export default function InscricoesPage() {
   const [escolasComDados, setEscolasComDados] = useState<EscolaComDados[]>([]);
   const [termo, setTermo] = useState<Terminologia>({
     grupo: "Escola",
-    participante: "Bailarino",
-    apresentacao: "Coreografia",
+    participante: "Participante",
+    apresentacao: "Apresentação",
     inscricao: "Inscricao",
     organizacao: "Organizacao",
   });
@@ -673,38 +673,38 @@ export default function InscricoesPage() {
     const [
       { data: config },
       { data: escolas },
-      { data: coreografias },
-      { data: bailarinos },
+      { data: apresentaçãos },
+      { data: participantes },
       { data: elenco },
     ] = await Promise.all([
       supabase.from("tenant_config").select("termo_grupo, termo_participante, termo_apresentacao, termo_inscricao, nome_organizacao").single(),
       supabase.from("escolas").select("*").order("nome"),
-      supabase.from("coreografias").select("*").order("created_at", { ascending: false }),
-      supabase.from("bailarinos").select("*").order("nome"),
-      supabase.from("coreografia_elenco").select("*"),
+      supabase.from("apresentaçãos").select("*").order("created_at", { ascending: false }),
+      supabase.from("participantes").select("*").order("nome"),
+      supabase.from("apresentação_elenco").select("*"),
     ]);
 
     if (config) {
       setTermo({
         grupo:        (config as Record<string, string>).termo_grupo        || "Escola",
-        participante: (config as Record<string, string>).termo_participante || "Bailarino",
-        apresentacao: (config as Record<string, string>).termo_apresentacao || "Coreografia",
+        participante: (config as Record<string, string>).termo_participante || "Participante",
+        apresentacao: (config as Record<string, string>).termo_apresentacao || "Apresentação",
         inscricao:    (config as Record<string, string>).termo_inscricao    || "Inscricao",
         organizacao:  (config as Record<string, string>).nome_organizacao   || "Organizacao",
       });
     }
 
     const escolasArr = (escolas as Escola[]) ?? [];
-    const coreosArr  = (coreografias as Coreografia[]) ?? [];
-    const bailArr    = (bailarinos as Bailarino[]) ?? [];
+    const coreosArr  = (apresentaçãos as Apresentação[]) ?? [];
+    const bailArr    = (participantes as Participante[]) ?? [];
     const elencoArr  = (elenco as ElencoRow[]) ?? [];
 
     const compostas: EscolaComDados[] = escolasArr.map((e) => ({
       ...e,
-      coreografias: coreosArr.filter((c) => c.organizacao_id === e.id),
-      bailarinos:   bailArr.filter((b) => b.organizacao_id === e.id),
+      apresentaçãos: coreosArr.filter((c) => c.organizacao_id === e.id),
+      participantes:   bailArr.filter((b) => b.organizacao_id === e.id),
       elenco:       elencoArr.filter((el) =>
-        coreosArr.filter((c) => c.organizacao_id === e.id).some((c) => c.id === el.coreografia_id)
+        coreosArr.filter((c) => c.organizacao_id === e.id).some((c) => c.id === el.apresentação_id)
       ),
     }));
 
@@ -745,12 +745,12 @@ export default function InscricoesPage() {
     setErroExcluir(null);
     setExcluindoEscola(true);
 
-    const coreoIds = escolaExcluir.coreografias.map((c) => c.id);
+    const coreoIds = escolaExcluir.apresentaçãos.map((c) => c.id);
     if (coreoIds.length > 0) {
       const { error } = await supabase
-        .from("coreografia_elenco")
+        .from("apresentação_elenco")
         .delete()
-        .in("coreografia_id", coreoIds);
+        .in("apresentação_id", coreoIds);
       if (error) {
         setErroExcluir(error.message);
         setExcluindoEscola(false);
@@ -760,7 +760,7 @@ export default function InscricoesPage() {
     }
 
     const { error: coreoError } = await supabase
-      .from("coreografias")
+      .from("apresentaçãos")
       .delete()
       .eq("organizacao_id", escolaExcluir.id);
     if (coreoError) {
@@ -770,14 +770,14 @@ export default function InscricoesPage() {
       return;
     }
 
-    const { error: bailarinoError } = await supabase
-      .from("bailarinos")
+    const { error: participanteError } = await supabase
+      .from("participantes")
       .delete()
       .eq("organizacao_id", escolaExcluir.id);
-    if (bailarinoError) {
-      setErroExcluir(bailarinoError.message);
+    if (participanteError) {
+      setErroExcluir(participanteError.message);
       setExcluindoEscola(false);
-      mostrarToast(`Erro ao excluir escola: ${bailarinoError.message}`, "erro");
+      mostrarToast(`Erro ao excluir escola: ${participanteError.message}`, "erro");
       return;
     }
 

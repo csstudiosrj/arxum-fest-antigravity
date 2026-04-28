@@ -91,7 +91,7 @@ type FormState = {
   tipo: string;
   categoria_id: string;
   estilo_id: string;
-  quantidade_bailarinos: string;
+  quantidade_participantes: string;
   observacoes: string;
   participantes_ids: string[];
   coreografos: string[];
@@ -286,7 +286,7 @@ export default function ApresentacoesPage() {
     tipo: "",
     categoria_id: "",
     estilo_id: "",
-    quantidade_bailarinos: "",
+    quantidade_participantes: "",
     observacoes: "",
     participantes_ids: [],
     coreografos: [""],
@@ -462,7 +462,7 @@ export default function ApresentacoesPage() {
           grupo_id: organizacaoId,
           categoria_id: form.categoria_id,
           tipo: form.tipo,
-          quantidade_bailarinos: form.participantes_ids.length || null,
+          quantidade_participantes: form.participantes_ids.length || null,
           valor_total: valorSelecionado,
           arquivo_audio: arquivoAudio?.url ?? null,
           arquivo_mapa_luz: arquivoMapaLuz?.url ?? null,
@@ -490,7 +490,7 @@ export default function ApresentacoesPage() {
         tipo: "",
         categoria_id: "",
         estilo_id: "",
-        quantidade_bailarinos: "",
+        quantidade_participantes: "",
         observacoes: "",
         participantes_ids: [],
         coreografos: [""],
@@ -605,10 +605,10 @@ export default function ApresentacoesPage() {
               </div>
 
               <div className="space-y-1.5">
-                <FieldLabel>Quantidade de bailarinos</FieldLabel>
+                <FieldLabel>Quantidade de participantes</FieldLabel>
                 <Input
-                  value={form.quantidade_bailarinos}
-                  onChange={(e) => setField("quantidade_bailarinos", e.target.value)}
+                  value={form.quantidade_participantes}
+                  onChange={(e) => setField("quantidade_participantes", e.target.value)}
                   placeholder="Opcional"
                 />
               </div>

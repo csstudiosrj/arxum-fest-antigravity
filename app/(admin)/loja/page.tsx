@@ -39,7 +39,7 @@ interface Variacao {
 interface PedidoItem {
   id: string;
   grupo_id: string;
-  coreografia_id: string | null;
+  apresentação_id: string | null;
   produto_id: string;
   variacao_id: string | null;
   quantidade: number;

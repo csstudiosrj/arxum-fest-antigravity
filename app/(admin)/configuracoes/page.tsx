@@ -1069,12 +1069,12 @@ export default function ConfiguracoesPage() {
                     {
                       campo: "termo_apresentacao",
                       label: "Apresentação / Obra",
-                      placeholder: "Coreografia, Peça, Performance, Música...",
+                      placeholder: "Apresentação, Peça, Performance, Música...",
                     },
                     {
                       campo: "termo_participante",
                       label: "Participante",
-                      placeholder: "Bailarino, Músico, Ator, Aluno...",
+                      placeholder: "Participante, Músico, Ator, Aluno...",
                     },
                     {
                       campo: "termo_grupo",
@@ -1115,11 +1115,11 @@ export default function ConfiguracoesPage() {
                     </span>{" "}
                     agora e registre cada{" "}
                     <span className="text-white font-medium">
-                      {formConfig.termo_apresentacao || "Coreografia"}
+                      {formConfig.termo_apresentacao || "Apresentação"}
                     </span>{" "}
                     com os{" "}
                     <span className="text-white font-medium">
-                      {formConfig.termo_participante || "Bailarinos"}
+                      {formConfig.termo_participante || "Participantes"}
                     </span>{" "}
                     da sua{" "}
                     <span className="text-white font-medium">
@@ -1131,8 +1131,8 @@ export default function ConfiguracoesPage() {
                     {[
                       { label: "Evento", valor: formConfig.termo_evento || "Festival" },
                       { label: "Inscrição", valor: formConfig.termo_inscricao || "Inscrição" },
-                      { label: "Apresentação", valor: formConfig.termo_apresentacao || "Coreografia" },
-                      { label: "Participante", valor: formConfig.termo_participante || "Bailarino" },
+                      { label: "Apresentação", valor: formConfig.termo_apresentacao || "Apresentação" },
+                      { label: "Participante", valor: formConfig.termo_participante || "Participante" },
                       { label: "Grupo", valor: formConfig.termo_grupo || "Escola" },
                     ].map(({ label, valor }) => (
                       <div key={label} className="text-center">

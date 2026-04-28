@@ -22,8 +22,8 @@ interface Documento {
 }
 
 interface AceiteStatus {
-  bailarino_id: string;
-  bailarino_nome: string;
+  participante_id: string;
+  participante_nome: string;
   escola_nome: string;
   escola_aceite: boolean;
   imagem_aceite: boolean;
@@ -219,7 +219,7 @@ function AbaStatus({ aceites }: { aceites: AceiteStatus[] }) {
 
   const filtrados = aceites.filter((a) => {
     const matchBusca =
-      a.bailarino_nome.toLowerCase().includes(busca.toLowerCase()) ||
+      a.participante_nome.toLowerCase().includes(busca.toLowerCase()) ||
       a.escola_nome.toLowerCase().includes(busca.toLowerCase());
     if (filtro === "pendentes") return matchBusca && !a.imagem_aceite;
     if (filtro === "assinados") return matchBusca && a.imagem_aceite;
@@ -249,7 +249,7 @@ function AbaStatus({ aceites }: { aceites: AceiteStatus[] }) {
       <div className="flex items-center gap-3">
         <input
           type="text"
-          placeholder="Buscar bailarino ou escola..."
+          placeholder="Buscar participante ou escola..."
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           className="flex-1 bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-green placeholder:text-gray-600"
@@ -275,7 +275,7 @@ function AbaStatus({ aceites }: { aceites: AceiteStatus[] }) {
           <Users size={36} className="opacity-30" />
           <p className="text-sm">
             {aceites.length === 0
-              ? "Nenhum bailarino inscrito ainda."
+              ? "Nenhum participante inscrito ainda."
               : "Nenhum resultado para esta busca."}
           </p>
         </div>
@@ -283,11 +283,11 @@ function AbaStatus({ aceites }: { aceites: AceiteStatus[] }) {
         <div className="space-y-2">
           {filtrados.map((a) => (
             <div
-              key={a.bailarino_id}
+              key={a.participante_id}
               className="flex items-center justify-between bg-axon-bg border border-axon-border rounded-xl px-4 py-3"
             >
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{a.bailarino_nome}</p>
+                <p className="text-sm font-medium text-white truncate">{a.participante_nome}</p>
                 <p className="text-xs text-gray-500">{a.escola_nome}</p>
               </div>
 
@@ -327,7 +327,7 @@ function AbaStatus({ aceites }: { aceites: AceiteStatus[] }) {
         <div className="flex items-start gap-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
           <AlertTriangle size={16} className="text-yellow-500 mt-0.5 shrink-0" />
           <p className="text-sm text-yellow-500/80">
-            <strong className="text-yellow-400">{pendentes} bailarino{pendentes > 1 ? "s" : ""}</strong>{" "}
+            <strong className="text-yellow-400">{pendentes} participante{pendentes > 1 ? "s" : ""}</strong>{" "}
             com termos pendentes. O organizador pode barrar a entrega de credencial na porta.
           </p>
         </div>
@@ -364,9 +364,9 @@ export default function TermosPage() {
   // ── Carregar aceites (JOIN via view ou query manual) ──
   useEffect(() => {
     async function carregarAceites() {
-      // Busca todos os bailarinos com status de aceites
-      const { data: bailarinos } = await supabase
-        .from("bailarinos")
+      // Busca todos os participantes com status de aceites
+      const { data: participantes } = await supabase
+        .from("participantes")
         .select(`
           id,
           nome_completo,
@@ -374,12 +374,12 @@ export default function TermosPage() {
           aceites:termos_aceites(tipo_assinante, documento_id, aceito_em, nome_assinante)
         `);
 
-      if (!bailarinos) return;
+      if (!participantes) return;
 
       const docRegulamento = documentos.find((d) => d.tipo === "regulamento");
       const docImagem = documentos.find((d) => d.tipo === "uso_imagem");
 
-      const status: AceiteStatus[] = bailarinos.map((b: any) => {
+      const status: AceiteStatus[] = participantes.map((b: any) => {
         const aceiteEscola = b.aceites?.some(
           (a: any) =>
             a.tipo_assinante === "escola" &&
@@ -393,8 +393,8 @@ export default function TermosPage() {
         );
 
         return {
-          bailarino_id: b.id,
-          bailarino_nome: b.nome_completo,
+          participante_id: b.id,
+          participante_nome: b.nome_completo,
           escola_nome: b.escola?.nome ?? "—",
           escola_aceite: !!aceiteEscola,
           imagem_aceite: !!aceiteImagem,

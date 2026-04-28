@@ -16,7 +16,7 @@ export default function AvaliacaoPage() {
       <div className="bg-axon-panel border border-axon-border rounded-2xl p-8 flex flex-col gap-6">
         <div className="flex flex-col gap-1">
           <span className="text-xs text-gray-500 uppercase tracking-widest">
-            Coreografia atual
+            Apresentação atual
           </span>
           <p className="text-white font-semibold text-lg">
             Aguardando início da apresentação...

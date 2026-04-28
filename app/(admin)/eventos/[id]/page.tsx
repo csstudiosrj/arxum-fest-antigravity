@@ -23,7 +23,7 @@ type Categoria = {
   faixa_etaria_label: string | null; categoria_pai_id: string | null;
   subcategorias?: Categoria[];
 };
-type Coreografia = {
+type Apresentação = {
   id: string; nome: string; categoria: string;
   ordem_apresentacao: number | null; escolas: { nome: string }[] | null;
 };
@@ -90,7 +90,7 @@ export default function PainelEventoPage() {
   const [evento, setEvento]               = useState<Evento | null>(null);
   const [form, setForm]                   = useState<Partial<Evento>>({});
   const [categorias, setCategorias]       = useState<Categoria[]>([]);
-  const [coreografias, setCoreografias]   = useState<Coreografia[]>([]);
+  const [apresentaçãos, setApresentaçãos]   = useState<Apresentação[]>([]);
   const [metricas, setMetricas]           = useState<Metricas | null>(null);
   const [toasts, setToasts]               = useState<Toast[]>([]);
 
@@ -124,7 +124,7 @@ export default function PainelEventoPage() {
           supabase.from("eventos").select("*").eq("id", eventoId).single(),
           supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome"),
           supabase
-            .from("coreografias")
+            .from("apresentaçãos")
             .select("id, nome, categoria, ordem_apresentacao, escolas(nome)")
             .eq("evento_id", eventoId)
             .order("ordem_apresentacao", { ascending: true, nullsFirst: false }),
@@ -145,7 +145,7 @@ export default function PainelEventoPage() {
           subcategorias: todasCats.filter((c) => c.categoria_pai_id === pai.id),
         }));
       setCategorias(pais);
-      setCoreografias((coreos ?? []) as Coreografia[]);
+      setApresentaçãos((coreos ?? []) as Apresentação[]);
 
       setMetricas({
         total_inscricoes: inscricoes?.length ?? 0,
@@ -261,14 +261,14 @@ export default function PainelEventoPage() {
   // ── Drag & Drop ────────────────────────────────────────────────────────
   async function onDragEnd(result: DropResult) {
     if (!result.destination) return;
-    const items = Array.from(coreografias);
+    const items = Array.from(apresentaçãos);
     const [moved] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, moved);
     const reordenadas = items.map((c, i) => ({ ...c, ordem_apresentacao: i + 1 }));
-    setCoreografias(reordenadas);
+    setApresentaçãos(reordenadas);
     await Promise.all(
       reordenadas.map((c) =>
-        supabase.from("coreografias").update({ ordem_apresentacao: c.ordem_apresentacao }).eq("id", c.id)
+        supabase.from("apresentaçãos").update({ ordem_apresentacao: c.ordem_apresentacao }).eq("id", c.id)
       )
     );
     addToast("sucesso", "Ordem salva!");
@@ -601,17 +601,17 @@ export default function PainelEventoPage() {
                   <h3 className="text-lg font-medium text-white">Montagem do Line-up</h3>
                   <p className="text-sm text-gray-400">Arraste para reordenar as apresentações.</p>
                 </div>
-                {coreografias.length === 0 ? (
+                {apresentaçãos.length === 0 ? (
                   <div className="text-center py-16 text-gray-500">
                     <CalendarDays size={40} className="mx-auto mb-3 opacity-30 text-axon-gold" />
-                    <p>Nenhuma coreografia inscrita ainda.</p>
+                    <p>Nenhuma apresentação inscrita ainda.</p>
                   </div>
                 ) : (
                   <DragDropContext onDragEnd={onDragEnd}>
                     <Droppable droppableId="lineup">
                       {(provided) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
-                          {coreografias.map((coreo, index) => (
+                          {apresentaçãos.map((coreo, index) => (
                             <Draggable key={coreo.id} draggableId={coreo.id} index={index}>
                               {(provided, snapshot) => (
                                 <div ref={provided.innerRef} {...provided.draggableProps}

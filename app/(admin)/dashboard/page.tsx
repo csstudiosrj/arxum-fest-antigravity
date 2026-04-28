@@ -7,22 +7,22 @@ export default async function DashboardPage() {
   // ── Busca paralela de todos os KPIs ──
   const [
     { count: totalInscricoes },
-    { count: totalBailarinos },
+    { count: totalParticipantes },
     { count: midiasPendentes },
     { data: receitaData },
   ] = await Promise.all([
     supabase
-      .from("coreografias")
+      .from("apresentaçãos")
       .select("*", { count: "exact", head: true }),
     supabase
-      .from("bailarinos")
+      .from("participantes")
       .select("*", { count: "exact", head: true }),
     supabase
-      .from("coreografias")
+      .from("apresentaçãos")
       .select("*", { count: "exact", head: true })
       .is("arquivo_audio", null),
     supabase
-      .from("coreografias")
+      .from("apresentaçãos")
       .select("valor")
       .eq("status_pagamento", "pago"),
   ]);
@@ -40,7 +40,7 @@ export default async function DashboardPage() {
     {
       label: "Inscrições Ativas",
       value: totalInscricoes ?? 0,
-      sub: "coreografias cadastradas",
+      sub: "apresentaçãos cadastradas",
       icon: Users,
       iconColor: "text-axon-gold",
       subColor: "text-gray-500",
@@ -54,8 +54,8 @@ export default async function DashboardPage() {
       subColor: "text-gray-500",
     },
     {
-      label: "Bailarinos Cadastrados",
-      value: totalBailarinos ?? 0,
+      label: "Participantes Cadastrados",
+      value: totalParticipantes ?? 0,
       sub: "no banco de elenco",
       icon: Ticket,
       iconColor: "text-axon-gold",

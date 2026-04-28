@@ -14,8 +14,8 @@ import {
 } from 'lucide-react'
 
 interface Stats {
-  coreografias: number
-  bailarinos: number
+  apresentaçãos: number
+  participantes: number
   musicasEnviadas: number
   pagamentosPendentes: number
   pagamentosConfirmados: number
@@ -23,7 +23,7 @@ interface Stats {
   valorPago: number
 }
 
-interface Coreografia {
+interface Apresentação {
   id: string
   nome: string
   tipo: string
@@ -35,8 +35,8 @@ interface Coreografia {
 }
 
 const INITIAL_STATS: Stats = {
-  coreografias: 0,
-  bailarinos: 0,
+  apresentaçãos: 0,
+  participantes: 0,
   musicasEnviadas: 0,
   pagamentosPendentes: 0,
   pagamentosConfirmados: 0,
@@ -121,7 +121,7 @@ function StatusBadge({ status }: { status: string }) {
 export default function EscolaDashboardPage() {
   const [stats, setStats] = useState<Stats>(INITIAL_STATS)
   const [organizacaoNome, setOrganizacaoNome] = useState<string>('')
-  const [recentes, setRecentes] = useState<Coreografia[]>([])
+  const [recentes, setRecentes] = useState<Apresentação[]>([])
   const [loading, setLoading] = useState(true)
   const [semOrganizacao, setSemOrganizacao] = useState(false)
 
@@ -179,8 +179,8 @@ export default function EscolaDashboardPage() {
       const pagos = apresentacoes.filter((item) => item.status_pagamento === 'pago')
 
       setStats({
-        coreografias: apresentacoes.length,
-        bailarinos: participantesCount,
+        apresentaçãos: apresentacoes.length,
+        participantes: participantesCount,
         musicasEnviadas,
         pagamentosPendentes: pendentes.length,
         pagamentosConfirmados: pagos.length,
@@ -209,8 +209,8 @@ export default function EscolaDashboardPage() {
   }
 
   const progressoMusicas =
-    stats.coreografias > 0
-      ? Math.round((stats.musicasEnviadas / stats.coreografias) * 100)
+    stats.apresentaçãos > 0
+      ? Math.round((stats.musicasEnviadas / stats.apresentaçãos) * 100)
       : 0
 
   return (
@@ -229,24 +229,24 @@ export default function EscolaDashboardPage() {
           <>
             <KpiCard
               title="Apresentacoes"
-              value={stats.coreografias}
+              value={stats.apresentaçãos}
               subtitle="cadastradas no portal"
               icon={Music2}
               accent="gold"
             />
             <KpiCard
               title="Participantes"
-              value={stats.bailarinos}
+              value={stats.participantes}
               subtitle="no banco de elenco"
               icon={Users}
             />
             <KpiCard
               title="Musicas Enviadas"
-              value={`${stats.musicasEnviadas}/${stats.coreografias}`}
+              value={`${stats.musicasEnviadas}/${stats.apresentaçãos}`}
               subtitle={`${progressoMusicas}% das apresentacoes`}
               icon={Upload}
               accent={
-                stats.musicasEnviadas === stats.coreografias && stats.coreografias > 0
+                stats.musicasEnviadas === stats.apresentaçãos && stats.apresentaçãos > 0
                   ? 'success'
                   : 'default'
               }
@@ -314,7 +314,7 @@ export default function EscolaDashboardPage() {
               <div className="h-2 rounded-full bg-white/10" />
               <div className="h-4 w-3/4 rounded bg-white/10" />
             </div>
-          ) : stats.coreografias === 0 ? (
+          ) : stats.apresentaçãos === 0 ? (
             <div className="flex flex-col items-center justify-center py-4 text-center">
               <FileMusic size={28} className="mb-2 text-white/15" />
               <p className="text-sm text-white/40">Nenhuma apresentacao cadastrada ainda</p>
@@ -324,7 +324,7 @@ export default function EscolaDashboardPage() {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-white/60">Musicas enviadas</span>
                 <span className="font-semibold text-white">
-                  {stats.musicasEnviadas} de {stats.coreografias}
+                  {stats.musicasEnviadas} de {stats.apresentaçãos}
                 </span>
               </div>
 
@@ -336,8 +336,8 @@ export default function EscolaDashboardPage() {
               </div>
 
               <p className="text-xs text-white/40">
-                {stats.coreografias - stats.musicasEnviadas > 0
-                  ? `${stats.coreografias - stats.musicasEnviadas} apresentacao(oes) aguardando envio de musica`
+                {stats.apresentaçãos - stats.musicasEnviadas > 0
+                  ? `${stats.apresentaçãos - stats.musicasEnviadas} apresentacao(oes) aguardando envio de musica`
                   : 'Todas as musicas foram enviadas'}
               </p>
             </div>
@@ -361,7 +361,7 @@ export default function EscolaDashboardPage() {
             <Music2 size={36} className="mb-3 text-white/15" />
             <p className="text-sm text-white/40">Nenhuma apresentacao cadastrada</p>
             <p className="mt-1 text-xs text-white/25">
-              Acesse Coreografias no menu lateral para comecar
+              Acesse Apresentaçãos no menu lateral para comecar
             </p>
           </div>
         ) : (
