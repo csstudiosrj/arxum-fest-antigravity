@@ -31,6 +31,11 @@ type TenantConfig = {
   termo_evento: string | null;
 };
 
+type TenantEstiloAtivo = {
+  estilo_id: string;
+  organizacao_id: string;
+};
+
 type Estilo = {
   id: string;
   nome: string;
@@ -272,6 +277,7 @@ export default function ApresentacoesPage() {
   const [estilos, setEstilos] = useState<Estilo[]>([]);
   const [participantes, setParticipantes] = useState<Participante[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [categoriasVazias, setCategoriasVazias] = useState(false);
   const [arquivoAudio, setArquivoAudio] = useState<UploadState | null>(null);
   const [arquivoMapaLuz, setArquivoMapaLuz] = useState<UploadState | null>(null);
 
@@ -313,6 +319,11 @@ export default function ApresentacoesPage() {
     [categorias, form.categoria_id]
   );
 
+  const participantesSelecionados = useMemo(
+    () => participantes.filter((p) => form.participantes_ids.includes(p.id)),
+    [participantes, form.participantes_ids]
+  );
+
   const valorSelecionado = categoriaSelecionada
     ? form.tipo === "solo"
       ? categoriaSelecionada.valor_solo
@@ -342,9 +353,12 @@ export default function ApresentacoesPage() {
 
         setOrganizacaoId(usuario.organizacao_id);
 
-        const [cfg, estilosRes, participantesRes, categoriasRes] = await Promise.all([
+        const [cfg, estilosAtivosRes, participantesRes, categoriasRes] = await Promise.all([
           supabase.from("tenant_config").select("*").eq("organizacao_id", usuario.organizacao_id).single(),
-          supabase.from("estilos").select("id,nome,descricao,perfil_id,slug,ordem").order("ordem", { ascending: true }),
+          supabase
+            .from("tenant_estilos_ativos")
+            .select("estilo_id, organizacao_id")
+            .eq("organizacao_id", usuario.organizacao_id),
           supabase
             .from("participantes")
             .select("id,nome,organizacao_id")
@@ -353,10 +367,32 @@ export default function ApresentacoesPage() {
           supabase.from("categorias").select("*").order("nome", { ascending: true }),
         ]);
 
+        if (cfg.error && cfg.error.code !== "PGRST116") throw cfg.error;
         if (cfg.data) setConfig(cfg.data as TenantConfig);
-        if (estilosRes.data) setEstilos(estilosRes.data as Estilo[]);
+
+        const estilosIds = (estilosAtivosRes.data as TenantEstiloAtivo[] | null)?.map((item) => item.estilo_id) ?? [];
+
+        if (estilosIds.length > 0) {
+          const { data: estilosData, error: estilosError } = await supabase
+            .from("estilos")
+            .select("id,nome,descricao,perfil_id,slug,ordem")
+            .in("id", estilosIds)
+            .order("ordem", { ascending: true });
+
+          if (estilosError) throw estilosError;
+          if (estilosData) setEstilos(estilosData as Estilo[]);
+        } else {
+          setEstilos([]);
+        }
+
+        if (participantesRes.error) throw participantesRes.error;
+        if (categoriasRes.error) throw categoriasRes.error;
+
         if (participantesRes.data) setParticipantes(participantesRes.data as Participante[]);
-        if (categoriasRes.data) setCategorias(categoriasRes.data as Categoria[]);
+        if (categoriasRes.data) {
+          setCategorias(categoriasRes.data as Categoria[]);
+          setCategoriasVazias(categoriasRes.data.length === 0);
+        }
       } catch (e) {
         addToast("erro", e instanceof Error ? e.message : "Erro ao carregar dados.");
       } finally {
@@ -542,11 +578,17 @@ export default function ApresentacoesPage() {
                 <FieldLabel required>Categoria</FieldLabel>
                 <Select value={form.categoria_id} onChange={(e) => setField("categoria_id", e.target.value)}>
                   <option value="">Selecione</option>
-                  {categorias.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome}
+                  {categoriasVazias ? (
+                    <option value="" disabled>
+                      Nenhuma categoria cadastrada para este evento
                     </option>
-                  ))}
+                  ) : (
+                    categorias.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                      </option>
+                    ))
+                  )}
                 </Select>
               </div>
 
@@ -588,31 +630,25 @@ export default function ApresentacoesPage() {
                 <p className="text-sm text-gray-500">Vários nomes por função.</p>
               </div>
 
-              <div className="flex flex-col gap-4 md:flex-row">
-                <div className="flex-1">
-                  <ListEditor
-                    titulo="Coreógrafos"
-                    items={form.coreografos}
-                    onChange={(v) => setField("coreografos", v)}
-                    placeholder="Nome do coreógrafo"
-                  />
-                </div>
-                <div className="flex-1">
-                  <ListEditor
-                    titulo="Diretores"
-                    items={form.diretores}
-                    onChange={(v) => setField("diretores", v)}
-                    placeholder="Nome do diretor"
-                  />
-                </div>
-                <div className="flex-1">
-                  <ListEditor
-                    titulo="Compositores"
-                    items={form.compositores}
-                    onChange={(v) => setField("compositores", v)}
-                    placeholder="Nome do compositor"
-                  />
-                </div>
+              <div className="flex flex-col gap-4">
+                <ListEditor
+                  titulo="Coreógrafos"
+                  items={form.coreografos}
+                  onChange={(v) => setField("coreografos", v)}
+                  placeholder="Nome do coreógrafo"
+                />
+                <ListEditor
+                  titulo="Diretores"
+                  items={form.diretores}
+                  onChange={(v) => setField("diretores", v)}
+                  placeholder="Nome do diretor"
+                />
+                <ListEditor
+                  titulo="Compositores"
+                  items={form.compositores}
+                  onChange={(v) => setField("compositores", v)}
+                  placeholder="Nome do compositor"
+                />
               </div>
             </div>
           </section>
@@ -656,6 +692,24 @@ export default function ApresentacoesPage() {
                   })
                 )}
               </div>
+
+              {participantesSelecionados.length > 0 ? (
+                <div className="space-y-2 rounded-xl border border-[#2e2825] bg-[#0d0807] p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-gray-400">
+                    Elenco selecionado
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {participantesSelecionados.map((participante) => (
+                      <span
+                        key={participante.id}
+                        className="inline-flex items-center rounded-full border border-[#C5A059]/30 bg-[#C5A059]/10 px-3 py-1 text-xs font-medium text-[#E7C98A]"
+                      >
+                        {participante.nome}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section className="space-y-4 rounded-2xl border border-[#2e2825] bg-[#1a1413] p-6">
