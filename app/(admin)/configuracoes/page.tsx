@@ -311,7 +311,7 @@ export default function ConfiguracoesPage() {
 
         if (usuarioError || !usuarioData) throw new Error("Usuário não encontrado.");
 
-        const eid = usuarioData.id;
+        const eid = usuarioData.organizacao_id;
         setOrganizacaoId(eid);
 
         // 3. Carregar dados em paralelo
