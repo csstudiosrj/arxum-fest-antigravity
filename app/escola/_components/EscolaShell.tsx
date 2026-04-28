@@ -1,6 +1,6 @@
-'use client'
+"use client"
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -18,20 +18,25 @@ import {
   Menu,
 } from 'lucide-react'
 
-const NAV_ITEMS = [
-  { label: 'Dashboard', href: '/escola/dashboard', icon: LayoutDashboard },
-  { label: 'Coreografias', href: '/escola/coreografias', icon: Music2 },
-  { label: 'Bailarinos & Elenco', href: '/escola/bailarinos', icon: Users },
-  { label: 'Musicas & Audio', href: '/escola/midias', icon: Upload },
-  { label: 'Mapas de Luz', href: '/escola/mapas-de-luz', icon: Lightbulb },
-  { label: 'Coreografos', href: '/escola/coreografos', icon: UserCog },
-  { label: 'Minha Escola', href: '/escola/perfil', icon: School },
-]
-
-interface Usuario {
+type Usuario = {
   nome: string
   email: string
   role: string
+  organizacao_id?: string | null
+}
+
+type TenantConfig = {
+  id: string
+  escola_id: string
+  perfil_id: string | null
+  nome_organizacao: string | null
+  logo_url: string | null
+  cor_primaria: string | null
+  termo_inscricao: string | null
+  termo_participante: string | null
+  termo_grupo: string | null
+  termo_apresentacao: string | null
+  termo_evento: string | null
 }
 
 export default function EscolaShell({ children }: { children: React.ReactNode }) {
@@ -41,6 +46,7 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [organizacaoNome, setOrganizacaoNome] = useState<string>('')
+  const [config, setConfig] = useState<TenantConfig | null>(null)
 
   useEffect(() => {
     async function loadUser() {
@@ -54,7 +60,7 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
 
       const { data } = await supabase
         .from('usuarios')
-        .select('nome, email, role, organizacao_id')
+        .select('id, nome, email, role, organizacao_id')
         .eq('id', user.id)
         .single()
 
@@ -63,7 +69,18 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
           nome: data.nome,
           email: data.email ?? user.email ?? '',
           role: data.role,
+          organizacao_id: data.organizacao_id,
         })
+
+        const { data: tenantConfig } = await supabase
+          .from('tenant_config')
+          .select('*')
+          .eq('escola_id', data.id)
+          .single()
+
+        if (tenantConfig) {
+          setConfig(tenantConfig as TenantConfig)
+        }
 
         if (data.organizacao_id) {
           const { data: organizacao } = await supabase
@@ -81,6 +98,31 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
 
     loadUser()
   }, [])
+
+  const labels = useMemo(() => {
+    const apresentacao = config?.termo_apresentacao?.trim() || 'Apresentações'
+    const participante = config?.termo_participante?.trim() || 'Participantes'
+    const grupo = config?.termo_grupo?.trim() || 'Minha Escola'
+
+    return {
+      apresentacao,
+      participante,
+      grupo,
+    }
+  }, [config])
+
+  const navItems = useMemo(
+    () => [
+      { label: 'Dashboard', href: '/escola/dashboard', icon: LayoutDashboard },
+      { label: labels.apresentacao, href: '/escola/apresentacoes', icon: Music2 },
+      { label: labels.participante, href: '/escola/bailarinos', icon: Users },
+      { label: 'Músicas & Áudio', href: '/escola/midias', icon: Upload },
+      { label: 'Mapas de Luz', href: '/escola/mapas-de-luz', icon: Lightbulb },
+      { label: 'Coreógrafos', href: '/escola/coreografos', icon: UserCog },
+      { label: labels.grupo, href: '/escola/perfil', icon: School },
+    ],
+    [labels]
+  )
 
   async function handleLogout() {
     const supabase = createClient()
@@ -113,7 +155,7 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
-          {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+          {navItems.map(({ label, href, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(href + '/')
 
             return (
