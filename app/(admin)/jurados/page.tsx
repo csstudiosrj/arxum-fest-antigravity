@@ -56,7 +56,7 @@ interface Criterio {
 }
 
 interface Avaliacao {
-  coreografia_id: string;
+  apresentacao_id: string;
   jurado_id: string;
   criterio_id: string;
   nota: number;
@@ -411,7 +411,7 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
       let payload: {
         evento_id: string;
         jurado_id: string;
-        notas: { coreografia_id: string; criterio_id: string; nota: number }[];
+        notas: { apresentacao_id: string; criterio_id: string; nota: number }[];
         ts: number;
       } | null = null;
 
@@ -439,14 +439,14 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
         const { error } = await supabase.from("avaliacoes").upsert(
           {
             evento_id: eventoId,
-            coreografia_id: n.coreografia_id,
+            apresentacao_id: n.apresentacao_id,
             jurado_id: payload.jurado_id,
             criterio_id: n.criterio_id,
             nota: n.nota,
             sincronizado: true,
           },
           {
-            onConflict: "evento_id,coreografia_id,jurado_id,criterio_id",
+            onConflict: "evento_id,apresentacao_id,jurado_id,criterio_id",
           }
         );
 
@@ -599,7 +599,7 @@ export default function JuradosPage() {
       const [{ data: coreos }, { data: crits }, { data: avals }, { data: escs }] =
         await Promise.all([
           supabase
-            .from("coreografias")
+            .from("apresentacoes")
             .select("id, nome, organizacao_id, observacoes")
             .eq("evento_id", evento.id)
             .order("ordem_apresentacao"),
@@ -610,9 +610,9 @@ export default function JuradosPage() {
             .order("ordem"),
           supabase
             .from("avaliacoes")
-            .select("coreografia_id, jurado_id, criterio_id, nota")
+            .select("apresentacao_id, jurado_id, criterio_id, nota")
             .eq("evento_id", evento.id),
-          supabase.from("escolas").select("id, nome"),
+          supabase.from("organizacoes").select("id, nome"),
         ]);
 
       setCoreografias((coreos as Coreografia[]) ?? []);
@@ -638,7 +638,7 @@ export default function JuradosPage() {
     setSalvandoObs(coreoId);
 
     await supabase
-      .from("coreografias")
+      .from("apresentacoes")
       .update({ observacoes: observacoes[coreoId] })
       .eq("id", coreoId);
 
@@ -659,7 +659,7 @@ export default function JuradosPage() {
     .reduce((a, j) => a + (j.cache_valor ?? 0), 0);
 
   function mediaCoreo(coreoId: string): string {
-    const notas = avaliacoes.filter((a) => a.coreografia_id === coreoId);
+    const notas = avaliacoes.filter((a) => a.apresentacao_id === coreoId);
     if (!notas.length) return "—";
     const media = notas.reduce((s, a) => s + a.nota, 0) / notas.length;
     return media.toFixed(2);
@@ -668,7 +668,7 @@ export default function JuradosPage() {
   function notaJuradoCriterio(coreoId: string, juradoId: string, criterioId: string): string {
     const av = avaliacoes.find(
       (a) =>
-        a.coreografia_id === coreoId &&
+        a.apresentacao_id === coreoId &&
         a.jurado_id === juradoId &&
         a.criterio_id === criterioId
     );
@@ -944,7 +944,7 @@ export default function JuradosPage() {
                                         {jurados.map((j) => {
                                           const notasJ = avaliacoes.filter(
                                             (a) =>
-                                              a.coreografia_id === c.id &&
+                                              a.apresentacao_id === c.id &&
                                               a.jurado_id === j.id
                                           );
 
