@@ -105,7 +105,7 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
     { label: labels.participante, href: '/escola/bailarinos',    icon: Users },
     { label: 'Músicas & Áudio',  href: '/escola/midias',       icon: Upload },
     { label: 'Mapas de Luz',     href: '/escola/mapas-de-luz', icon: Lightbulb },
-    { label: 'Coreógrafos',      href: '/escola/coreografos',  icon: UserCog },
+    
     { label: labels.grupo,        href: '/escola/perfil',        icon: School },
   ], [labels])
 
