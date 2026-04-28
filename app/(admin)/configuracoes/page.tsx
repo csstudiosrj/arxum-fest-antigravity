@@ -24,10 +24,6 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TIPOS
-// ─────────────────────────────────────────────────────────────────────────────
-
 type PerfilFestival = {
   id: string;
   slug: string;
@@ -50,13 +46,13 @@ type Estilo = {
 type EstiloAtivo = {
   id: string;
   estilo_id: string;
-  organizacao_id: string;
+  produtora_id: string;
   ativo: boolean;
 };
 
 type TenantConfig = {
   id: string;
-  organizacao_id: string;
+  produtora_id: string;
   perfil_id: string | null;
   nome_organizacao: string | null;
   logo_url: string | null;
@@ -66,6 +62,7 @@ type TenantConfig = {
   termo_grupo: string | null;
   termo_apresentacao: string | null;
   termo_evento: string | null;
+  updated_at?: string | null;
 };
 
 type Toast = {
@@ -76,10 +73,6 @@ type Toast = {
 
 type AbaId = "perfil" | "estilos" | "terminologia" | "organizacao";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ÍCONES DOS PERFIS
-// ─────────────────────────────────────────────────────────────────────────────
-
 const ICONE_MAP: Record<string, React.ReactNode> = {
   PersonStanding: <PersonStanding size={26} />,
   Music2: <Music2 size={26} />,
@@ -89,11 +82,7 @@ const ICONE_MAP: Record<string, React.ReactNode> = {
   Sparkles: <Sparkles size={26} />,
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TOAST
-// ─────────────────────────────────────────────────────────────────────────────
-
-let _toastId = 0;
+let toastId = 0;
 
 function ToastContainer({
   toasts,
@@ -107,6 +96,7 @@ function ToastContainer({
     erro: "border-red-500/40 bg-[#1a1413]",
     aviso: "border-yellow-500/40 bg-[#1a1413]",
   };
+
   const icones: Record<Toast["tipo"], React.ReactNode> = {
     sucesso: <CheckCircle size={16} className="text-emerald-400 shrink-0" />,
     erro: <XCircle size={16} className="text-red-400 shrink-0" />,
@@ -134,10 +124,6 @@ function ToastContainer({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MODAL DE CONFIRMAÇÃO (troca de perfil)
-// ─────────────────────────────────────────────────────────────────────────────
-
 function ModalConfirmacao({
   perfilNome,
   onConfirmar,
@@ -151,7 +137,10 @@ function ModalConfirmacao({
 }) {
   return (
     <>
-      <div className="fixed inset-0 bg-black/70 z-[100]" onClick={!carregando ? onCancelar : undefined} />
+      <div
+        className="fixed inset-0 bg-black/70 z-[100]"
+        onClick={!carregando ? onCancelar : undefined}
+      />
       <div className="fixed inset-0 flex items-center justify-center z-[100] p-4">
         <div className="bg-[#1a1413] border border-[#2e2825] rounded-2xl w-full max-w-md p-7 space-y-5 shadow-2xl">
           <div className="flex items-start gap-4">
@@ -159,14 +148,18 @@ function ModalConfirmacao({
               <AlertTriangle size={22} className="text-yellow-400" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-white">Trocar tipo de festival?</h3>
+              <h3 className="text-base font-semibold text-white">
+                Trocar tipo de festival?
+              </h3>
               <p className="text-sm text-gray-400 mt-2 leading-relaxed">
-                Ao mudar para <strong className="text-white">{perfilNome}</strong>, todos os estilos
-                atualmente ativados serão <strong className="text-red-400">desativados</strong>.
-                Você precisará reconfigurar os estilos para o novo perfil.
+                Ao mudar para <strong className="text-white">{perfilNome}</strong>,
+                todos os estilos atualmente ativados serão{" "}
+                <strong className="text-red-400">desativados</strong>. Você
+                precisará reconfigurar os estilos vinculados ao novo perfil.
               </p>
             </div>
           </div>
+
           <div className="flex gap-3 justify-end">
             <button
               onClick={onCancelar}
@@ -182,9 +175,8 @@ function ModalConfirmacao({
             >
               {carregando ? (
                 <Loader2 size={14} className="animate-spin" />
-              ) : (
-                "Sim, trocar perfil"
-              )}
+              ) : null}
+              Sim, trocar perfil
             </button>
           </div>
         </div>
@@ -193,13 +185,9 @@ function ModalConfirmacao({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SKELETON DE LOADING
-// ─────────────────────────────────────────────────────────────────────────────
-
 function Skeleton({ className }: { className?: string }) {
   return (
-    <div className={`animate-pulse bg-[#2e2825]/60 rounded-lg ${className ?? ""}`} />
+    <div className={`animate-pulse bg-[#2e282560] rounded-lg ${className ?? ""}`} />
   );
 }
 
@@ -213,6 +201,7 @@ function LoadingSkeleton() {
         </div>
         <Skeleton className="h-10 w-32" />
       </div>
+
       <div className="bg-[#1a1413] border border-[#2e2825] rounded-xl overflow-hidden">
         <div className="flex border-b border-[#2e2825] px-4 gap-2 py-1">
           {[1, 2, 3, 4].map((i) => (
@@ -233,141 +222,45 @@ function LoadingSkeleton() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTE PRINCIPAL
-// ─────────────────────────────────────────────────────────────────────────────
-
 export default function ConfiguracoesPage() {
   const supabase = createClient();
 
-  // ── Estado Global ──────────────────────────────────────────────────────────
   const [abaAtiva, setAbaAtiva] = useState<AbaId>("perfil");
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // ── Estado do Tenant ───────────────────────────────────────────────────────
-  const [organizacaoId, setOrganizacaoId] = useState<string | null>(null);
+  const [produtoraId, setProdutoraId] = useState<string | null>(null);
   const [config, setConfig] = useState<TenantConfig | null>(null);
   const [formConfig, setFormConfig] = useState<Partial<TenantConfig>>({});
 
-  // ── Estado de Perfis e Estilos ─────────────────────────────────────────────
   const [perfis, setPerfis] = useState<PerfilFestival[]>([]);
   const [estilos, setEstilos] = useState<Estilo[]>([]);
   const [estilosAtivos, setEstilosAtivos] = useState<EstiloAtivo[]>([]);
 
-  // ── Estados de Salvando por Seção ─────────────────────────────────────────
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
   const [salvandoTerminologia, setSalvandoTerminologia] = useState(false);
   const [salvandoOrganizacao, setSalvandoOrganizacao] = useState(false);
 
-  // ── Modal Troca de Perfil ──────────────────────────────────────────────────
   const [modalTroca, setModalTroca] = useState<PerfilFestival | null>(null);
   const [trocandoPerfil, setTrocandoPerfil] = useState(false);
 
-  // ── Modal Novo Estilo ──────────────────────────────────────────────────────
   const [modalEstilo, setModalEstilo] = useState(false);
   const [novoEstilo, setNovoEstilo] = useState({ nome: "", descricao: "" });
   const [criandoEstilo, setCriandoEstilo] = useState(false);
 
-  // ── Ref para debounce de preview ──────────────────────────────────────────
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // TOAST HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
-
   const addToast = useCallback((tipo: Toast["tipo"], mensagem: string) => {
-    const id = ++_toastId;
+    const id = ++toastId;
     setToasts((p) => [...p, { id, tipo, mensagem }]);
-    setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)), 4000);
+    setTimeout(() => {
+      setToasts((p) => p.filter((t) => t.id !== id));
+    }, 4000);
   }, []);
 
   const removerToast = useCallback((id: number) => {
     setToasts((p) => p.filter((t) => t.id !== id));
   }, []);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // CARGA INICIAL
-  // ─────────────────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    async function carregar() {
-      setLoading(true);
-      try {
-        // 1. Identificar o usuário logado
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser();
-
-        if (authError || !user) throw new Error("Usuário não autenticado.");
-
-        // 2. Buscar organizacao_id na tabela usuarios
-        const { data: usuarioData, error: usuarioError } = await supabase
-          .from("usuarios")
-          .select("id, organizacao_id")
-          .eq("id", user.id)
-          .single();
-
-        if (usuarioError || !usuarioData) throw new Error("Usuário não encontrado.");
-
-        const eid = usuarioData.organizacao_id;
-        setOrganizacaoId(eid);
-
-        // 3. Carregar dados em paralelo
-        const [
-          { data: perfisData, error: perfisError },
-          { data: configData, error: configError },
-          { data: estilosAtivosData, error: estilosAtivosError },
-        ] = await Promise.all([
-          supabase.from("perfis_festival").select("*").order("ordem"),
-          supabase.from("tenant_config").select("*").eq("organizacao_id", eid).single(),
-          supabase.from("tenant_estilos_ativos").select("*").eq("organizacao_id", eid),
-        ]);
-
-        if (perfisError) throw perfisError;
-        if (configError && configError.code !== "PGRST116") throw configError;
-        if (estilosAtivosError) throw estilosAtivosError;
-
-        setPerfis(perfisData ?? []);
-        setEstilosAtivos(estilosAtivosData ?? []);
-
-        // 4. Se config existe, usar; senão criar linha inicial
-        if (configData) {
-          setConfig(configData);
-          setFormConfig(configData);
-
-          // Carregar estilos do perfil ativo
-          if (configData.perfil_id) {
-            await carregarEstilosDoPerfil(configData.perfil_id);
-          }
-        } else {
-          // Cria config inicial para este tenant
-          const { data: novaConfig, error: criacaoError } = await supabase
-            .from("tenant_config")
-            .insert({ organizacao_id: eid })
-            .select()
-            .single();
-
-          if (criacaoError) throw criacaoError;
-          setConfig(novaConfig);
-          setFormConfig(novaConfig);
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Erro ao carregar configurações.";
-        addToast("erro", msg);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
 
   async function carregarEstilosDoPerfil(perfilId: string) {
     try {
@@ -384,47 +277,131 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SELEÇÃO DE PERFIL (com modal de confirmação se já tem perfil)
-  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    async function carregar() {
+      setLoading(true);
+
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          throw new Error("Usuário não autenticado.");
+        }
+
+        const { data: usuarioData, error: usuarioError } = await supabase
+          .from("usuarios")
+          .select("id, produtora_id")
+          .eq("id", user.id)
+          .single();
+
+        if (usuarioError || !usuarioData) {
+          throw new Error("Usuário não encontrado.");
+        }
+
+        if (!usuarioData.produtora_id) {
+          throw new Error(
+            "Sua conta ainda não está vinculada a uma produtora. Entre em contato com o suporte."
+          );
+        }
+
+        const pid = usuarioData.produtora_id;
+        setProdutoraId(pid);
+
+        const [
+          { data: perfisData, error: perfisError },
+          { data: configData, error: configError },
+          { data: estilosAtivosData, error: estilosAtivosError },
+        ] = await Promise.all([
+          supabase.from("perfis_festival").select("*").order("ordem"),
+          supabase
+            .from("tenant_config")
+            .select("*")
+            .eq("produtora_id", pid)
+            .maybeSingle(),
+          supabase
+            .from("tenant_estilos_ativos")
+            .select("*")
+            .eq("produtora_id", pid),
+        ]);
+
+        if (perfisError) throw perfisError;
+        if (configError) throw configError;
+        if (estilosAtivosError) throw estilosAtivosError;
+
+        setPerfis(perfisData ?? []);
+        setEstilosAtivos(estilosAtivosData ?? []);
+
+        if (configData) {
+          setConfig(configData);
+          setFormConfig(configData);
+
+          if (configData.perfil_id) {
+            await carregarEstilosDoPerfil(configData.perfil_id);
+          }
+        } else {
+          const { data: novaConfig, error: criacaoError } = await supabase
+            .from("tenant_config")
+            .insert({ produtora_id: pid })
+            .select()
+            .single();
+
+          if (criacaoError) throw criacaoError;
+
+          setConfig(novaConfig);
+          setFormConfig(novaConfig);
+        }
+      } catch (err) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Erro ao carregar configurações.";
+        addToast("erro", msg);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    carregar();
+  }, [supabase, addToast]);
 
   function selecionarPerfil(perfil: PerfilFestival) {
     if (formConfig.perfil_id === perfil.id) return;
 
-    // Se já tinha um perfil ativo com estilos, pede confirmação
     if (formConfig.perfil_id && estilosAtivos.length > 0) {
       setModalTroca(perfil);
       return;
     }
 
-    // Sem estilos ativos, troca direto
-    executarTrocaDePerfil(perfil);
+    void executarTrocaDePerfil(perfil);
   }
 
   async function executarTrocaDePerfil(perfil: PerfilFestival) {
     setTrocandoPerfil(true);
-    try {
-      if (!organizacaoId) throw new Error("organizacao_id não encontrado.");
 
-      // Limpa estilos ativos do tenant
+    try {
+      if (!produtoraId) {
+        throw new Error("produtora_id não encontrada.");
+      }
+
       if (estilosAtivos.length > 0) {
         const { error } = await supabase
           .from("tenant_estilos_ativos")
           .delete()
-          .eq("organizacao_id", organizacaoId);
+          .eq("produtora_id", produtoraId);
+
         if (error) throw error;
         setEstilosAtivos([]);
       }
 
-      // Atualiza formConfig local
       setFormConfig((p) => ({ ...p, perfil_id: perfil.id }));
-
-      // Carrega estilos do novo perfil
       await carregarEstilosDoPerfil(perfil.id);
-
-      addToast("sucesso", `Perfil "${perfil.nome}" selecionado. Salve para confirmar.`);
+      addToast("sucesso", `Perfil ${perfil.nome} selecionado. Salve para confirmar.`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro ao trocar perfil.";
+      const msg =
+        err instanceof Error ? err.message : "Erro ao trocar perfil.";
       addToast("erro", msg);
     } finally {
       setTrocandoPerfil(false);
@@ -432,12 +409,8 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // TOGGLE ESTILO
-  // ─────────────────────────────────────────────────────────────────────────
-
   async function toggleEstilo(estilo: Estilo) {
-    if (!organizacaoId) return;
+    if (!produtoraId) return;
 
     const jaAtivo = estilosAtivos.find((e) => e.estilo_id === estilo.id);
 
@@ -447,14 +420,19 @@ export default function ConfiguracoesPage() {
           .from("tenant_estilos_ativos")
           .delete()
           .eq("estilo_id", estilo.id)
-          .eq("organizacao_id", organizacaoId);
+          .eq("produtora_id", produtoraId);
 
         if (error) throw error;
+
         setEstilosAtivos((p) => p.filter((e) => e.estilo_id !== estilo.id));
       } else {
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .insert({ estilo_id: estilo.id, organizacao_id: organizacaoId, ativo: true })
+          .insert({
+            estilo_id: estilo.id,
+            produtora_id: produtoraId,
+            ativo: true,
+          })
           .select()
           .single();
 
@@ -462,22 +440,22 @@ export default function ConfiguracoesPage() {
         if (data) setEstilosAtivos((p) => [...p, data]);
       }
     } catch {
-      addToast("erro", `Erro ao ${jaAtivo ? "desativar" : "ativar"} "${estilo.nome}".`);
+      addToast(
+        "erro",
+        `Erro ao ${jaAtivo ? "desativar" : "ativar"} ${estilo.nome}.`
+      );
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // ATIVAR / DESATIVAR TODOS
-  // ─────────────────────────────────────────────────────────────────────────
-
   async function toggleTodos(ativar: boolean) {
-    if (!organizacaoId) return;
+    if (!produtoraId) return;
 
     try {
       if (ativar) {
         const faltando = estilos.filter(
           (e) => !estilosAtivos.find((a) => a.estilo_id === e.id)
         );
+
         if (faltando.length === 0) {
           addToast("aviso", "Todos os estilos já estão ativos.");
           return;
@@ -485,23 +463,31 @@ export default function ConfiguracoesPage() {
 
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .insert(faltando.map((e) => ({ estilo_id: e.id, organizacao_id: organizacaoId, ativo: true })))
+          .insert(
+            faltando.map((e) => ({
+              estilo_id: e.id,
+              produtora_id: produtoraId,
+              ativo: true,
+            }))
+          )
           .select();
 
         if (error) throw error;
+
         setEstilosAtivos((p) => [...p, ...(data ?? [])]);
         addToast("sucesso", `${faltando.length} estilos ativados!`);
       } else {
         const { error } = await supabase
           .from("tenant_estilos_ativos")
           .delete()
-          .eq("organizacao_id", organizacaoId)
+          .eq("produtora_id", produtoraId)
           .in(
             "estilo_id",
             estilos.map((e) => e.id)
           );
 
         if (error) throw error;
+
         setEstilosAtivos([]);
         addToast("sucesso", "Todos os estilos foram desativados.");
       }
@@ -510,25 +496,18 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // CRIAR ESTILO CUSTOMIZADO
-  // ─────────────────────────────────────────────────────────────────────────
-
   async function criarEstiloManual() {
-    if (!novoEstilo.nome.trim() || !formConfig.perfil_id || !organizacaoId) return;
+    if (!novoEstilo.nome.trim() || !formConfig.perfil_id || !produtoraId) return;
 
     setCriandoEstilo(true);
+
     try {
-      const slug =
-        "custom-" +
-        novoEstilo.nome
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/(^-|-$)/g, "") +
-        "-" +
-        Date.now();
+      const slug = `custom-${novoEstilo.nome
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/--+/g, "-")}-${Date.now()}`;
 
       const { data: estiloData, error: estiloError } = await supabase
         .from("estilos")
@@ -546,17 +525,21 @@ export default function ConfiguracoesPage() {
 
       setEstilos((p) => [...p, estiloData]);
 
-      // Ativa automaticamente
       const { data: ativoData, error: ativoError } = await supabase
         .from("tenant_estilos_ativos")
-        .insert({ estilo_id: estiloData.id, organizacao_id: organizacaoId, ativo: true })
+        .insert({
+          estilo_id: estiloData.id,
+          produtora_id: produtoraId,
+          ativo: true,
+        })
         .select()
         .single();
 
       if (ativoError) throw ativoError;
+
       if (ativoData) setEstilosAtivos((p) => [...p, ativoData]);
 
-      addToast("sucesso", `"${novoEstilo.nome}" criado e ativado!`);
+      addToast("sucesso", `${novoEstilo.nome} criado e ativado!`);
       setNovoEstilo({ nome: "", descricao: "" });
       setModalEstilo(false);
     } catch {
@@ -566,13 +549,11 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SALVAR POR SEÇÃO
-  // ─────────────────────────────────────────────────────────────────────────
-
   async function salvarPerfil() {
-    if (!config?.id || !organizacaoId) return;
+    if (!config?.id || !produtoraId) return;
+
     setSalvandoPerfil(true);
+
     try {
       const { error } = await supabase
         .from("tenant_config")
@@ -580,10 +561,11 @@ export default function ConfiguracoesPage() {
           perfil_id: formConfig.perfil_id,
           updated_at: new Date().toISOString(),
         })
-        .eq("organizacao_id", organizacaoId);
+        .eq("produtora_id", produtoraId);
 
       if (error) throw error;
-      setConfig((c) => c ? { ...c, perfil_id: formConfig.perfil_id ?? null } : c);
+
+      setConfig((c) => (c ? { ...c, perfil_id: formConfig.perfil_id ?? null } : c));
       addToast("sucesso", "Tipo de festival salvo com sucesso!");
     } catch {
       addToast("erro", "Erro ao salvar tipo de festival.");
@@ -593,8 +575,10 @@ export default function ConfiguracoesPage() {
   }
 
   async function salvarTerminologia() {
-    if (!config?.id || !organizacaoId) return;
+    if (!config?.id || !produtoraId) return;
+
     setSalvandoTerminologia(true);
+
     try {
       const { error } = await supabase
         .from("tenant_config")
@@ -606,9 +590,10 @@ export default function ConfiguracoesPage() {
           termo_evento: formConfig.termo_evento,
           updated_at: new Date().toISOString(),
         })
-        .eq("organizacao_id", organizacaoId);
+        .eq("produtora_id", produtoraId);
 
       if (error) throw error;
+
       setConfig((c) =>
         c
           ? {
@@ -621,6 +606,7 @@ export default function ConfiguracoesPage() {
             }
           : c
       );
+
       addToast("sucesso", "Terminologia salva com sucesso!");
     } catch {
       addToast("erro", "Erro ao salvar terminologia.");
@@ -630,8 +616,10 @@ export default function ConfiguracoesPage() {
   }
 
   async function salvarOrganizacao() {
-    if (!config?.id || !organizacaoId) return;
+    if (!config?.id || !produtoraId) return;
+
     setSalvandoOrganizacao(true);
+
     try {
       const { error } = await supabase
         .from("tenant_config")
@@ -641,9 +629,10 @@ export default function ConfiguracoesPage() {
           cor_primaria: formConfig.cor_primaria,
           updated_at: new Date().toISOString(),
         })
-        .eq("organizacao_id", organizacaoId);
+        .eq("produtora_id", produtoraId);
 
       if (error) throw error;
+
       setConfig((c) =>
         c
           ? {
@@ -654,6 +643,7 @@ export default function ConfiguracoesPage() {
             }
           : c
       );
+
       addToast("sucesso", "Dados da organização salvos!");
     } catch {
       addToast("erro", "Erro ao salvar organização.");
@@ -662,23 +652,12 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // HANDLERS DE FORM
-  // ─────────────────────────────────────────────────────────────────────────
-
-  function handleTerminologiaChange(campo: string, valor: string) {
+  function handleTerminologiaChange(campo: keyof TenantConfig, valor: string) {
     setFormConfig((p) => ({ ...p, [campo]: valor }));
 
-    // Debounce para não re-renderizar a cada tecla no preview
     if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
-    previewTimeoutRef.current = setTimeout(() => {
-      // Preview já é reativo via formConfig, apenas limpa o timeout
-    }, 300);
+    previewTimeoutRef.current = setTimeout(() => {}, 300);
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────────────────
 
   if (loading) return <LoadingSkeleton />;
 
@@ -689,7 +668,7 @@ export default function ConfiguracoesPage() {
 
   const abas: { id: AbaId; label: string; icon: React.ElementType }[] = [
     { id: "perfil", label: "Tipo de Festival", icon: Sparkles },
-    { id: "estilos", label: "Estilos & Modalidades", icon: ToggleRight },
+    { id: "estilos", label: "Estilos / Modalidades", icon: ToggleRight },
     { id: "terminologia", label: "Terminologia", icon: Type },
     { id: "organizacao", label: "Organização", icon: Building2 },
   ];
@@ -698,7 +677,6 @@ export default function ConfiguracoesPage() {
     <>
       <ToastContainer toasts={toasts} remover={removerToast} />
 
-      {/* Modal de confirmação de troca de perfil */}
       {modalTroca && (
         <ModalConfirmacao
           perfilNome={modalTroca.nome}
@@ -708,7 +686,6 @@ export default function ConfiguracoesPage() {
         />
       )}
 
-      {/* Modal: Novo Estilo */}
       {modalEstilo && (
         <>
           <div
@@ -719,11 +696,15 @@ export default function ConfiguracoesPage() {
             <div className="bg-[#1a1413] border border-[#2e2825] rounded-2xl w-full max-w-md p-7 space-y-5 shadow-2xl">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-semibold text-white">Novo Estilo / Modalidade</h3>
+                  <h3 className="text-base font-semibold text-white">
+                    Novo Estilo / Modalidade
+                  </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
                     Vinculado ao perfil{" "}
-                    <span className="text-gray-300 font-medium">{perfilAtivo?.nome}</span> e
-                    ativado automaticamente.
+                    <span className="text-gray-300 font-medium">
+                      {perfilAtivo?.nome}
+                    </span>{" "}
+                    e ativado automaticamente.
                   </p>
                 </div>
                 {!criandoEstilo && (
@@ -739,27 +720,32 @@ export default function ConfiguracoesPage() {
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Nome *
+                    Nome
                   </label>
                   <input
                     type="text"
-                    placeholder="Ex: Dança Cigana, Lindy Hop, Kuduro..."
+                    placeholder="Ex.: Solo Contemporâneo, Quarteto Vocal, Cena Curta..."
                     value={novoEstilo.nome}
-                    onChange={(e) => setNovoEstilo((p) => ({ ...p, nome: e.target.value }))}
+                    onChange={(e) =>
+                      setNovoEstilo((p) => ({ ...p, nome: e.target.value }))
+                    }
                     disabled={criandoEstilo}
-                    onKeyDown={(e) => e.key === "Enter" && criarEstiloManual()}
+                    onKeyDown={(e) => e.key === "Enter" && void criarEstiloManual()}
                     className="w-full bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#C5A059] transition-colors disabled:opacity-50"
                   />
                 </div>
+
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Descrição (opcional)
+                    Descrição opcional
                   </label>
                   <input
                     type="text"
                     placeholder="Breve descrição da modalidade..."
                     value={novoEstilo.descricao}
-                    onChange={(e) => setNovoEstilo((p) => ({ ...p, descricao: e.target.value }))}
+                    onChange={(e) =>
+                      setNovoEstilo((p) => ({ ...p, descricao: e.target.value }))
+                    }
                     disabled={criandoEstilo}
                     className="w-full bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#C5A059] transition-colors disabled:opacity-50"
                   />
@@ -775,22 +761,18 @@ export default function ConfiguracoesPage() {
                     Cancelar
                   </button>
                 )}
+
                 <button
-                  onClick={criarEstiloManual}
+                  onClick={() => void criarEstiloManual()}
                   disabled={criandoEstilo || !novoEstilo.nome.trim()}
                   className="flex items-center gap-2 bg-[#C5A059] text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-[#d4b06a] transition-colors text-sm disabled:opacity-40 min-w-[140px] justify-center"
                 >
                   {criandoEstilo ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      Criando...
-                    </>
+                    <Loader2 size={14} className="animate-spin" />
                   ) : (
-                    <>
-                      <Plus size={14} />
-                      Criar Estilo
-                    </>
+                    <Plus size={14} />
                   )}
+                  {criandoEstilo ? "Criando..." : "Criar Estilo"}
                 </button>
               </div>
             </div>
@@ -798,10 +780,7 @@ export default function ConfiguracoesPage() {
         </>
       )}
 
-      {/* ── PÁGINA ── */}
       <div className="max-w-5xl mx-auto space-y-6 pb-12">
-
-        {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 mb-1">
@@ -816,10 +795,7 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        {/* Card principal */}
         <div className="bg-[#1a1413] border border-[#2e2825] rounded-2xl overflow-hidden">
-
-          {/* Tabs */}
           <div className="flex border-b border-[#2e2825] px-2 overflow-x-auto scrollbar-none">
             {abas.map(({ id, label, icon: Icon }) => (
               <button
@@ -838,24 +814,21 @@ export default function ConfiguracoesPage() {
           </div>
 
           <div className="p-6 md:p-8">
-
-            {/* ═══════════════════════════════════════════════
-                ABA: TIPO DE FESTIVAL
-            ═══════════════════════════════════════════════ */}
             {abaAtiva === "perfil" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h3 className="text-base font-semibold text-white">
-                      Qual é o tipo do seu festival?
+                      Qual o tipo do seu festival?
                     </h3>
                     <p className="text-sm text-gray-500 mt-1 max-w-xl">
                       Define os estilos disponíveis, terminologia padrão e comportamento do sistema.
                       Trocar de perfil desativa os estilos atuais.
                     </p>
                   </div>
+
                   <button
-                    onClick={salvarPerfil}
+                    onClick={() => void salvarPerfil()}
                     disabled={salvandoPerfil || !formConfig.perfil_id}
                     className="flex items-center gap-2 bg-[#C5A059] text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-[#d4b06a] transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
@@ -871,13 +844,14 @@ export default function ConfiguracoesPage() {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {perfis.map((perfil) => {
                     const ativo = formConfig.perfil_id === perfil.id;
+
                     return (
                       <button
                         key={perfil.id}
                         onClick={() => selecionarPerfil(perfil)}
                         className={`relative flex flex-col items-center text-center gap-3 p-5 rounded-xl border transition-all duration-200 ${
                           ativo
-                            ? "border-[#C5A059] bg-[#C5A059]/8 shadow-[0_0_20px_rgba(197,160,89,0.08)]"
+                            ? "border-[#C5A059] bg-[#C5A05908] shadow-[0_0_20px_rgba(197,160,89,0.08)]"
                             : "border-[#2e2825] bg-[#0d0807] hover:border-[#3e3835] hover:bg-[#1a1413]"
                         }`}
                       >
@@ -886,12 +860,16 @@ export default function ConfiguracoesPage() {
                             <CheckCircle size={15} className="text-[#C5A059]" />
                           </div>
                         )}
+
                         <div className={ativo ? "text-[#C5A059]" : "text-gray-600"}>
                           {ICONE_MAP[perfil.icone] ?? <Sparkles size={26} />}
                         </div>
+
                         <div>
                           <p className="font-semibold text-white text-sm">{perfil.nome}</p>
-                          <p className="text-xs text-gray-600 mt-1 leading-snug">{perfil.descricao}</p>
+                          <p className="text-xs text-gray-600 mt-1 leading-snug">
+                            {perfil.descricao}
+                          </p>
                         </div>
                       </button>
                     );
@@ -899,12 +877,12 @@ export default function ConfiguracoesPage() {
                 </div>
 
                 {perfilAtivo && (
-                  <div className="bg-[#C5A059]/8 border border-[#C5A059]/25 rounded-xl p-4 flex items-center justify-between gap-3">
+                  <div className="bg-[#C5A05908] border border-[#C5A05925] rounded-xl p-4 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <CheckCircle size={16} className="text-[#C5A059] shrink-0" />
                       <p className="text-sm text-[#C5A059]">
                         <strong>{perfilAtivo.nome}</strong> selecionado. Vá para{" "}
-                        <strong>Estilos & Modalidades</strong> para configurar as opções.
+                        <strong>Estilos / Modalidades</strong> para configurar as opções.
                       </p>
                     </div>
                     <button
@@ -918,21 +896,19 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
-            {/* ═══════════════════════════════════════════════
-                ABA: ESTILOS & MODALIDADES
-            ═══════════════════════════════════════════════ */}
             {abaAtiva === "estilos" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h3 className="text-base font-semibold text-white">
-                      Estilos & Modalidades
+                      Estilos / Modalidades
                     </h3>
                     <p className="text-sm text-gray-500 mt-1">
                       Ative os estilos que seu festival aceita. Estilos inativos não aparecem
                       nos formulários de inscrição.
                     </p>
                   </div>
+
                   {formConfig.perfil_id && (
                     <button
                       onClick={() => setModalEstilo(true)}
@@ -962,28 +938,27 @@ export default function ConfiguracoesPage() {
                       onClick={() => setModalEstilo(true)}
                       className="text-[#C5A059] text-sm hover:text-[#d4b06a] transition-colors mt-2"
                     >
-                      Criar o primeiro estilo →
+                      Criar o primeiro estilo
                     </button>
                   </div>
                 ) : (
                   <>
-                    {/* Ações em lote */}
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-gray-500">
-                        <span className="text-white font-semibold">{totalAtivos}</span>
-                        {" "}de{" "}
-                        <span className="text-white font-semibold">{estilos.length}</span>
-                        {" "}estilos ativos
+                        <span className="text-white font-semibold">{totalAtivos}</span> de{" "}
+                        <span className="text-white font-semibold">{estilos.length}</span>{" "}
+                        estilos ativos
                       </p>
+
                       <div className="flex gap-2">
                         <button
-                          onClick={() => toggleTodos(true)}
+                          onClick={() => void toggleTodos(true)}
                           className="text-xs text-gray-500 hover:text-white px-3 py-1.5 rounded-lg border border-[#2e2825] hover:border-[#3e3835] transition-colors"
                         >
                           Ativar todos
                         </button>
                         <button
-                          onClick={() => toggleTodos(false)}
+                          onClick={() => void toggleTodos(false)}
                           className="text-xs text-gray-500 hover:text-red-400 px-3 py-1.5 rounded-lg border border-[#2e2825] hover:border-red-500/30 transition-colors"
                         >
                           Desativar todos
@@ -991,22 +966,26 @@ export default function ConfiguracoesPage() {
                       </div>
                     </div>
 
-                    {/* Grid de estilos */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                       {estilos.map((estilo) => {
                         const ativo = !!estilosAtivos.find((a) => a.estilo_id === estilo.id);
+
                         return (
                           <button
                             key={estilo.id}
-                            onClick={() => toggleEstilo(estilo)}
+                            onClick={() => void toggleEstilo(estilo)}
                             className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all duration-200 ${
                               ativo
-                                ? "border-[#C5A059]/35 bg-[#C5A059]/5"
+                                ? "border-[#C5A05935] bg-[#C5A05905]"
                                 : "border-[#2e2825] bg-[#0d0807] hover:border-[#3e3835]"
                             }`}
                           >
                             <div className="flex-1 min-w-0">
-                              <p className={`font-medium text-sm ${ativo ? "text-white" : "text-gray-500"}`}>
+                              <p
+                                className={`font-medium text-sm ${
+                                  ativo ? "text-white" : "text-gray-300"
+                                }`}
+                              >
                                 {estilo.nome}
                               </p>
                               {estilo.descricao && (
@@ -1015,7 +994,12 @@ export default function ConfiguracoesPage() {
                                 </p>
                               )}
                             </div>
-                            <div className={`ml-4 shrink-0 transition-colors ${ativo ? "text-[#C5A059]" : "text-gray-700"}`}>
+
+                            <div
+                              className={`ml-4 shrink-0 transition-colors ${
+                                ativo ? "text-[#C5A059]" : "text-gray-700"
+                              }`}
+                            >
                               {ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
                             </div>
                           </button>
@@ -1027,21 +1011,21 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
-            {/* ═══════════════════════════════════════════════
-                ABA: TERMINOLOGIA
-            ═══════════════════════════════════════════════ */}
             {abaAtiva === "terminologia" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="text-base font-semibold text-white">Terminologia do Sistema</h3>
+                    <h3 className="text-base font-semibold text-white">
+                      Terminologia do Sistema
+                    </h3>
                     <p className="text-sm text-gray-500 mt-1">
                       Adapte o vocabulário ao seu festival. Esses termos aparecem em formulários,
                       e-mails e relatórios.
                     </p>
                   </div>
+
                   <button
-                    onClick={salvarTerminologia}
+                    onClick={() => void salvarTerminologia()}
                     disabled={salvandoTerminologia}
                     className="flex items-center gap-2 bg-[#C5A059] text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-[#d4b06a] transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
@@ -1058,7 +1042,7 @@ export default function ConfiguracoesPage() {
                   {[
                     {
                       campo: "termo_evento",
-                      label: "Festival / Evento",
+                      label: "Evento",
                       placeholder: "Festival, Concurso, Mostra, Olimpíada...",
                     },
                     {
@@ -1079,7 +1063,7 @@ export default function ConfiguracoesPage() {
                     {
                       campo: "termo_grupo",
                       label: "Grupo / Instituição",
-                      placeholder: "Escola, Banda, Companhia, Grupo...",
+                      placeholder: "Grupo, Banda, Companhia, Instituição...",
                     },
                   ].map(({ campo, label, placeholder }) => (
                     <div key={campo} className="space-y-1.5">
@@ -1092,52 +1076,63 @@ export default function ConfiguracoesPage() {
                         value={
                           (formConfig as Record<string, string | null | undefined>)[campo] ?? ""
                         }
-                        onChange={(e) => handleTerminologiaChange(campo, e.target.value)}
+                        onChange={(e) =>
+                          handleTerminologiaChange(campo as keyof TenantConfig, e.target.value)
+                        }
                         className="w-full bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-[#C5A059] transition-colors"
                       />
                     </div>
                   ))}
                 </div>
 
-                {/* Preview em tempo real */}
                 <div className="bg-[#0d0807] border border-[#2e2825] rounded-xl p-5 space-y-3">
                   <p className="text-xs text-gray-600 font-medium uppercase tracking-wider">
                     Preview em tempo real
                   </p>
+
                   <p className="text-sm text-gray-400 leading-relaxed">
-                    &quot;Bem-vindo ao{" "}
+                    {"Bem-vindo ao "}
                     <span className="text-white font-medium">
-                      {formConfig.termo_evento || "Festival"}
+                      {formConfig.termo_evento || "Evento"}
                     </span>
-                    . Faça sua{" "}
+                    .{" Faça sua "}
                     <span className="text-white font-medium">
                       {formConfig.termo_inscricao || "Inscrição"}
-                    </span>{" "}
-                    agora e registre cada{" "}
+                    </span>
+                    {" agora e registre cada "}
                     <span className="text-white font-medium">
                       {formConfig.termo_apresentacao || "Apresentação"}
-                    </span>{" "}
-                    com os{" "}
+                    </span>
+                    {" com os "}
                     <span className="text-white font-medium">
                       {formConfig.termo_participante || "Participantes"}
-                    </span>{" "}
-                    da sua{" "}
-                    <span className="text-white font-medium">
-                      {formConfig.termo_grupo || "Escola"}
                     </span>
-                    .&quot;
+                    {" do seu "}
+                    <span className="text-white font-medium">
+                      {formConfig.termo_grupo || "Grupo"}
+                    </span>
+                    .
                   </p>
+
                   <div className="pt-2 border-t border-[#2e2825] grid grid-cols-2 md:grid-cols-5 gap-3">
                     {[
-                      { label: "Evento", valor: formConfig.termo_evento || "Festival" },
+                      { label: "Evento", valor: formConfig.termo_evento || "Evento" },
                       { label: "Inscrição", valor: formConfig.termo_inscricao || "Inscrição" },
-                      { label: "Apresentação", valor: formConfig.termo_apresentacao || "Apresentação" },
-                      { label: "Participante", valor: formConfig.termo_participante || "Participante" },
-                      { label: "Grupo", valor: formConfig.termo_grupo || "Escola" },
+                      {
+                        label: "Apresentação",
+                        valor: formConfig.termo_apresentacao || "Apresentação",
+                      },
+                      {
+                        label: "Participante",
+                        valor: formConfig.termo_participante || "Participante",
+                      },
+                      { label: "Grupo", valor: formConfig.termo_grupo || "Grupo" },
                     ].map(({ label, valor }) => (
                       <div key={label} className="text-center">
                         <p className="text-xs text-gray-600">{label}</p>
-                        <p className="text-xs text-[#C5A059] font-medium mt-0.5 truncate">{valor}</p>
+                        <p className="text-xs text-[#C5A059] font-medium mt-0.5 truncate">
+                          {valor}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -1145,20 +1140,20 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
-            {/* ═══════════════════════════════════════════════
-                ABA: ORGANIZAÇÃO
-            ═══════════════════════════════════════════════ */}
             {abaAtiva === "organizacao" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="text-base font-semibold text-white">Dados da Organização</h3>
+                    <h3 className="text-base font-semibold text-white">
+                      Dados da Organização
+                    </h3>
                     <p className="text-sm text-gray-500 mt-1">
                       Informações que aparecem em relatórios, e-mails e comunicações do sistema.
                     </p>
                   </div>
+
                   <button
-                    onClick={salvarOrganizacao}
+                    onClick={() => void salvarOrganizacao()}
                     disabled={salvandoOrganizacao}
                     className="flex items-center gap-2 bg-[#C5A059] text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-[#d4b06a] transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
@@ -1172,14 +1167,13 @@ export default function ConfiguracoesPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {/* Nome da Organização */}
                   <div className="space-y-1.5 md:col-span-2">
                     <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
                       Nome da Organização
                     </label>
                     <input
                       type="text"
-                      placeholder="Ex: Studio Arte & Dança"
+                      placeholder="Ex.: Produtora Horizonte Cultural"
                       value={formConfig.nome_organizacao ?? ""}
                       onChange={(e) =>
                         setFormConfig((p) => ({ ...p, nome_organizacao: e.target.value }))
@@ -1188,7 +1182,6 @@ export default function ConfiguracoesPage() {
                     />
                   </div>
 
-                  {/* URL do Logo */}
                   <div className="space-y-1.5 md:col-span-2">
                     <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
                       URL do Logo
@@ -1203,19 +1196,20 @@ export default function ConfiguracoesPage() {
                         }
                         className="flex-1 bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-[#C5A059] transition-colors"
                       />
-                      {formConfig.logo_url && (
+                      {formConfig.logo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={formConfig.logo_url}
                           alt="Preview do logo"
                           className="w-10 h-10 rounded-lg object-contain border border-[#2e2825] bg-[#0d0807] p-1"
-                          onError={(e) => (e.currentTarget.style.display = "none")}
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
                         />
-                      )}
+                      ) : null}
                     </div>
                   </div>
 
-                  {/* Cor Primária */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
                       Cor Primária
@@ -1237,8 +1231,7 @@ export default function ConfiguracoesPage() {
                         onChange={(e) =>
                           setFormConfig((p) => ({ ...p, cor_primaria: e.target.value }))
                         }
-                        className="flex-1 bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-[#C5A059] transition-colors"
-                        maxLength={7}
+                        className="flex-1 bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-[#C5A059] transition-colors maxLength={7}"
                       />
                     </div>
                     <p className="text-xs text-gray-600">
@@ -1246,7 +1239,6 @@ export default function ConfiguracoesPage() {
                     </p>
                   </div>
 
-                  {/* Preview da cor */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
                       Preview
@@ -1258,6 +1250,7 @@ export default function ConfiguracoesPage() {
                       >
                         Botão Principal
                       </button>
+
                       <div className="flex items-center gap-2">
                         <div
                           style={{
@@ -1268,11 +1261,12 @@ export default function ConfiguracoesPage() {
                         >
                           Badge Ativo
                         </div>
+
                         <div
                           style={{ color: formConfig.cor_primaria ?? "#C5A059" }}
                           className="text-xs font-medium"
                         >
-                          Link de ação →
+                          Link de ação
                         </div>
                       </div>
                     </div>
@@ -1280,7 +1274,6 @@ export default function ConfiguracoesPage() {
                 </div>
               </div>
             )}
-
           </div>
         </div>
       </div>
