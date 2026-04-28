@@ -1,0 +1,119 @@
+import { createUploadthing, type FileRouter } from "uploadthing/next";
+import { UploadThingError } from "uploadthing/server";
+import { createClient } from "@/lib/supabase/server";
+
+const f = createUploadthing();
+
+export const ourFileRouter = {
+  musicUploader: f({
+    audio: {
+      maxFileSize: "32MB",
+      maxFileCount: 1,
+    },
+  })
+    .middleware(async () => {
+      const supabase = await createClient();
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new UploadThingError("Não autorizado");
+      }
+
+      const { data: usuario } = await supabase
+        .from("usuarios")
+        .select("id, organizacao_id, role")
+        .eq("id", user.id)
+        .single();
+
+      if (!usuario) {
+        throw new UploadThingError("Usuário não encontrado");
+      }
+
+      if (
+        usuario.role !== "escola_admin" &&
+        usuario.role !== "coreografo"
+      ) {
+        throw new UploadThingError("Sem permissão para upload");
+      }
+
+      return {
+        userId: user.id,
+        escolaId: usuario.id,
+        organizacaoId: usuario.organizacao_id ?? null,
+        tipo: "audio",
+      };
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      return {
+        uploadedBy: metadata.userId,
+        escolaId: metadata.escolaId,
+        organizacaoId: metadata.organizacaoId,
+        tipo: metadata.tipo,
+        url: file.ufsUrl,
+        nome: file.name,
+        tamanho: file.size,
+      };
+    }),
+
+  mapaDeLuzUploader: f({
+    image: {
+      maxFileSize: "8MB",
+      maxFileCount: 1,
+    },
+    pdf: {
+      maxFileSize: "16MB",
+      maxFileCount: 1,
+    },
+  })
+    .middleware(async () => {
+      const supabase = await createClient();
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new UploadThingError("Não autorizado");
+      }
+
+      const { data: usuario } = await supabase
+        .from("usuarios")
+        .select("id, organizacao_id, role")
+        .eq("id", user.id)
+        .single();
+
+      if (!usuario) {
+        throw new UploadThingError("Usuário não encontrado");
+      }
+
+      if (
+        usuario.role !== "escola_admin" &&
+        usuario.role !== "coreografo"
+      ) {
+        throw new UploadThingError("Sem permissão para upload");
+      }
+
+      return {
+        userId: user.id,
+        escolaId: usuario.id,
+        organizacaoId: usuario.organizacao_id ?? null,
+        tipo: "mapa_de_luz",
+      };
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      return {
+        uploadedBy: metadata.userId,
+        escolaId: metadata.escolaId,
+        organizacaoId: metadata.organizacaoId,
+        tipo: metadata.tipo,
+        url: file.ufsUrl,
+        nome: file.name,
+        tamanho: file.size,
+      };
+    }),
+} satisfies FileRouter;
+
+export type OurFileRouter = typeof ourFileRouter;
