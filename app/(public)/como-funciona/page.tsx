@@ -1,17 +1,17 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  CalendarDays,
   CheckCircle2,
+  FileCheck2,
   LayoutTemplate,
+  Music4,
   Rocket,
   Settings2,
   Sparkles,
+  Trophy,
   Users,
   Wallet,
-  Trophy,
-  CalendarDays,
-  Music4,
-  FileCheck2,
 } from "lucide-react";
 
 const steps = [
@@ -102,7 +102,7 @@ const details = [
   {
     icon: CheckCircle2,
     title: "Base pronta para crescer",
-    text: "Mesmo sem depender agora de uma página de preços, a plataforma já comunica robustez, organização e capacidade de escala.",
+    text: "A plataforma comunica robustez, organização e capacidade de escala mesmo antes de você estruturar todas as próximas páginas públicas.",
   },
 ];
 
@@ -166,7 +166,7 @@ export default function ComoFuncionaPage() {
                 href="/"
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:border-[#C5A059]/40 hover:bg-white/10"
               >
-                Voltar para a landing
+                Voltar para a home
               </Link>
             </div>
           </div>
@@ -300,7 +300,7 @@ export default function ComoFuncionaPage() {
             href="/"
             className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:border-[#C5A059]/40 hover:bg-white/10"
           >
-            Conhecer a página principal
+            Voltar para a home
           </Link>
         </div>
       </section>
@@ -308,7 +308,17 @@ export default function ComoFuncionaPage() {
       <footer className="border-t border-white/10">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-8 text-sm text-zinc-500 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-12">
           <p>© {new Date().getFullYear()} AXON Fest. Todos os direitos reservados.</p>
-          <p>Plataforma white-label para gestão de festivais.</p>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link href="/" className="transition hover:text-zinc-300">
+              Início
+            </Link>
+            <Link href="/como-funciona" className="transition hover:text-zinc-300">
+              Como funciona
+            </Link>
+            <Link href="/cadastro" className="transition hover:text-zinc-300">
+              Criar meu Festival
+            </Link>
+          </div>
         </div>
       </footer>
     </main>
