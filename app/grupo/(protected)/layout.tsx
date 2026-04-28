@@ -21,10 +21,10 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         return;
       }
 
-      // Busca usando a nova coluna organizacao_id
+      // Busca usando a nova coluna grupo_id
       const { data: userData, error } = await supabase
         .from("usuarios")
-        .select("role, organizacao_id")
+        .select("role, grupo_id")
         .eq("id", session.user.id)
         .single();
 

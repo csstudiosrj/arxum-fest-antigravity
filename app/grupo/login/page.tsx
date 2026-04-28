@@ -34,10 +34,10 @@ export default function EscolaLoginPage() {
       if (authError) throw authError;
 
       if (authData.session) {
-        // Busca usando a nova coluna organizacao_id
+        // Busca usando a nova coluna grupo_id
         const { data: userData, error: userError } = await supabase
           .from("usuarios")
-          .select("role, organizacao_id")
+          .select("role, grupo_id")
           .eq("id", authData.session.user.id)
           .single();
 
@@ -121,11 +121,11 @@ export default function EscolaLoginPage() {
 
         if (orgError) throw orgError;
 
-        // 3. O ELO PERDIDO: Atualiza a tabela usuarios com o organizacao_id
+        // 3. O ELO PERDIDO: Atualiza a tabela usuarios com o grupo_id
         if (orgData) {
           await supabase
             .from("usuarios")
-            .update({ organizacao_id: orgData.id })
+            .update({ grupo_id: orgData.id })
             .eq("id", authData.user.id);
         }
 

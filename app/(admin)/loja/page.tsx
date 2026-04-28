@@ -38,7 +38,7 @@ interface Variacao {
 
 interface PedidoItem {
   id: string;
-  escola_id: string;
+  grupo_id: string;
   coreografia_id: string | null;
   produto_id: string;
   variacao_id: string | null;
@@ -351,7 +351,7 @@ export default function LojaPage() {
   const pedidosPorEscola = escolas
     .map((e) => ({
       escola: e,
-      itens: pedidosFiltrados.filter((p) => p.escola_id === e.id),
+      itens: pedidosFiltrados.filter((p) => p.grupo_id === e.id),
     }))
     .filter((g) => g.itens.length > 0);
 

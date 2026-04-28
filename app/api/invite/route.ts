@@ -10,7 +10,7 @@ const HIERARQUIA: Record<string, string[]> = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, role, action, password, inviterRole, userId, escola_id, nome } = body;
+    const { email, role, action, password, inviterRole, userId, grupo_id, nome } = body;
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     const { error: upsertError } = await supabaseAdmin
       .from("usuarios")
       .upsert(
-        { id: newUserId, email, role, nome: nome ?? null, escola_id: escola_id ?? null },
+        { id: newUserId, email, role, nome: nome ?? null, grupo_id: grupo_id ?? null },
         { onConflict: "id" }
       );
 

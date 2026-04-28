@@ -19,7 +19,7 @@ import {
 
 type TenantConfig = {
   id: string;
-  organizacao_id: string;
+  grupo_id: string;
   perfil_id: string | null;
   nome_organizacao: string | null;
   logo_url: string | null;
@@ -33,7 +33,7 @@ type TenantConfig = {
 
 type TenantEstiloAtivo = {
   estilo_id: string;
-  organizacao_id: string;
+  grupo_id: string;
 };
 
 type Estilo = {
@@ -48,7 +48,7 @@ type Estilo = {
 type Participante = {
   id: string;
   nome: string;
-  organizacao_id: string | null;
+  grupo_id: string | null;
 };
 
 type Categoria = {
@@ -344,25 +344,25 @@ export default function ApresentacoesPage() {
 
         const { data: usuario, error: usuarioError } = await supabase
           .from("usuarios")
-          .select("id, organizacao_id")
+          .select("id, grupo_id")
           .eq("id", user.id)
           .single();
 
         if (usuarioError || !usuario) throw new Error("Usuário não encontrado.");
-        if (!usuario.organizacao_id) throw new Error("Organização não identificada.");
+        if (!usuario.grupo_id) throw new Error("Organização não identificada.");
 
-        setOrganizacaoId(usuario.organizacao_id);
+        setOrganizacaoId(usuario.grupo_id);
 
         const [cfg, estilosAtivosRes, participantesRes, categoriasRes] = await Promise.all([
-          supabase.from("tenant_config").select("*").eq("organizacao_id", usuario.organizacao_id).single(),
+          supabase.from("tenant_config").select("*").eq("grupo_id", usuario.grupo_id).single(),
           supabase
             .from("tenant_estilos_ativos")
-            .select("estilo_id, organizacao_id")
-            .eq("organizacao_id", usuario.organizacao_id),
+            .select("estilo_id, grupo_id")
+            .eq("grupo_id", usuario.grupo_id),
           supabase
             .from("participantes")
-            .select("id,nome,organizacao_id")
-            .eq("organizacao_id", usuario.organizacao_id)
+            .select("id,nome,grupo_id")
+            .eq("grupo_id", usuario.grupo_id)
             .order("nome", { ascending: true }),
           supabase.from("categorias").select("*").order("nome", { ascending: true }),
         ]);
@@ -459,7 +459,7 @@ export default function ApresentacoesPage() {
         .from("apresentacoes")
         .insert({
           nome: form.nome.trim(),
-          organizacao_id: organizacaoId,
+          grupo_id: organizacaoId,
           categoria_id: form.categoria_id,
           tipo: form.tipo,
           quantidade_bailarinos: form.participantes_ids.length || null,

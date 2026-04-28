@@ -22,12 +22,12 @@ type Usuario = {
   nome: string
   email: string
   role: string
-  organizacao_id?: string | null
+  grupo_id?: string | null
 }
 
 type TenantConfig = {
   id: string
-  organizacao_id: string        // ← corrigido (era organizacao_id)
+  grupo_id: string        // ← corrigido (era grupo_id)
   perfil_id: string | null
   nome_organizacao: string | null
   logo_url: string | null
@@ -57,7 +57,7 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
 
       const { data } = await supabase
         .from('usuarios')
-        .select('id, nome, email, role, organizacao_id')
+        .select('id, nome, email, role, grupo_id')
         .eq('id', user.id)
         .single()
 
@@ -67,21 +67,21 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
         nome: data.nome,
         email: data.email ?? user.email ?? '',
         role: data.role,
-        organizacao_id: data.organizacao_id,
+        grupo_id: data.grupo_id,
       })
 
       // Carregar config e nome da organização em paralelo
-      if (data.organizacao_id) {
+      if (data.grupo_id) {
         const [{ data: tenantConfig }, { data: organizacao }] = await Promise.all([
           supabase
             .from('tenant_config')
             .select('*')
-            .eq('organizacao_id', data.organizacao_id) // ← corrigido (era organizacao_id com data.id)
+            .eq('grupo_id', data.grupo_id) // ← corrigido (era grupo_id com data.id)
             .single(),
           supabase
             .from('organizacoes')
             .select('nome')
-            .eq('id', data.organizacao_id)
+            .eq('id', data.grupo_id)
             .single(),
         ])
 

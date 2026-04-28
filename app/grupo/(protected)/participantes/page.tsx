@@ -43,7 +43,7 @@ type Estilo = {
 
 type Participante = {
   id: string;
-  organizacao_id: string;
+  grupo_id: string;
   nome: string;
   data_nascimento: string;
   documento: string | null;
@@ -574,16 +574,16 @@ export default function ParticipantesPage() {
         } = await supabase.auth.getUser();
         if (authError || !user) throw new Error("Usuário não autenticado.");
 
-        // 2. organizacao_id
+        // 2. grupo_id
         const { data: usuarioData, error: usuarioError } = await supabase
           .from("usuarios")
-          .select("organizacao_id")
+          .select("grupo_id")
           .eq("id", user.id)
           .single();
-        if (usuarioError || !usuarioData?.organizacao_id)
+        if (usuarioError || !usuarioData?.grupo_id)
           throw new Error("Organização não encontrada.");
 
-        const orgId = usuarioData.organizacao_id;
+        const orgId = usuarioData.grupo_id;
         setOrganizacaoId(orgId);
 
         // 3. Paralelo: terminologia + estilos ativos + participantes
@@ -597,16 +597,16 @@ export default function ParticipantesPage() {
             .select(
               "termo_participante, termo_grupo, termo_evento, termo_apresentacao, termo_inscricao"
             )
-            .eq("organizacao_id", orgId)
+            .eq("grupo_id", orgId)
             .single(),
           supabase
             .from("tenant_estilos_ativos")
             .select("estilo_id")
-            .eq("organizacao_id", orgId),
+            .eq("grupo_id", orgId),
           supabase
             .from("participantes")
             .select("*")
-            .eq("organizacao_id", orgId)
+            .eq("grupo_id", orgId)
             .order("created_at", { ascending: false }),
         ]);
 
@@ -719,7 +719,7 @@ export default function ParticipantesPage() {
         documento: form.documento.trim() || null,
         estilo_id: form.estilo_id || null,
         termo_assinado: form.termo_assinado,
-        organizacao_id: organizacaoId,
+        grupo_id: organizacaoId,
       };
 
       if (editandoId) {
@@ -727,7 +727,7 @@ export default function ParticipantesPage() {
           .from("participantes")
           .update(payload)
           .eq("id", editandoId)
-          .eq("organizacao_id", organizacaoId)
+          .eq("grupo_id", organizacaoId)
           .select()
           .single();
         if (error) throw error;
@@ -766,7 +766,7 @@ export default function ParticipantesPage() {
         .from("participantes")
         .delete()
         .eq("id", excluindo.id)
-        .eq("organizacao_id", organizacaoId);
+        .eq("grupo_id", organizacaoId);
       if (error) throw error;
       setParticipantes((p) => p.filter((x) => x.id !== excluindo.id));
       addToast("sucesso", `${termo} excluído.`);

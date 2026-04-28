@@ -140,17 +140,17 @@ export default function EscolaDashboardPage() {
 
       const { data: usuario } = await supabase
         .from('usuarios')
-        .select('organizacao_id')
+        .select('grupo_id')
         .eq('id', user.id)
         .single()
 
-      if (!usuario?.organizacao_id) {
+      if (!usuario?.grupo_id) {
         setSemOrganizacao(true)
         setLoading(false)
         return
       }
 
-      const organizacaoId = usuario.organizacao_id
+      const organizacaoId = usuario.grupo_id
 
       const [organizacaoRes, apresentacoesRes, participantesRes] = await Promise.all([
         supabase.from('organizacoes').select('nome').eq('id', organizacaoId).single(),
@@ -159,12 +159,12 @@ export default function EscolaDashboardPage() {
           .select(
             'id, nome, tipo, categoria_id_old, status_pagamento, valor_total, arquivo_audio, created_at'
           )
-          .eq('organizacao_id', organizacaoId)
+          .eq('grupo_id', organizacaoId)
           .order('created_at', { ascending: false }),
         supabase
           .from('participantes')
           .select('id', { count: 'exact', head: true })
-          .eq('organizacao_id', organizacaoId),
+          .eq('grupo_id', organizacaoId),
       ])
 
       if (organizacaoRes.data) {
