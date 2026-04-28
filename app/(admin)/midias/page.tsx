@@ -18,7 +18,7 @@ import {
 interface Coreografia {
   id: string;
   nome: string;
-  escola_id: string;
+  organizacao_id: string;
   ordem_apresentacao: number | null;
   arquivo_audio_url: string | null;
   audio_nome_original: string | null;
@@ -81,7 +81,7 @@ export default function MidiasPage() {
       const [{ data: coreos }, { data: escs }] = await Promise.all([
         supabase
           .from("coreografias")
-          .select("id, nome, escola_id, ordem_apresentacao, arquivo_audio_url, audio_nome_original, audio_duracao, audio_tamanho, status_audio")
+          .select("id, nome, organizacao_id, ordem_apresentacao, arquivo_audio_url, audio_nome_original, audio_duracao, audio_tamanho, status_audio")
           .eq("evento_id", evento.id)
           .order("ordem_apresentacao", { ascending: true }),
         supabase.from("escolas").select("id, nome"),
@@ -97,8 +97,8 @@ export default function MidiasPage() {
   useEffect(() => { carregar(); }, [carregar]);
   useEffect(() => { return () => { audioRef.current?.pause(); }; }, []);
 
-  function nomeEscola(escola_id: string) {
-    return escolas.find((e) => e.id === escola_id)?.nome ?? "Escola";
+  function nomeEscola(organizacao_id: string) {
+    return escolas.find((e) => e.id === organizacao_id)?.nome ?? "Escola";
   }
 
   function togglePlay(url: string) {
@@ -134,7 +134,7 @@ export default function MidiasPage() {
           const resp = await fetch(c.arquivo_audio_url!);
           const blob = await resp.blob();
           const ext = c.audio_nome_original?.split(".").pop() ?? "mp3";
-          const nome = nomeAutoRename(c.ordem_apresentacao, nomeEscola(c.escola_id), c.nome);
+          const nome = nomeAutoRename(c.ordem_apresentacao, nomeEscola(c.organizacao_id), c.nome);
           zip.file(`${nome}.${ext}`, blob);
         } catch {}
       })
@@ -149,7 +149,7 @@ export default function MidiasPage() {
   }
 
   const coreosFiltradas = coreografias.filter((c) => {
-    const escola = nomeEscola(c.escola_id).toLowerCase();
+    const escola = nomeEscola(c.organizacao_id).toLowerCase();
     const q = busca.toLowerCase();
     const matchBusca = !q || c.nome.toLowerCase().includes(q) || escola.includes(q);
     const matchFiltro = filtro === "todas" || c.status_audio === filtro;
@@ -276,7 +276,7 @@ export default function MidiasPage() {
             </thead>
             <tbody className="divide-y divide-axon-border/60">
               {coreosFiltradas.map((c) => {
-                const escola = nomeEscola(c.escola_id);
+                const escola = nomeEscola(c.organizacao_id);
                 const nomeExp = nomeAutoRename(c.ordem_apresentacao, escola, c.nome);
                 const ext = c.audio_nome_original?.split(".").pop() ?? "mp3";
                 const isAtivo = audioAtivo === c.arquivo_audio_url;
@@ -344,7 +344,7 @@ export default function MidiasPage() {
           <p className="text-xs text-neutral-400 max-w-xs truncate">
             {(() => {
               const c = coreografias.find((x) => x.arquivo_audio_url === audioAtivo);
-              return c ? `${c.nome} — ${nomeEscola(c.escola_id)}` : "Tocando...";
+              return c ? `${c.nome} — ${nomeEscola(c.organizacao_id)}` : "Tocando...";
             })()}
           </p>
           <button

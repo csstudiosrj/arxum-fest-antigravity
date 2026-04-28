@@ -39,7 +39,7 @@ interface Jurado {
 interface Coreografia {
   id: string;
   nome: string;
-  escola_id: string;
+  organizacao_id: string;
   observacoes: string | null;
 }
 
@@ -141,7 +141,7 @@ function ModalJurado({ termo, onClose, onSaved }: ModalJuradoProps) {
     const { error: fnErr } = await supabase.functions.invoke("bright-handler", {
       body: {
         email: email.trim(),
-        escola_id: null,
+        organizacao_id: null,
         nome: nome.trim(),
         role: "jurado",
       },
@@ -600,7 +600,7 @@ export default function JuradosPage() {
         await Promise.all([
           supabase
             .from("coreografias")
-            .select("id, nome, escola_id, observacoes")
+            .select("id, nome, organizacao_id, observacoes")
             .eq("evento_id", evento.id)
             .order("ordem_apresentacao"),
           supabase
@@ -874,7 +874,7 @@ export default function JuradosPage() {
                     ) : (
                       <div className="space-y-3">
                         {coreografias.map((c) => {
-                          const escola = escolas.find((e) => e.id === c.escola_id);
+                          const escola = escolas.find((e) => e.id === c.organizacao_id);
                           const expandida = coreoExpandida === c.id;
 
                           return (
@@ -1007,7 +1007,7 @@ export default function JuradosPage() {
                   </p>
                 ) : (
                   coreografias.map((c) => {
-                    const escola = escolas.find((e) => e.id === c.escola_id);
+                    const escola = escolas.find((e) => e.id === c.organizacao_id);
 
                     return (
                       <div

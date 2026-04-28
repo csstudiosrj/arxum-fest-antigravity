@@ -48,14 +48,14 @@ interface Bailarino {
   nome: string;
   cpf: string;
   data_nascimento: string;
-  escola_id: string;
+  organizacao_id: string;
   termo_assinado: boolean;
 }
 
 interface Coreografia {
   id: string;
   nome: string;
-  escola_id: string;
+  organizacao_id: string;
   categoria: string;
   tipo: string;
   quantidade_bailarinos: number;
@@ -169,7 +169,7 @@ function ModalCadastrarGrupo({ termo, escola, onClose, onSaved }: ModalCadastrar
         role: "escola_admin",
         action: "invite",
         inviterRole: "admin",
-        escola_id: escolaCadastrada.id,
+        organizacao_id: escolaCadastrada.id,
         nome: responsavel.trim() || null,
       }),
     });
@@ -701,10 +701,10 @@ export default function InscricoesPage() {
 
     const compostas: EscolaComDados[] = escolasArr.map((e) => ({
       ...e,
-      coreografias: coreosArr.filter((c) => c.escola_id === e.id),
-      bailarinos:   bailArr.filter((b) => b.escola_id === e.id),
+      coreografias: coreosArr.filter((c) => c.organizacao_id === e.id),
+      bailarinos:   bailArr.filter((b) => b.organizacao_id === e.id),
       elenco:       elencoArr.filter((el) =>
-        coreosArr.filter((c) => c.escola_id === e.id).some((c) => c.id === el.coreografia_id)
+        coreosArr.filter((c) => c.organizacao_id === e.id).some((c) => c.id === el.coreografia_id)
       ),
     }));
 
@@ -762,7 +762,7 @@ export default function InscricoesPage() {
     const { error: coreoError } = await supabase
       .from("coreografias")
       .delete()
-      .eq("escola_id", escolaExcluir.id);
+      .eq("organizacao_id", escolaExcluir.id);
     if (coreoError) {
       setErroExcluir(coreoError.message);
       setExcluindoEscola(false);
@@ -773,7 +773,7 @@ export default function InscricoesPage() {
     const { error: bailarinoError } = await supabase
       .from("bailarinos")
       .delete()
-      .eq("escola_id", escolaExcluir.id);
+      .eq("organizacao_id", escolaExcluir.id);
     if (bailarinoError) {
       setErroExcluir(bailarinoError.message);
       setExcluindoEscola(false);
