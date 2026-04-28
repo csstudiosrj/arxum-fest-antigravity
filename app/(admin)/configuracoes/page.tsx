@@ -246,7 +246,7 @@ export default function ConfiguracoesPage() {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   // ── Estado do Tenant ───────────────────────────────────────────────────────
-  const [escolaId, setEscolaId] = useState<string | null>(null);
+  const [organizacaoId, setOrganizacaoId] = useState<string | null>(null);
   const [config, setConfig] = useState<TenantConfig | null>(null);
   const [formConfig, setFormConfig] = useState<Partial<TenantConfig>>({});
 
@@ -305,14 +305,14 @@ export default function ConfiguracoesPage() {
         // 2. Buscar organizacao_id na tabela usuarios
         const { data: usuarioData, error: usuarioError } = await supabase
           .from("usuarios")
-          .select("id")
+          .select("id, organizacao_id")
           .eq("id", user.id)
           .single();
 
         if (usuarioError || !usuarioData) throw new Error("Usuário não encontrado.");
 
         const eid = usuarioData.id;
-        setEscolaId(eid);
+        setOrganizacaoId(eid);
 
         // 3. Carregar dados em paralelo
         const [
@@ -404,14 +404,14 @@ export default function ConfiguracoesPage() {
   async function executarTrocaDePerfil(perfil: PerfilFestival) {
     setTrocandoPerfil(true);
     try {
-      if (!escolaId) throw new Error("organizacao_id não encontrado.");
+      if (!organizacaoId) throw new Error("organizacao_id não encontrado.");
 
       // Limpa estilos ativos do tenant
       if (estilosAtivos.length > 0) {
         const { error } = await supabase
           .from("tenant_estilos_ativos")
           .delete()
-          .eq("organizacao_id", escolaId);
+          .eq("organizacao_id", organizacaoId);
         if (error) throw error;
         setEstilosAtivos([]);
       }
@@ -437,7 +437,7 @@ export default function ConfiguracoesPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   async function toggleEstilo(estilo: Estilo) {
-    if (!escolaId) return;
+    if (!organizacaoId) return;
 
     const jaAtivo = estilosAtivos.find((e) => e.estilo_id === estilo.id);
 
@@ -447,14 +447,14 @@ export default function ConfiguracoesPage() {
           .from("tenant_estilos_ativos")
           .delete()
           .eq("estilo_id", estilo.id)
-          .eq("organizacao_id", escolaId);
+          .eq("organizacao_id", organizacaoId);
 
         if (error) throw error;
         setEstilosAtivos((p) => p.filter((e) => e.estilo_id !== estilo.id));
       } else {
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .insert({ estilo_id: estilo.id, organizacao_id: escolaId, ativo: true })
+          .insert({ estilo_id: estilo.id, organizacao_id: organizacaoId, ativo: true })
           .select()
           .single();
 
@@ -471,7 +471,7 @@ export default function ConfiguracoesPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   async function toggleTodos(ativar: boolean) {
-    if (!escolaId) return;
+    if (!organizacaoId) return;
 
     try {
       if (ativar) {
@@ -485,7 +485,7 @@ export default function ConfiguracoesPage() {
 
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .insert(faltando.map((e) => ({ estilo_id: e.id, organizacao_id: escolaId, ativo: true })))
+          .insert(faltando.map((e) => ({ estilo_id: e.id, organizacao_id: organizacaoId, ativo: true })))
           .select();
 
         if (error) throw error;
@@ -495,7 +495,7 @@ export default function ConfiguracoesPage() {
         const { error } = await supabase
           .from("tenant_estilos_ativos")
           .delete()
-          .eq("organizacao_id", escolaId)
+          .eq("organizacao_id", organizacaoId)
           .in(
             "estilo_id",
             estilos.map((e) => e.id)
@@ -515,7 +515,7 @@ export default function ConfiguracoesPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   async function criarEstiloManual() {
-    if (!novoEstilo.nome.trim() || !formConfig.perfil_id || !escolaId) return;
+    if (!novoEstilo.nome.trim() || !formConfig.perfil_id || !organizacaoId) return;
 
     setCriandoEstilo(true);
     try {
@@ -549,7 +549,7 @@ export default function ConfiguracoesPage() {
       // Ativa automaticamente
       const { data: ativoData, error: ativoError } = await supabase
         .from("tenant_estilos_ativos")
-        .insert({ estilo_id: estiloData.id, organizacao_id: escolaId, ativo: true })
+        .insert({ estilo_id: estiloData.id, organizacao_id: organizacaoId, ativo: true })
         .select()
         .single();
 
@@ -571,7 +571,7 @@ export default function ConfiguracoesPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   async function salvarPerfil() {
-    if (!config?.id || !escolaId) return;
+    if (!config?.id || !organizacaoId) return;
     setSalvandoPerfil(true);
     try {
       const { error } = await supabase
@@ -580,7 +580,7 @@ export default function ConfiguracoesPage() {
           perfil_id: formConfig.perfil_id,
           updated_at: new Date().toISOString(),
         })
-        .eq("organizacao_id", escolaId);
+        .eq("organizacao_id", organizacaoId);
 
       if (error) throw error;
       setConfig((c) => c ? { ...c, perfil_id: formConfig.perfil_id ?? null } : c);
@@ -593,7 +593,7 @@ export default function ConfiguracoesPage() {
   }
 
   async function salvarTerminologia() {
-    if (!config?.id || !escolaId) return;
+    if (!config?.id || !organizacaoId) return;
     setSalvandoTerminologia(true);
     try {
       const { error } = await supabase
@@ -606,7 +606,7 @@ export default function ConfiguracoesPage() {
           termo_evento: formConfig.termo_evento,
           updated_at: new Date().toISOString(),
         })
-        .eq("organizacao_id", escolaId);
+        .eq("organizacao_id", organizacaoId);
 
       if (error) throw error;
       setConfig((c) =>
@@ -630,7 +630,7 @@ export default function ConfiguracoesPage() {
   }
 
   async function salvarOrganizacao() {
-    if (!config?.id || !escolaId) return;
+    if (!config?.id || !organizacaoId) return;
     setSalvandoOrganizacao(true);
     try {
       const { error } = await supabase
@@ -641,7 +641,7 @@ export default function ConfiguracoesPage() {
           cor_primaria: formConfig.cor_primaria,
           updated_at: new Date().toISOString(),
         })
-        .eq("organizacao_id", escolaId);
+        .eq("organizacao_id", organizacaoId);
 
       if (error) throw error;
       setConfig((c) =>
