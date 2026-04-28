@@ -19,7 +19,7 @@ import {
 
 type TenantConfig = {
   id: string;
-  escola_id: string;
+  organizacao_id: string;
   perfil_id: string | null;
   nome_organizacao: string | null;
   logo_url: string | null;
@@ -119,7 +119,7 @@ function ToastContainer({ toasts, remover }: { toasts: Toast[]; remover: (id: nu
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[120] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-6 right-6 z-[120] flex pointer-events-none flex-col gap-2">
       {toasts.map((toast) => (
         <div
           key={toast.id}
@@ -136,7 +136,7 @@ function ToastContainer({ toasts, remover }: { toasts: Toast[]; remover: (id: nu
             <AlertTriangle size={16} className="text-yellow-400" />
           )}
           <span className="text-sm font-medium text-white">{toast.mensagem}</span>
-          <button onClick={() => remover(toast.id)} className="ml-2 text-gray-600 hover:text-white transition-colors">
+          <button onClick={() => remover(toast.id)} className="ml-2 text-gray-600 transition-colors hover:text-white">
             <X size={13} />
           </button>
         </div>
@@ -159,7 +159,7 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={cn(
-        "w-full rounded-lg border border-[#2e2825] bg-[#0d0807] px-4 py-2.5 text-sm text-white placeholder:text-gray-600 focus:border-[#C5A059] focus:outline-none transition-colors",
+        "w-full rounded-lg border border-[#2e2825] bg-[#0d0807] px-4 py-2.5 text-sm text-white placeholder:text-gray-600 transition-colors focus:border-[#C5A059] focus:outline-none",
         props.className
       )}
     />
@@ -171,7 +171,7 @@ function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
     <textarea
       {...props}
       className={cn(
-        "w-full rounded-lg border border-[#2e2825] bg-[#0d0807] px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:border-[#C5A059] focus:outline-none transition-colors",
+        "w-full rounded-lg border border-[#2e2825] bg-[#0d0807] px-4 py-3 text-sm text-white placeholder:text-gray-600 transition-colors focus:border-[#C5A059] focus:outline-none",
         props.className
       )}
     />
@@ -183,7 +183,7 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
     <select
       {...props}
       className={cn(
-        "w-full rounded-lg border border-[#2e2825] bg-[#0d0807] px-4 py-2.5 text-sm text-white focus:border-[#C5A059] focus:outline-none transition-colors",
+        "w-full rounded-lg border border-[#2e2825] bg-[#0d0807] px-4 py-2.5 text-sm text-white transition-colors focus:border-[#C5A059] focus:outline-none",
         props.className
       )}
     />
@@ -212,7 +212,7 @@ function ListEditor({
   const removeItem = (i: number) => onChange(items.length === 1 ? [""] : items.filter((_, idx) => idx !== i));
 
   return (
-    <div className="rounded-xl border border-[#2e2825] bg-[#0d0807] p-4 space-y-3">
+    <div className="flex h-full flex-col space-y-3 rounded-xl border border-[#2e2825] bg-[#0d0807] p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-white">{titulo}</p>
@@ -221,7 +221,7 @@ function ListEditor({
         <button
           type="button"
           onClick={addItem}
-          className="inline-flex items-center gap-2 rounded-lg border border-[#2e2825] px-3 py-2 text-xs text-gray-300 hover:border-[#3d3531] hover:text-white transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg border border-[#2e2825] px-3 py-2 text-xs text-gray-300 transition-colors hover:border-[#3d3531] hover:text-white"
         >
           <Plus size={13} />
           Adicionar
@@ -235,7 +235,7 @@ function ListEditor({
             <button
               type="button"
               onClick={() => removeItem(index)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#2e2825] text-gray-500 hover:border-red-500/30 hover:text-red-400 transition-colors"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#2e2825] text-gray-500 transition-colors hover:border-red-500/30 hover:text-red-400"
               aria-label={`Remover ${titulo}`}
             >
               <Trash2 size={15} />
@@ -267,7 +267,7 @@ export default function ApresentacoesPage() {
   const [uploadingAudio, setUploadingAudio] = useState(false);
   const [uploadingLight, setUploadingLight] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [escolaId, setEscolaId] = useState<string | null>(null);
+  const [organizacaoId, setOrganizacaoId] = useState<string | null>(null);
   const [config, setConfig] = useState<TenantConfig | null>(null);
   const [estilos, setEstilos] = useState<Estilo[]>([]);
   const [participantes, setParticipantes] = useState<Participante[]>([]);
@@ -296,14 +296,17 @@ export default function ApresentacoesPage() {
 
   const removeToast = useCallback((id: number) => setToasts((p) => p.filter((t) => t.id !== id)), []);
 
-  const labels: Labels = useMemo(() => ({
-    evento: config?.termo_evento?.trim() || "Festival",
-    inscricao: config?.termo_inscricao?.trim() || "Inscrição",
-    participanteSingular: config?.termo_participante?.trim() || "Participante",
-    participantePlural: `${(config?.termo_participante?.trim() || "Participante")}s`,
-    grupo: config?.termo_grupo?.trim() || "Grupo",
-    apresentacao: config?.termo_apresentacao?.trim() || "Apresentação",
-  }), [config]);
+  const labels: Labels = useMemo(
+    () => ({
+      evento: config?.termo_evento?.trim() || "Festival",
+      inscricao: config?.termo_inscricao?.trim() || "Inscrição",
+      participanteSingular: config?.termo_participante?.trim() || "Participante",
+      participantePlural: `${config?.termo_participante?.trim() || "Participante"}s`,
+      grupo: config?.termo_grupo?.trim() || "Grupo",
+      apresentacao: config?.termo_apresentacao?.trim() || "Apresentação",
+    }),
+    [config]
+  );
 
   const categoriaSelecionada = useMemo(
     () => categorias.find((c) => c.id === form.categoria_id) ?? null,
@@ -322,22 +325,31 @@ export default function ApresentacoesPage() {
     async function carregar() {
       setLoading(true);
       try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
         if (authError || !user) throw new Error("Usuário não autenticado.");
 
         const { data: usuario, error: usuarioError } = await supabase
           .from("usuarios")
-          .select("id")
+          .select("id, organizacao_id")
           .eq("id", user.id)
           .single();
 
         if (usuarioError || !usuario) throw new Error("Usuário não encontrado.");
-        setEscolaId(usuario.id);
+        if (!usuario.organizacao_id) throw new Error("Organização não identificada.");
+
+        setOrganizacaoId(usuario.organizacao_id);
 
         const [cfg, estilosRes, participantesRes, categoriasRes] = await Promise.all([
-          supabase.from("tenant_config").select("*").eq("escola_id", usuario.id).single(),
+          supabase.from("tenant_config").select("*").eq("organizacao_id", usuario.organizacao_id).single(),
           supabase.from("estilos").select("id,nome,descricao,perfil_id,slug,ordem").order("ordem", { ascending: true }),
-          supabase.from("participantes").select("id,nome,organizacao_id").eq("organizacao_id", usuario.id).order("nome", { ascending: true }),
+          supabase
+            .from("participantes")
+            .select("id,nome,organizacao_id")
+            .eq("organizacao_id", usuario.organizacao_id)
+            .order("nome", { ascending: true }),
           supabase.from("categorias").select("*").order("nome", { ascending: true }),
         ]);
 
@@ -403,21 +415,26 @@ export default function ApresentacoesPage() {
   async function save() {
     const error = validate();
     if (error) return addToast("aviso", error);
-    if (!escolaId) return addToast("erro", "Escola não identificada.");
+    if (!organizacaoId) return addToast("erro", "Organização não identificada.");
 
     setSaving(true);
     try {
-      const { data: apresentacao, error: insertError } = await supabase.from("apresentacoes").insert({
-        nome: form.nome.trim(),
-        categoria_id: form.categoria_id,
-        tipo: form.tipo,
-        quantidade_bailarinos: form.participantes_ids.length || null,
-        valor_total: valorSelecionado,
-        arquivo_audio: arquivoAudio?.url ?? null,
-        arquivo_mapa_luz: arquivoMapaLuz?.url ?? null,
-        observacoes: form.observacoes.trim() || null,
-        created_at: new Date().toISOString(),
-      }).select("id").single();
+      const { data: apresentacao, error: insertError } = await supabase
+        .from("apresentacoes")
+        .insert({
+          nome: form.nome.trim(),
+          organizacao_id: organizacaoId,
+          categoria_id: form.categoria_id,
+          tipo: form.tipo,
+          quantidade_bailarinos: form.participantes_ids.length || null,
+          valor_total: valorSelecionado,
+          arquivo_audio: arquivoAudio?.url ?? null,
+          arquivo_mapa_luz: arquivoMapaLuz?.url ?? null,
+          observacoes: form.observacoes.trim() || null,
+          created_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
 
       if (insertError || !apresentacao) throw insertError ?? new Error("Falha ao salvar apresentação.");
 
@@ -485,7 +502,7 @@ export default function ApresentacoesPage() {
             type="button"
             onClick={save}
             disabled={saving}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#C5A059] px-5 py-3 text-sm font-semibold text-black hover:bg-[#d4b06a] disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#C5A059] px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-[#d4b06a] disabled:opacity-50"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             {saving ? "Salvando..." : `Salvar ${labels.apresentacao}`}
@@ -571,31 +588,37 @@ export default function ApresentacoesPage() {
                 <p className="text-sm text-gray-500">Vários nomes por função.</p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <ListEditor
-                  titulo="Coreógrafos"
-                  items={form.coreografos}
-                  onChange={(v) => setField("coreografos", v)}
-                  placeholder="Nome do coreógrafo"
-                />
-                <ListEditor
-                  titulo="Diretores"
-                  items={form.diretores}
-                  onChange={(v) => setField("diretores", v)}
-                  placeholder="Nome do diretor"
-                />
-                <ListEditor
-                  titulo="Compositores"
-                  items={form.compositores}
-                  onChange={(v) => setField("compositores", v)}
-                  placeholder="Nome do compositor"
-                />
+              <div className="flex flex-col gap-4 md:flex-row">
+                <div className="flex-1">
+                  <ListEditor
+                    titulo="Coreógrafos"
+                    items={form.coreografos}
+                    onChange={(v) => setField("coreografos", v)}
+                    placeholder="Nome do coreógrafo"
+                  />
+                </div>
+                <div className="flex-1">
+                  <ListEditor
+                    titulo="Diretores"
+                    items={form.diretores}
+                    onChange={(v) => setField("diretores", v)}
+                    placeholder="Nome do diretor"
+                  />
+                </div>
+                <div className="flex-1">
+                  <ListEditor
+                    titulo="Compositores"
+                    items={form.compositores}
+                    onChange={(v) => setField("compositores", v)}
+                    placeholder="Nome do compositor"
+                  />
+                </div>
               </div>
             </div>
           </section>
 
           <aside className="space-y-6">
-            <section className="rounded-2xl border border-[#2e2825] bg-[#1a1413] p-6 space-y-4">
+            <section className="space-y-4 rounded-2xl border border-[#2e2825] bg-[#1a1413] p-6">
               <div className="space-y-1">
                 <h2 className="flex items-center gap-2 text-base font-semibold text-white">
                   <Users size={16} className="text-[#C5A059]" />
@@ -635,7 +658,7 @@ export default function ApresentacoesPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-[#2e2825] bg-[#1a1413] p-6 space-y-4">
+            <section className="space-y-4 rounded-2xl border border-[#2e2825] bg-[#1a1413] p-6">
               <div className="space-y-1">
                 <h2 className="flex items-center gap-2 text-base font-semibold text-white">
                   <Music4 size={16} className="text-[#C5A059]" />
@@ -668,7 +691,7 @@ export default function ApresentacoesPage() {
               />
             </section>
 
-            <section className="rounded-2xl border border-[#2e2825] bg-[#1a1413] p-6 space-y-4">
+            <section className="space-y-4 rounded-2xl border border-[#2e2825] bg-[#1a1413] p-6">
               <div className="space-y-1">
                 <h2 className="flex items-center gap-2 text-base font-semibold text-white">
                   <Wand2 size={16} className="text-[#C5A059]" />
@@ -709,14 +732,6 @@ export default function ApresentacoesPage() {
                   </span>
                 </div>
               </div>
-
-              <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4 text-xs leading-relaxed text-yellow-100/85">
-                <p className="flex items-start gap-2">
-                  <AlertTriangle size={14} className="mt-0.5 shrink-0 text-yellow-300" />
-                  A integração de upload usa <span className="font-mono text-yellow-200">/api/uploadthing</span>
-                  com route slug <span className="font-mono text-yellow-200">{UPLOADTHING_ROUTE}</span>.
-                </p>
-              </div>
             </section>
           </aside>
         </div>
@@ -752,7 +767,7 @@ function UploadBox({
   }
 
   return (
-    <div className="rounded-xl border border-[#2e2825] bg-[#0d0807] p-4 space-y-3">
+    <div className="space-y-3 rounded-xl border border-[#2e2825] bg-[#0d0807] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-white">
@@ -765,7 +780,7 @@ function UploadBox({
           <button
             type="button"
             onClick={onRemove}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#2e2825] text-gray-500 hover:border-red-500/30 hover:text-red-400 transition-colors"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#2e2825] text-gray-500 transition-colors hover:border-red-500/30 hover:text-red-400"
           >
             <Trash2 size={14} />
           </button>
