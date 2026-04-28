@@ -27,7 +27,7 @@ type Usuario = {
 
 type TenantConfig = {
   id: string
-  organizacao_id: string        // ← corrigido (era escola_id)
+  organizacao_id: string        // ← corrigido (era organizacao_id)
   perfil_id: string | null
   nome_organizacao: string | null
   logo_url: string | null
@@ -76,7 +76,7 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
           supabase
             .from('tenant_config')
             .select('*')
-            .eq('organizacao_id', data.organizacao_id) // ← corrigido (era escola_id com data.id)
+            .eq('organizacao_id', data.organizacao_id) // ← corrigido (era organizacao_id com data.id)
             .single(),
           supabase
             .from('organizacoes')

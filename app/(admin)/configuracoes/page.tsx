@@ -50,13 +50,13 @@ type Estilo = {
 type EstiloAtivo = {
   id: string;
   estilo_id: string;
-  escola_id: string;
+  organizacao_id: string;
   ativo: boolean;
 };
 
 type TenantConfig = {
   id: string;
-  escola_id: string;
+  organizacao_id: string;
   perfil_id: string | null;
   nome_organizacao: string | null;
   logo_url: string | null;
@@ -302,7 +302,7 @@ export default function ConfiguracoesPage() {
 
         if (authError || !user) throw new Error("Usuário não autenticado.");
 
-        // 2. Buscar escola_id na tabela usuarios
+        // 2. Buscar organizacao_id na tabela usuarios
         const { data: usuarioData, error: usuarioError } = await supabase
           .from("usuarios")
           .select("id")
@@ -321,8 +321,8 @@ export default function ConfiguracoesPage() {
           { data: estilosAtivosData, error: estilosAtivosError },
         ] = await Promise.all([
           supabase.from("perfis_festival").select("*").order("ordem"),
-          supabase.from("tenant_config").select("*").eq("escola_id", eid).single(),
-          supabase.from("tenant_estilos_ativos").select("*").eq("escola_id", eid),
+          supabase.from("tenant_config").select("*").eq("organizacao_id", eid).single(),
+          supabase.from("tenant_estilos_ativos").select("*").eq("organizacao_id", eid),
         ]);
 
         if (perfisError) throw perfisError;
@@ -345,7 +345,7 @@ export default function ConfiguracoesPage() {
           // Cria config inicial para este tenant
           const { data: novaConfig, error: criacaoError } = await supabase
             .from("tenant_config")
-            .insert({ escola_id: eid })
+            .insert({ organizacao_id: eid })
             .select()
             .single();
 
@@ -404,14 +404,14 @@ export default function ConfiguracoesPage() {
   async function executarTrocaDePerfil(perfil: PerfilFestival) {
     setTrocandoPerfil(true);
     try {
-      if (!escolaId) throw new Error("escola_id não encontrado.");
+      if (!escolaId) throw new Error("organizacao_id não encontrado.");
 
       // Limpa estilos ativos do tenant
       if (estilosAtivos.length > 0) {
         const { error } = await supabase
           .from("tenant_estilos_ativos")
           .delete()
-          .eq("escola_id", escolaId);
+          .eq("organizacao_id", escolaId);
         if (error) throw error;
         setEstilosAtivos([]);
       }
@@ -447,14 +447,14 @@ export default function ConfiguracoesPage() {
           .from("tenant_estilos_ativos")
           .delete()
           .eq("estilo_id", estilo.id)
-          .eq("escola_id", escolaId);
+          .eq("organizacao_id", escolaId);
 
         if (error) throw error;
         setEstilosAtivos((p) => p.filter((e) => e.estilo_id !== estilo.id));
       } else {
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .insert({ estilo_id: estilo.id, escola_id: escolaId, ativo: true })
+          .insert({ estilo_id: estilo.id, organizacao_id: escolaId, ativo: true })
           .select()
           .single();
 
@@ -485,7 +485,7 @@ export default function ConfiguracoesPage() {
 
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .insert(faltando.map((e) => ({ estilo_id: e.id, escola_id: escolaId, ativo: true })))
+          .insert(faltando.map((e) => ({ estilo_id: e.id, organizacao_id: escolaId, ativo: true })))
           .select();
 
         if (error) throw error;
@@ -495,7 +495,7 @@ export default function ConfiguracoesPage() {
         const { error } = await supabase
           .from("tenant_estilos_ativos")
           .delete()
-          .eq("escola_id", escolaId)
+          .eq("organizacao_id", escolaId)
           .in(
             "estilo_id",
             estilos.map((e) => e.id)
@@ -549,7 +549,7 @@ export default function ConfiguracoesPage() {
       // Ativa automaticamente
       const { data: ativoData, error: ativoError } = await supabase
         .from("tenant_estilos_ativos")
-        .insert({ estilo_id: estiloData.id, escola_id: escolaId, ativo: true })
+        .insert({ estilo_id: estiloData.id, organizacao_id: escolaId, ativo: true })
         .select()
         .single();
 
@@ -580,7 +580,7 @@ export default function ConfiguracoesPage() {
           perfil_id: formConfig.perfil_id,
           updated_at: new Date().toISOString(),
         })
-        .eq("escola_id", escolaId);
+        .eq("organizacao_id", escolaId);
 
       if (error) throw error;
       setConfig((c) => c ? { ...c, perfil_id: formConfig.perfil_id ?? null } : c);
@@ -606,7 +606,7 @@ export default function ConfiguracoesPage() {
           termo_evento: formConfig.termo_evento,
           updated_at: new Date().toISOString(),
         })
-        .eq("escola_id", escolaId);
+        .eq("organizacao_id", escolaId);
 
       if (error) throw error;
       setConfig((c) =>
@@ -641,7 +641,7 @@ export default function ConfiguracoesPage() {
           cor_primaria: formConfig.cor_primaria,
           updated_at: new Date().toISOString(),
         })
-        .eq("escola_id", escolaId);
+        .eq("organizacao_id", escolaId);
 
       if (error) throw error;
       setConfig((c) =>
