@@ -11,24 +11,28 @@ import {
 } from "lucide-react";
 
 const navLinks = [
-  { name: "Dashboard",          href: "/dashboard",  icon: LayoutDashboard },
-  { name: "Line-up & Eventos",  href: "/eventos",    icon: CalendarDays },
-  { name: "Inscrições & Elenco",href: "/inscricoes", icon: Users },
-  { name: "Mídias & Áudio",     href: "/midias",     icon: Mic2 },
-  { name: "Jurados & Apuração", href: "/jurados",    icon: Gavel },
-  { name: "Loja & Upsell",      href: "/loja",       icon: ShoppingBag },
-  { name: "Termos & Contratos", href: "/termos",     icon: FileSignature },
-  { name: "Marketing",          href: "/marketing",  icon: Megaphone },
-  { name: "PDV & Bilheteria",   href: "/pdv",        icon: Ticket },
+  { name: "Dashboard",          href: "/dashboard",    icon: LayoutDashboard },
+  { name: "Line-up & Eventos",  href: "/eventos",      icon: CalendarDays },
+  { name: "Inscrições & Elenco",href: "/inscricoes",   icon: Users },
+  { name: "Mídias & Áudio",     href: "/midias",       icon: Mic2 },
+  { name: "Jurados & Apuração", href: "/jurados",      icon: Gavel },
+  { name: "Loja & Upsell",      href: "/loja",         icon: ShoppingBag },
+  { name: "Termos & Contratos", href: "/termos",       icon: FileSignature },
+  { name: "Marketing",          href: "/marketing",    icon: Megaphone },
+  { name: "PDV & Bilheteria",   href: "/pdv",          icon: Ticket },
 ];
 
+const ROLES_ADMIN = ["admin", "super_admin", "produtora_admin", "produtora_staff"];
+
 export default function AdminShell({ children }: { children: React.ReactNode }) {
-  const [isSidebarOpen, setIsSidebarOpen]   = useState(true);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [loading, setLoading]               = useState(true);
-  const [authorized, setAuthorized]         = useState(false);
-  const [userEmail, setUserEmail]           = useState("");
-  const [userName, setUserName]             = useState("Organizador");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isUserMenuOpen, setIsUserMenuOpen]   = useState(false);
+  const [loading, setLoading]       = useState(true);
+  const [authorized, setAuthorized] = useState(false);
+  const [userEmail, setUserEmail]   = useState("");
+  const [userName, setUserName]     = useState("");
+  const [hasError, setHasError]     = useState(false);
+  const [debugMsg, setDebugMsg]     = useState("Iniciando verificação...");
 
   const pathname = usePathname();
   const router   = useRouter();
@@ -37,43 +41,59 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     const checkUser = async () => {
       try {
         const supabase = createClient();
+        setDebugMsg("1. Verificando sessão no navegador...");
 
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-        if (sessionError || !session) {
-          router.push("/login");
+        if (sessionError) {
+          setDebugMsg("Erro de Sessão: " + sessionError.message);
+          setHasError(true);
           return;
         }
+
+        if (!session) {
+          setDebugMsg("Nenhuma sessão encontrada. Faça login novamente.");
+          setHasError(true);
+          return;
+        }
+
+        setDebugMsg("2. Sessão encontrada! Buscando cargo no banco...");
 
         const { data: userData, error: userError } = await supabase
           .from("usuarios")
-          .select("role")
+          .select("role, nome, email")
           .eq("id", session.user.id)
           .single();
 
-        if (userError || !userData) {
-          router.push("/login");
+        if (userError) {
+          setDebugMsg("Erro ao ler tabela 'usuarios': " + userError.message);
+          setHasError(true);
           return;
         }
 
-        if (userData.role !== "admin" && userData.role !== "super_admin") {
-          router.push("/login");
+        if (!userData) {
+          setDebugMsg("Usuário não encontrado na tabela 'usuarios'.");
+          setHasError(true);
           return;
         }
 
-        const name =
-          session.user.user_metadata?.nome_completo ||
-          session.user.user_metadata?.name ||
-          session.user.email?.split("@")[0] ||
-          "Organizador";
+        setDebugMsg("3. Cargo encontrado: " + userData.role);
 
-        setUserEmail(session.user.email || "");
-        setUserName(name);
+        if (!ROLES_ADMIN.includes(userData.role)) {
+          setDebugMsg("Acesso negado. Seu cargo é: " + userData.role);
+          setHasError(true);
+          return;
+        }
+
+        setUserEmail(userData.email || session.user.email || "");
+        setUserName(userData.nome || "Organizador");
         setAuthorized(true);
         setLoading(false);
 
-      } catch {
-        router.push("/login");
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        setDebugMsg("Erro fatal: " + message);
+        setHasError(true);
       }
     };
 
@@ -86,17 +106,27 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     router.push("/login");
   }
 
-  const initials = userName
-    .split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase() || "AX";
+  if (hasError) {
+    return (
+      <div className="h-screen w-full bg-axon-bg flex flex-col items-center justify-center p-8 text-white">
+        <div className="bg-axon-panel border border-red-500 p-8 rounded-xl max-w-2xl w-full text-center shadow-2xl">
+          <h1 className="text-2xl font-bold text-red-500 mb-4">Diagnóstico de Erro</h1>
+          <p className="text-lg font-mono text-gray-300 bg-black p-4 rounded mb-6">{debugMsg}</p>
+          <button
+            onClick={() => router.push("/login")}
+            className="bg-axon-gold text-black px-6 py-2 rounded font-bold hover:opacity-90"
+          >
+            Voltar para o Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
-      <div className="h-screen w-full bg-[#0d0807] flex items-center justify-center">
-        <Loader2 className="animate-spin text-[#C5A059]" size={48} />
+      <div className="h-screen w-full bg-axon-bg flex items-center justify-center">
+        <Loader2 className="animate-spin text-axon-gold" size={48} />
       </div>
     );
   }
@@ -104,24 +134,26 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   if (!authorized) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0d0807] text-white">
-
-      {/* ── Sidebar ── */}
-      <aside className={`${isSidebarOpen ? "w-64" : "w-20"} bg-[#1a1413] border-r border-[#2e2825] flex flex-col transition-all duration-300 ease-in-out relative z-20`}>
-        <div className="h-16 flex items-center justify-between px-4 border-b border-[#2e2825]">
+    <div className="flex h-screen overflow-hidden bg-axon-bg text-white">
+      <aside
+        className={`${
+          isSidebarOpen ? "w-64" : "w-20"
+        } bg-axon-panel border-r border-axon-border flex flex-col transition-all duration-300 ease-in-out relative z-20`}
+      >
+        <div className="h-16 flex items-center justify-between px-4 border-b border-axon-border">
           {isSidebarOpen ? (
             <span className="text-xl font-bold tracking-wider truncate px-2">
-              AXON <span className="text-[#C5A059] font-light">Fest</span>
+              <span className="text-axon-gold">ARXUM</span>
+              <span className="text-white font-light"> Fest</span>
             </span>
           ) : (
-            <span className="text-xl font-bold tracking-wider mx-auto text-[#C5A059]">AX</span>
+            <span className="text-xl font-bold tracking-wider mx-auto text-axon-gold">AR</span>
           )}
         </div>
 
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="absolute -right-3 top-20 bg-[#1a1413] border border-[#2e2825] rounded-full p-1 text-gray-400 hover:text-white hover:border-[#C5A059] transition-colors z-30"
-          aria-label={isSidebarOpen ? "Recolher menu" : "Expandir menu"}
+          className="absolute -right-3 top-20 bg-axon-panel border border-axon-border rounded-full p-1 text-gray-400 hover:text-white hover:border-axon-gold transition-colors z-30"
         >
           {isSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
@@ -134,9 +166,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               <Link
                 key={link.href}
                 href={link.href}
-                className={`flex items-center gap-3 rounded-md transition-colors ${
+                className={`flex items-center gap-3 rounded-md transition-all duration-200 active:scale-95 ${
                   isActive
-                    ? "bg-[#C5A059]/10 text-[#C5A059] font-medium"
+                    ? "bg-axon-gold/10 text-axon-gold font-medium"
                     : "text-gray-400 hover:text-white hover:bg-white/5"
                 } ${isSidebarOpen ? "px-3 py-2" : "p-3 justify-center"}`}
               >
@@ -148,25 +180,21 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </nav>
       </aside>
 
-      {/* ── Área principal ── */}
-      <main className="flex-1 flex flex-col h-screen min-w-0">
-
-        <header className="h-16 bg-[#1a1413]/80 backdrop-blur-md border-b border-[#2e2825] flex items-center justify-between px-8 sticky top-0 z-10 overflow-visible">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
+        <header className="h-16 bg-axon-panel/80 backdrop-blur-md border-b border-axon-border flex items-center justify-between px-8 sticky top-0 z-10">
           <div className="text-gray-400 text-sm font-medium">Painel do Organizador</div>
 
           <div className="relative">
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-              className="flex items-center gap-3 hover:bg-white/5 p-1.5 pr-3 rounded-full transition-colors border border-transparent hover:border-[#2e2825]"
-              aria-expanded={isUserMenuOpen}
-              aria-haspopup="true"
+              className="flex items-center gap-3 hover:bg-white/5 p-1.5 pr-3 rounded-full transition-colors border border-transparent hover:border-axon-border"
             >
-              <div className="w-9 h-9 rounded-full bg-[#2e2825] flex items-center justify-center text-[#C5A059] font-bold text-sm">
-                {initials}
+              <div className="w-9 h-9 rounded-full bg-axon-bg border border-axon-gold/30 flex items-center justify-center text-axon-gold font-bold text-sm uppercase">
+                {(userName || userEmail).substring(0, 2)}
               </div>
               <div className="text-left hidden sm:block">
-                <div className="text-sm font-medium text-white leading-tight capitalize">{userName}</div>
-                <div className="text-xs text-gray-500 leading-tight">Admin</div>
+                <div className="text-sm font-medium text-white leading-tight">{userName}</div>
+                <div className="text-xs text-gray-500 leading-tight truncate max-w-[140px]">{userEmail}</div>
               </div>
               <ChevronDown
                 size={16}
@@ -177,11 +205,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             {isUserMenuOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)} />
-
-                <div className="fixed top-16 right-6 w-64 bg-[#1a1413] border border-[#2e2825] rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
-
-                  <div className="px-4 py-3 border-b border-[#2e2825] mb-1">
-                    <p className="text-sm text-white font-medium capitalize">{userName}</p>
+                <div className="fixed top-16 right-6 w-64 bg-axon-panel border border-axon-border rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-axon-border mb-1">
+                    <p className="text-sm text-white font-medium">{userName}</p>
                     <p className="text-xs text-gray-400 truncate">{userEmail}</p>
                   </div>
 
@@ -194,7 +220,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                     <span>Meu Perfil</span>
                   </Link>
 
-                  <div className="h-px bg-[#2e2825] my-1" />
+                  <div className="h-px bg-axon-border my-1" />
                   <p className="px-4 py-1.5 text-xs text-gray-600 font-medium uppercase tracking-wider">Gestão</p>
 
                   <Link
@@ -212,10 +238,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                     className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
                   >
                     <Settings size={16} />
-                    <span>Configurações do Sistema</span>
+                    <span>Configurações</span>
                   </Link>
 
-                  <div className="h-px bg-[#2e2825] my-1" />
+                  <div className="h-px bg-axon-border my-1" />
 
                   <button
                     onClick={handleLogout}
