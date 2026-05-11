@@ -20,9 +20,9 @@ export default function GrupoLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    const supabase = createClient();
     setLoading(true);
     setError("");
 
@@ -66,6 +66,7 @@ export default function GrupoLoginPage() {
 
   const handleCadastro = async (e: React.FormEvent) => {
     e.preventDefault();
+    const supabase = createClient();
     setLoading(true);
     setError("");
 
@@ -78,7 +79,6 @@ export default function GrupoLoginPage() {
     try {
       const emailValue = email.trim();
 
-      // 1. Criar usuário no auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: emailValue,
         password,
@@ -90,8 +90,6 @@ export default function GrupoLoginPage() {
       if (authError) throw authError;
 
       if (authData.user) {
-        // 2. Criar registro na tabela usuarios
-        // Nota: organizacao_id será vinculado pelo admin da produtora
         const { error: userError } = await supabase
           .from("usuarios")
           .insert({
