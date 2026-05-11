@@ -14,10 +14,11 @@ type Evento = {
 };
 
 const STATUS_CONFIG: Record<string, { label: string; cor: string }> = {
-  inscricoes_abertas: { label: "Inscrições Abertas", cor: "text-axon-green bg-axon-green/10 border-axon-green/20" },
+  inscricoes_abertas: { label: "Inscrições Abertas", cor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
   em_andamento:       { label: "Em Andamento",       cor: "text-axon-gold bg-axon-gold/10 border-axon-gold/20" },
   encerrado:          { label: "Encerrado",           cor: "text-gray-400 bg-gray-500/10 border-gray-500/20" },
   rascunho:           { label: "Rascunho",            cor: "text-gray-500 bg-white/5 border-white/10" },
+  Publicado:          { label: "Publicado",           cor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
 };
 
 function formatarPeriodo(inicio: string, fim: string) {
@@ -38,30 +39,81 @@ export default function EventosPage() {
   const [modalNovo, setModalNovo]   = useState(false);
   const [criando, setCriando]       = useState(false);
   const [excluindo, setExcluindo]   = useState<string | null>(null);
+  const [produtoraId, setProdutoraId] = useState<string | null>(null);
   const [form, setForm] = useState({ nome: "", data_inicio: "", data_fim: "" });
 
   const supabase = createClient();
 
+  const carregarEventos = useCallback(async (pid: string) => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("eventos")
+      .select("id, nome, data_inicio, data_fim, local, status, inscritos_count")
+      .eq("produtora_id", pid)
+      .order("data_inicio", { ascending: false });
+    setEventos(data ?? []);
+    setLoading(false);
+  }, [supabase]);
+
   useEffect(() => {
-    async function carregarEventos() {
-      setLoading(true);
-      const { data } = await supabase
-        .from("eventos")
-        .select("id, nome, data_inicio, data_fim, local, status, inscritos_count")
-        .order("data_inicio", { ascending: false });
-      setEventos(data ?? []);
-      setLoading(false);
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: userData } = await supabase
+        .from("usuarios")
+        .select("role, produtora_id")
+        .eq("id", user.id)
+        .single();
+
+      if (!userData) return;
+
+      // super_admin vê todos os eventos (sem filtro de produtora)
+      if (userData.role === "super_admin") {
+        setLoading(true);
+        const { data } = await supabase
+          .from("eventos")
+          .select("id, nome, data_inicio, data_fim, local, status, inscritos_count")
+          .order("data_inicio", { ascending: false });
+        setEventos(data ?? []);
+        setLoading(false);
+        return;
+      }
+
+      if (userData.produtora_id) {
+        setProdutoraId(userData.produtora_id);
+        await carregarEventos(userData.produtora_id);
+      } else {
+        setLoading(false);
+      }
     }
 
-    void carregarEventos();
-  }, [supabase]);
+    void init();
+  }, [supabase, carregarEventos]);
 
   async function criarEvento() {
     if (!form.nome.trim() || !form.data_inicio || !form.data_fim) return;
     setCriando(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setCriando(false); return; }
+
+    const { data: userData } = await supabase
+      .from("usuarios")
+      .select("produtora_id")
+      .eq("id", user.id)
+      .single();
+
     const { data, error } = await supabase
       .from("eventos")
-      .insert({ nome: form.nome, data_inicio: form.data_inicio, data_fim: form.data_fim, status: "rascunho", inscritos_count: 0 })
+      .insert({
+        nome: form.nome,
+        data_inicio: form.data_inicio,
+        data_fim: form.data_fim,
+        status: "rascunho",
+        inscritos_count: 0,
+        produtora_id: userData?.produtora_id ?? null,
+      })
       .select()
       .single();
 
@@ -90,14 +142,15 @@ export default function EventosPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
-
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white">Line-up & Eventos</h1>
           <p className="text-gray-400 mt-1">Gerencie os festivais, categorias e a ordem de apresentação.</p>
         </div>
-        <button onClick={() => setModalNovo(true)}
-          className="bg-axon-gold text-black px-4 py-2 rounded-md font-semibold flex items-center gap-2 hover:bg-axon-gold/90 transition-colors">
+        <button
+          onClick={() => setModalNovo(true)}
+          className="bg-axon-gold text-black px-4 py-2 rounded-md font-semibold flex items-center gap-2 hover:bg-axon-gold/90 transition-all duration-200 active:scale-95"
+        >
           <Plus size={20} /> Novo Evento
         </button>
       </div>
@@ -113,14 +166,16 @@ export default function EventosPage() {
           {eventos.map((evento) => {
             const status = STATUS_CONFIG[evento.status] ?? { label: evento.status, cor: "text-gray-400 bg-white/5 border-white/10" };
             return (
-              <div key={evento.id}
+              <div
+                key={evento.id}
                 onClick={() => router.push(`/eventos/${evento.id}`)}
-                className="bg-axon-panel border border-axon-border rounded-xl p-6 flex flex-col hover:border-axon-gold/40 transition-colors group relative cursor-pointer">
-
-                {/* Menu 3 pontinhos — para propagação para não ativar o clique do card */}
+                className="bg-axon-panel border border-axon-border rounded-xl p-6 flex flex-col hover:border-axon-gold/40 transition-colors group relative cursor-pointer"
+              >
                 <div className="absolute top-6 right-6" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => setMenuAberto(menuAberto === evento.id ? null : evento.id)}
-                    className="text-gray-500 hover:text-white transition-colors">
+                  <button
+                    onClick={() => setMenuAberto(menuAberto === evento.id ? null : evento.id)}
+                    className="text-gray-500 hover:text-white transition-colors"
+                  >
                     <MoreHorizontal size={20} />
                   </button>
                   {menuAberto === evento.id && (
@@ -129,12 +184,16 @@ export default function EventosPage() {
                       <div className="absolute right-0 mt-2 w-44 bg-axon-panel border border-axon-border rounded-xl shadow-2xl z-50 py-2">
                         <button
                           onClick={() => { router.push(`/eventos/${evento.id}`); setMenuAberto(null); }}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors">
+                          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 transition-colors"
+                        >
                           <Settings size={15} /> Configurar
                         </button>
                         <div className="h-px bg-axon-border my-1" />
-                        <button onClick={() => excluirEvento(evento.id)} disabled={excluindo === evento.id}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors disabled:opacity-50">
+                        <button
+                          onClick={() => excluirEvento(evento.id)}
+                          disabled={excluindo === evento.id}
+                          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors disabled:opacity-50"
+                        >
                           {excluindo === evento.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
                           Excluir
                         </button>
@@ -144,7 +203,9 @@ export default function EventosPage() {
                 </div>
 
                 <div className="mb-4">
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${status.cor}`}>{status.label}</span>
+                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${status.cor}`}>
+                    {status.label}
+                  </span>
                 </div>
 
                 <h3 className="text-xl font-bold text-white mb-4 pr-6">{evento.nome}</h3>
@@ -175,7 +236,6 @@ export default function EventosPage() {
         </div>
       )}
 
-      {/* Modal Novo Evento */}
       {modalNovo && (
         <>
           <div className="fixed inset-0 bg-black/60 z-50" onClick={() => !criando && setModalNovo(false)} />
@@ -192,37 +252,57 @@ export default function EventosPage() {
                   </button>
                 )}
               </div>
+
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400">Nome do Festival *</label>
-                  <input type="text" placeholder="Ex: Festival de Dança AXON 2026" value={form.nome}
-                    onChange={(e) => setForm({ ...form, nome: e.target.value })} disabled={criando}
-                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50" />
+                  <input
+                    type="text"
+                    placeholder="Ex: Festival de Dança ARXUM 2026"
+                    value={form.nome}
+                    onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                    disabled={criando}
+                    className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50"
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm text-gray-400">Data de Início *</label>
-                    <input type="date" value={form.data_inicio}
-                      onChange={(e) => setForm({ ...form, data_inicio: e.target.value })} disabled={criando}
-                      className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50" />
+                    <input
+                      type="date"
+                      value={form.data_inicio}
+                      onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
+                      disabled={criando}
+                      className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50"
+                    />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm text-gray-400">Data de Fim *</label>
-                    <input type="date" value={form.data_fim}
-                      onChange={(e) => setForm({ ...form, data_fim: e.target.value })} disabled={criando}
-                      className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50" />
+                    <input
+                      type="date"
+                      value={form.data_fim}
+                      onChange={(e) => setForm({ ...form, data_fim: e.target.value })}
+                      disabled={criando}
+                      className="w-full bg-axon-bg border border-axon-border rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50"
+                    />
                   </div>
                 </div>
               </div>
+
               <div className="flex gap-3 justify-end pt-2">
                 {!criando && (
-                  <button onClick={() => setModalNovo(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+                  <button
+                    onClick={() => setModalNovo(false)}
+                    className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                  >
                     Cancelar
                   </button>
                 )}
-                <button onClick={criarEvento}
+                <button
+                  onClick={criarEvento}
                   disabled={criando || !form.nome.trim() || !form.data_inicio || !form.data_fim}
-                  className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-md hover:bg-axon-gold/90 transition-colors text-sm disabled:opacity-50 min-w-[140px] justify-center">
+                  className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-md hover:bg-axon-gold/90 transition-all duration-200 active:scale-95 text-sm disabled:opacity-50 min-w-[140px] justify-center"
+                >
                   {criando ? <><Loader2 size={16} className="animate-spin" /> Criando...</> : <><Plus size={16} /> Criar & Configurar</>}
                 </button>
               </div>
