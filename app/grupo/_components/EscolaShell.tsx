@@ -10,7 +10,6 @@ import {
   Users,
   Upload,
   Lightbulb,
-  UserCog,
   School,
   ChevronDown,
   LogOut,
@@ -22,24 +21,27 @@ type Usuario = {
   nome: string
   email: string
   role: string
-  grupo_id?: string | null
+  organizacao_id?: string | null
+  produtora_id?: string | null
 }
 
 type TenantConfig = {
   id: string
-  grupo_id: string        // ← corrigido (era grupo_id)
+  produtora_id: string
   perfil_id: string | null
-  nome_organizacao: string | null
+  nome_exibicao: string | null
   logo_url: string | null
   cor_primaria: string | null
   termo_inscricao: string | null
   termo_participante: string | null
+  termo_participante_plural: string | null
   termo_grupo: string | null
+  termo_grupo_plural: string | null
   termo_apresentacao: string | null
-  termo_evento: string | null
+  termo_apresentacao_plural: string | null
 }
 
-export default function EscolaShell({ children }: { children: React.ReactNode }) {
+export default function GrupoShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -53,36 +55,45 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
       const supabase = createClient()
 
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) {
+        router.push('/grupo/login')
+        return
+      }
 
       const { data } = await supabase
         .from('usuarios')
-        .select('id, nome, email, role, grupo_id')
+        .select('id, nome, email, role, organizacao_id, produtora_id')
         .eq('id', user.id)
         .single()
 
-      if (!data) return
+      if (!data) {
+        router.push('/grupo/login')
+        return
+      }
 
       setUsuario({
         nome: data.nome,
         email: data.email ?? user.email ?? '',
         role: data.role,
-        grupo_id: data.grupo_id,
+        organizacao_id: data.organizacao_id,
+        produtora_id: data.produtora_id,
       })
 
-      // Carregar config e nome da organização em paralelo
-      if (data.grupo_id) {
+      // Carrega config do tenant e nome da organização em paralelo
+      if (data.produtora_id) {
         const [{ data: tenantConfig }, { data: organizacao }] = await Promise.all([
           supabase
             .from('tenant_config')
             .select('*')
-            .eq('grupo_id', data.grupo_id) // ← corrigido (era grupo_id com data.id)
+            .eq('produtora_id', data.produtora_id)
             .single(),
-          supabase
-            .from('organizacoes')
-            .select('nome')
-            .eq('id', data.grupo_id)
-            .single(),
+          data.organizacao_id
+            ? supabase
+                .from('organizacoes')
+                .select('nome')
+                .eq('id', data.organizacao_id)
+                .single()
+            : Promise.resolve({ data: null }),
         ])
 
         if (tenantConfig) setConfig(tenantConfig as TenantConfig)
@@ -91,32 +102,33 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
     }
 
     loadUser()
-  }, [])
+  }, [router])
 
   const labels = useMemo(() => ({
-    apresentacao: config?.termo_apresentacao?.trim() || 'Apresentações',
-    participante:  config?.termo_participante?.trim() || 'Participantes',
-    grupo:         config?.termo_grupo?.trim()        || 'Minha Escola',
+    apresentacao: config?.termo_apresentacao_plural?.trim() || 'Apresentações',
+    participante: config?.termo_participante_plural?.trim() || 'Participantes',
+    grupo: config?.termo_grupo?.trim() || 'Meu Grupo',
   }), [config])
 
   const navItems = useMemo(() => [
-    { label: 'Dashboard',        href: '/escola/dashboard',    icon: LayoutDashboard },
-    { label: labels.apresentacao, href: '/escola/apresentacoes', icon: Music2 },
-    { label: labels.participante, href: '/escola/participantes',    icon: Users },
-    { label: 'Músicas & Áudio',  href: '/escola/midias',       icon: Upload },
-    { label: 'Mapas de Luz',     href: '/escola/mapas-de-luz', icon: Lightbulb },
-    
-    { label: labels.grupo,        href: '/escola/perfil',        icon: School },
+    { label: 'Dashboard',         href: '/grupo/dashboard',     icon: LayoutDashboard },
+    { label: labels.apresentacao, href: '/grupo/apresentacoes', icon: Music2 },
+    { label: labels.participante, href: '/grupo/participantes', icon: Users },
+    { label: 'Músicas & Áudio',   href: '/grupo/midias',        icon: Upload },
+    { label: 'Mapas de Luz',      href: '/grupo/mapas-de-luz',  icon: Lightbulb },
+    { label: labels.grupo,        href: '/grupo/perfil',        icon: School },
   ], [labels])
 
   async function handleLogout() {
     const supabase = createClient()
     await supabase.auth.signOut()
-    router.push('/escola/login')
+    router.push('/grupo/login')
   }
 
+  const corPrimaria = config?.cor_primaria || '#C5A059'
+
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--color-axon-bg)] text-white">
+    <div className="flex h-screen overflow-hidden bg-axon-bg text-white">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-20 bg-black/60 lg:hidden"
@@ -130,10 +142,21 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
         }`}
       >
         <div className="flex h-14 items-center gap-3 border-b border-axon-border px-5">
-          <span className="text-base font-bold tracking-tight">
-            <span className="text-axon-gold">AXON</span>
-            <span className="text-white"> Fest</span>
-          </span>
+          {config?.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={config.logo_url}
+              alt={config.nome_exibicao || 'Logo'}
+              className="h-7 w-auto object-contain"
+            />
+          ) : (
+            <span className="text-base font-bold tracking-tight">
+              <span style={{ color: corPrimaria }}>
+                {config?.nome_exibicao || 'ARXUM'}
+              </span>
+              <span className="text-white"> Fest</span>
+            </span>
+          )}
           {organizacaoNome && (
             <span className="truncate text-xs text-white/40">{organizacaoNome}</span>
           )}
@@ -147,11 +170,12 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
                 key={href}
                 href={href}
                 onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200 active:scale-95 ${
                   active
-                    ? 'bg-[var(--color-axon-gold-dim)] text-axon-gold'
+                    ? 'bg-axon-gold/10 text-axon-gold'
                     : 'text-white/50 hover:bg-white/5 hover:text-white/80'
                 }`}
+                style={active ? { color: corPrimaria } : {}}
               >
                 <Icon size={16} />
                 {label}
@@ -165,7 +189,10 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
             onClick={() => setDropdownOpen((v) => !v)}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/50 transition-colors hover:bg-white/5 hover:text-white/80"
           >
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-axon-gold text-xs font-bold uppercase text-[var(--color-axon-bg)]">
+            <div
+              className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold uppercase text-axon-bg"
+              style={{ backgroundColor: corPrimaria }}
+            >
               {usuario?.nome?.[0] ?? 'U'}
             </div>
             <div className="flex flex-1 flex-col text-left">
@@ -181,9 +208,9 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
           </button>
 
           {dropdownOpen && (
-            <div className="mt-1 rounded-lg border border-axon-border bg-[var(--color-axon-bg)] py-1">
+            <div className="mt-1 rounded-lg border border-axon-border bg-axon-bg py-1">
               <Link
-                href="/escola/perfil"
+                href="/grupo/perfil"
                 className="flex items-center gap-2 px-3 py-2 text-xs text-white/60 transition-colors hover:bg-white/5 hover:text-white/80"
                 onClick={() => setDropdownOpen(false)}
               >
@@ -212,7 +239,9 @@ export default function EscolaShell({ children }: { children: React.ReactNode })
             <Menu size={20} />
           </button>
           <span className="text-sm font-bold">
-            <span className="text-axon-gold">AXON</span>
+            <span style={{ color: corPrimaria }}>
+              {config?.nome_exibicao || 'ARXUM'}
+            </span>
             <span className="text-white"> Fest</span>
           </span>
           <div className="w-5" />
