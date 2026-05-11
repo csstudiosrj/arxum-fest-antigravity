@@ -20,7 +20,7 @@ const features = [
     icon: Sparkles,
     title: "Terminologia dinâmica",
     description:
-      "Chame cada etapa do jeito que faz sentido para o seu evento: participante, atleta, elenco, apresentação, peça, apresentação ou qualquer outro termo da sua operação.",
+      "Chame cada etapa do jeito que faz sentido para o seu evento: participante, atleta, elenco, apresentação, peça, performance ou qualquer outro termo da sua operação.",
   },
   {
     icon: Settings2,
@@ -47,7 +47,7 @@ const steps = [
     number: "03",
     title: "Abra as inscrições",
     description:
-      "Receba escolas, grupos, participantes e materiais com mais organização e menos retrabalho para sua equipe.",
+      "Receba grupos, participantes e materiais com mais organização e menos retrabalho para sua equipe.",
   },
   {
     number: "04",
@@ -116,7 +116,7 @@ export default function HomePage() {
             </h1>
 
             <p className="mt-6 max-w-2xl text-base leading-8 text-zinc-400 sm:text-lg">
-              O AXON Fest foi criado para transformar a gestão de festivais em um
+              O ARXUM Fest foi criado para transformar a gestão de festivais em um
               processo centralizado, white-label e escalável. Organize inscrições,
               operação, comunicação e estrutura do evento em um único lugar.
             </p>
@@ -163,9 +163,7 @@ export default function HomePage() {
             <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/20 backdrop-blur-sm sm:p-8">
               <div className="flex items-center justify-between border-b border-white/10 pb-4">
                 <div>
-                  <p className="text-sm font-medium text-zinc-300">
-                    AXON Fest
-                  </p>
+                  <p className="text-sm font-medium text-zinc-300">ARXUM Fest</p>
                   <p className="mt-1 text-xs uppercase tracking-[0.22em] text-[#C5A059]">
                     Operação centralizada
                   </p>
@@ -195,7 +193,7 @@ export default function HomePage() {
                       Inscrições
                     </p>
                     <p className="mt-2 text-sm font-semibold text-white">
-                      Fluxo mais claro para escolas e participantes
+                      Fluxo mais claro para grupos e participantes
                     </p>
                   </div>
 
@@ -225,9 +223,9 @@ export default function HomePage() {
 
       <section className="mx-auto max-w-7xl px-6 py-20 sm:px-8 lg:px-12">
         <SectionHeader
-          eyebrow="Por que escolher o AXON Fest?"
+          eyebrow="Por que escolher o ARXUM Fest?"
           title="Uma plataforma feita para a realidade de quem organiza festivais."
-          description="O objetivo do AXON Fest é simples: substituir improviso operacional por clareza, padronização e escala. Você ganha uma base mais sólida para crescer sem perder controle."
+          description="O objetivo do ARXUM Fest é simples: substituir improviso operacional por clareza, padronização e escala. Você ganha uma base mais sólida para crescer sem perder controle."
         />
 
         <div className="mt-12 grid gap-6 lg:grid-cols-3">
@@ -301,7 +299,7 @@ export default function HomePage() {
 
         <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-zinc-400 sm:text-lg">
           Se hoje sua operação depende de planilhas, mensagens soltas e processos
-          manuais, o AXON Fest foi feito para mudar esse cenário com mais
+          manuais, o ARXUM Fest foi feito para mudar esse cenário com mais
           controle, consistência e visão de crescimento.
         </p>
 
@@ -325,17 +323,11 @@ export default function HomePage() {
 
       <footer className="border-t border-white/10">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-8 text-sm text-zinc-500 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-12">
-          <p>© {new Date().getFullYear()} AXON Fest. Todos os direitos reservados.</p>
+          <p>© {new Date().getFullYear()} ARXUM Fest. Todos os direitos reservados.</p>
           <div className="flex flex-wrap items-center gap-4">
-            <Link href="/" className="transition hover:text-zinc-300">
-              Início
-            </Link>
-            <Link href="/como-funciona" className="transition hover:text-zinc-300">
-              Como funciona
-            </Link>
-            <Link href="/cadastro" className="transition hover:text-zinc-300">
-              Criar meu Festival
-            </Link>
+            <Link href="/" className="transition hover:text-zinc-300">Início</Link>
+            <Link href="/como-funciona" className="transition hover:text-zinc-300">Como funciona</Link>
+            <Link href="/cadastro" className="transition hover:text-zinc-300">Criar meu Festival</Link>
           </div>
         </div>
       </footer>
