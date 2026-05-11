@@ -13,7 +13,6 @@ export default function AdminLoginPage() {
   const[loading, setLoading] = useState(false);
 
   // Instancia o cliente do Supabase (Padrão SSR)
-  const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
