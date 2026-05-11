@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AXON Fest",
+  title: "ARXUM Fest",
   description: "Sistema de Gestão de Festivais Artísticos",
 };
 

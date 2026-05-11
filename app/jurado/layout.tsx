@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "AXON Fest — Painel do Jurado",
+  title: "ARXUM Fest — Painel do Jurado",
 };
 
 export default function JuradoLayout({
