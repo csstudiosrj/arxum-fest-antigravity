@@ -1,15 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   Plus, Pencil, Trash2, Save, X, Package,
   ReceiptText, Settings, ToggleLeft, ToggleRight,
   TrendingUp, Banknote, QrCode, CreditCard,
-  AlertCircle, CheckCircle, ChevronDown
+  AlertCircle, CheckCircle, ChevronDown, Info,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Produto {
   id: string;
@@ -40,8 +38,6 @@ interface PdvConfig {
   cidade_recebedor: string | null;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 const CATEGORIAS_CANTINA = ["Bebidas", "Salgados", "Doces", "Lanches", "Outros"];
 const CATEGORIAS_BILHETERIA = ["Ingressos", "Pacotes", "VIP", "Outros"];
 
@@ -50,31 +46,33 @@ function moeda(v: number) {
 }
 
 function iconeForma(forma: string) {
-  if (forma === "pix") return <QrCode size={14} className="text-axon-green" />;
+  if (forma === "pix") return <QrCode size={14} className="text-emerald-400" />;
   if (forma === "cartao") return <CreditCard size={14} className="text-blue-400" />;
   return <Banknote size={14} className="text-yellow-400" />;
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+function Dica({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5 bg-axon-gold/5 border border-axon-gold/15 rounded-xl px-4 py-3">
+      <Info size={14} className="text-axon-gold shrink-0 mt-0.5" />
+      <p className="text-xs text-gray-400 leading-relaxed">{children}</p>
+    </div>
+  );
+}
 
 function Toast({ msg, visivel, erro }: { msg: string; visivel: boolean; erro?: boolean }) {
   return (
     <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full font-bold text-sm flex items-center gap-2 shadow-lg z-50 transition-all duration-300 ${
       visivel ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-    } ${erro ? "bg-red-500 text-white" : "bg-axon-green text-black"}`}>
+    } ${erro ? "bg-red-500 text-white" : "bg-emerald-500 text-black"}`}>
       {erro ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
       {msg}
     </div>
   );
 }
 
-// ─── Modal de Produto ─────────────────────────────────────────────────────────
-
 function ModalProduto({
-  produto,
-  onSalvar,
-  onFechar,
-  salvando,
+  produto, onSalvar, onFechar, salvando,
 }: {
   produto: Partial<Produto> | null;
   onSalvar: (p: Partial<Produto>) => void;
@@ -92,116 +90,81 @@ function ModalProduto({
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 w-full max-w-md space-y-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white">
-            {produto?.id ? "Editar Produto" : "Novo Produto"}
-          </h2>
-          <button onClick={onFechar} className="text-gray-500 hover:text-white transition-colors">
-            <X size={20} />
-          </button>
+          <h2 className="text-lg font-bold text-white">{produto?.id ? "Editar Produto" : "Novo Produto"}</h2>
+          <button onClick={onFechar} className="text-gray-500 hover:text-white transition-colors"><X size={20} /></button>
         </div>
 
         <div className="space-y-4">
-          {/* Tipo */}
           <div className="space-y-1.5">
             <label className="text-xs text-gray-400 uppercase tracking-wider">Seção</label>
             <div className="flex bg-axon-bg border border-axon-border rounded-lg p-1">
               {(["cantina", "bilheteria"] as const).map((t) => (
-                <button
-                  key={t}
+                <button key={t}
                   onClick={() => setForm((f) => ({ ...f, tipo: t, categoria: undefined }))}
-                  className={`flex-1 py-2 rounded-md text-sm font-medium capitalize transition-colors ${
+                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
                     form.tipo === t ? "bg-axon-panel text-white shadow" : "text-gray-500 hover:text-white"
-                  }`}
-                >
+                  }`}>
                   {t === "cantina" ? "🍔 Cantina" : "🎟️ Bilheteria"}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Nome */}
           <div className="space-y-1.5">
             <label className="text-xs text-gray-400 uppercase tracking-wider">Nome do Produto</label>
-            <input
-              value={form.nome ?? ""}
+            <input value={form.nome ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
-              placeholder="Ex: Água Mineral 500ml"
-            />
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+              placeholder="Ex: Água Mineral 500ml" />
           </div>
 
-          {/* Preço + Categoria */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs text-gray-400 uppercase tracking-wider">Preço (R$)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.50"
-                value={form.preco ?? ""}
+              <input type="number" min="0" step="0.50" value={form.preco ?? ""}
                 onChange={(e) => setForm((f) => ({ ...f, preco: parseFloat(e.target.value) }))}
-                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
-                placeholder="0,00"
-              />
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                placeholder="0,00" />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs text-gray-400 uppercase tracking-wider">Categoria</label>
-              <select
-                value={form.categoria ?? ""}
+              <select value={form.categoria ?? ""}
                 onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))}
-                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
-              >
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors">
                 <option value="">Selecione</option>
                 {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           </div>
 
-          {/* Estoque */}
           <div className="space-y-1.5">
             <label className="text-xs text-gray-400 uppercase tracking-wider">
-              Estoque <span className="text-gray-600 normal-case">(deixe vazio para ilimitado)</span>
+              Estoque <span className="text-gray-600 normal-case font-normal">(vazio = ilimitado)</span>
             </label>
-            <input
-              type="number"
-              min="0"
-              value={form.estoque ?? ""}
-              onChange={(e) => setForm((f) => ({
-                ...f,
-                estoque: e.target.value === "" ? null : parseInt(e.target.value),
-              }))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
-              placeholder="Ilimitado"
-            />
+            <input type="number" min="0" value={form.estoque ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, estoque: e.target.value === "" ? null : parseInt(e.target.value) }))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+              placeholder="Ilimitado" />
           </div>
 
-          {/* Ordem */}
           <div className="space-y-1.5">
-            <label className="text-xs text-gray-400 uppercase tracking-wider">
-              Ordem de exibição
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={form.ordem ?? 0}
+            <label className="text-xs text-gray-400 uppercase tracking-wider">Ordem de exibição</label>
+            <input type="number" min="0" value={form.ordem ?? 0}
               onChange={(e) => setForm((f) => ({ ...f, ordem: parseInt(e.target.value) || 0 }))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
-            />
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors" />
+            <p className="text-xs text-gray-600">
+              Define a posição do produto na tela do caixa. Número menor aparece primeiro. Ex: 0 aparece antes de 1.
+            </p>
           </div>
         </div>
 
         <div className="flex gap-3 pt-1">
-          <button
-            onClick={onFechar}
-            className="flex-1 py-2.5 rounded-lg border border-axon-border text-gray-400 hover:text-white text-sm font-medium transition-colors"
-          >
+          <button onClick={onFechar}
+            className="flex-1 py-2.5 rounded-lg border border-axon-border text-gray-400 hover:text-white text-sm font-medium transition-all duration-200">
             Cancelar
           </button>
-          <button
-            onClick={() => onSalvar(form)}
-            disabled={salvando || !valido}
-            className="flex-1 py-2.5 rounded-lg bg-axon-green text-black font-bold text-sm hover:bg-[#00c866] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
+          <button onClick={() => onSalvar(form)} disabled={salvando || !valido}
+            className="flex-1 py-2.5 rounded-lg bg-emerald-500 text-black font-bold text-sm hover:bg-emerald-400 active:scale-95 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
             <Save size={15} />
             {salvando ? "Salvando..." : "Salvar"}
           </button>
@@ -211,14 +174,8 @@ function ModalProduto({
   );
 }
 
-// ─── Aba Produtos ─────────────────────────────────────────────────────────────
-
 function AbaProdutos({
-  produtos,
-  onNovo,
-  onEditar,
-  onToggle,
-  onExcluir,
+  produtos, onNovo, onEditar, onToggle, onExcluir,
 }: {
   produtos: Produto[];
   onNovo: () => void;
@@ -227,108 +184,75 @@ function AbaProdutos({
   onExcluir: (id: string) => void;
 }) {
   const [filtroTipo, setFiltroTipo] = useState<"todos" | "cantina" | "bilheteria">("todos");
-
-  const filtrados = produtos.filter((p) =>
-    filtroTipo === "todos" ? true : p.tipo === filtroTipo
-  );
-
+  const filtrados = produtos.filter((p) => filtroTipo === "todos" ? true : p.tipo === filtroTipo);
   const cantina = produtos.filter((p) => p.tipo === "cantina");
   const bilheteria = produtos.filter((p) => p.tipo === "bilheteria");
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <Dica>
+        Produtos cadastrados aqui aparecem na tela do caixa (<strong>/pdv/caixa</strong>). Use a <strong>Ordem de exibição</strong> para controlar a sequência — número menor aparece primeiro. Desative produtos temporariamente sem precisar excluí-los.
+      </Dica>
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex bg-axon-bg border border-axon-border rounded-lg p-1">
           {(["todos", "cantina", "bilheteria"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setFiltroTipo(t)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${
+            <button key={t} onClick={() => setFiltroTipo(t)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
                 filtroTipo === t ? "bg-axon-panel text-white shadow" : "text-gray-500 hover:text-white"
-              }`}
-            >
+              }`}>
               {t === "todos" ? `Todos (${produtos.length})` : t === "cantina" ? `🍔 Cantina (${cantina.length})` : `🎟️ Bilheteria (${bilheteria.length})`}
             </button>
           ))}
         </div>
-        <button
-          onClick={onNovo}
-          className="flex items-center gap-2 bg-axon-green text-black px-4 py-2 rounded-lg font-semibold text-sm hover:bg-[#00c866] transition-colors"
-        >
+        <button onClick={onNovo}
+          className="flex items-center gap-2 bg-emerald-500 text-black px-4 py-2 rounded-lg font-bold text-sm hover:bg-emerald-400 active:scale-95 transition-all duration-200">
           <Plus size={16} /> Novo Produto
         </button>
       </div>
 
-      {/* Lista */}
       {filtrados.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-600 gap-3">
-          <Package size={40} className="opacity-30" />
-          <p className="text-sm">Nenhum produto cadastrado ainda.</p>
-          <button onClick={onNovo} className="text-axon-green text-sm hover:underline">
+        <div className="flex flex-col items-center justify-center py-20 border border-dashed border-axon-border rounded-xl text-gray-600 gap-3">
+          <Package size={40} className="opacity-20 text-axon-gold" />
+          <p className="font-medium text-gray-300">Nenhum produto cadastrado</p>
+          <button onClick={onNovo} className="text-emerald-400 text-sm hover:text-white border border-emerald-500/30 hover:border-emerald-500 px-4 py-2 rounded-lg transition-all duration-200">
             Cadastrar primeiro produto →
           </button>
         </div>
       ) : (
         <div className="space-y-2">
-          {filtrados
-            .sort((a, b) => a.ordem - b.ordem)
-            .map((p) => (
-              <div
-                key={p.id}
-                className={`flex items-center justify-between bg-axon-bg border rounded-xl px-4 py-3 transition-colors ${
-                  p.ativo ? "border-axon-border" : "border-axon-border opacity-50"
-                }`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-white truncate">{p.nome}</p>
-                    <span className="text-xs text-gray-600 bg-axon-panel px-2 py-0.5 rounded-full shrink-0">
-                      {p.categoria}
-                    </span>
-                    <span className="text-xs text-gray-600 shrink-0">
-                      {p.tipo === "cantina" ? "🍔" : "🎟️"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <p className="text-axon-green font-bold text-sm">{moeda(p.preco)}</p>
-                    <p className="text-xs text-gray-600">
-                      Estoque: {p.estoque === null ? "Ilimitado" : p.estoque}
-                    </p>
-                    <p className="text-xs text-gray-600">Ordem: {p.ordem}</p>
-                  </div>
+          {filtrados.sort((a, b) => a.ordem - b.ordem).map((p) => (
+            <div key={p.id}
+              className={`flex items-center justify-between bg-axon-bg border rounded-xl px-4 py-3 transition-colors hover:border-gray-600 ${
+                p.ativo ? "border-axon-border" : "border-axon-border opacity-50"
+              }`}>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-white truncate">{p.nome}</p>
+                  <span className="text-xs text-gray-600 bg-axon-panel px-2 py-0.5 rounded-full shrink-0">{p.categoria}</span>
+                  <span className="text-xs shrink-0">{p.tipo === "cantina" ? "🍔" : "🎟️"}</span>
                 </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => onToggle(p)}
-                    className={`transition-colors ${p.ativo ? "text-axon-green hover:text-gray-400" : "text-gray-600 hover:text-axon-green"}`}
-                    title={p.ativo ? "Desativar" : "Ativar"}
-                  >
-                    {p.ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
-                  </button>
-                  <button
-                    onClick={() => onEditar(p)}
-                    className="text-gray-500 hover:text-white transition-colors p-1"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => onExcluir(p.id)}
-                    className="text-gray-500 hover:text-red-400 transition-colors p-1"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                <div className="flex items-center gap-3 mt-0.5">
+                  <p className="text-emerald-400 font-bold text-sm">{moeda(p.preco)}</p>
+                  <p className="text-xs text-gray-600">Estoque: {p.estoque === null ? "Ilimitado" : p.estoque}</p>
+                  <p className="text-xs text-gray-600">Posição: {p.ordem}</p>
                 </div>
               </div>
-            ))}
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => onToggle(p)} title={p.ativo ? "Desativar" : "Ativar"}
+                  className={`p-1.5 rounded-lg transition-all duration-200 ${p.ativo ? "text-emerald-400 hover:bg-emerald-500/10" : "text-gray-600 hover:text-emerald-400"}`}>
+                  {p.ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                </button>
+                <button onClick={() => onEditar(p)} className="p-1.5 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-200"><Pencil size={15} /></button>
+                <button onClick={() => onExcluir(p.id)} className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200"><Trash2 size={15} /></button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
-
-// ─── Aba Vendas ───────────────────────────────────────────────────────────────
 
 function AbaVendas({ vendas }: { vendas: Venda[] }) {
   const total = vendas.reduce((a, v) => a + v.total, 0);
@@ -337,16 +261,18 @@ function AbaVendas({ vendas }: { vendas: Venda[] }) {
     cartao: vendas.filter((v) => v.forma_pagamento === "cartao").reduce((a, v) => a + v.total, 0),
     dinheiro: vendas.filter((v) => v.forma_pagamento === "dinheiro").reduce((a, v) => a + v.total, 0),
   };
-
   const [expandido, setExpandido] = useState<string | null>(null);
 
   return (
     <div className="space-y-5">
-      {/* KPIs */}
+      <Dica>
+        Vendas registradas pelo caixa aparecem aqui em tempo real. O painel atualiza automaticamente quando uma nova venda é concluída.
+      </Dica>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Total Geral", valor: moeda(total), cor: "text-axon-green", icon: <TrendingUp size={16} /> },
-          { label: "PIX", valor: moeda(porForma.pix), cor: "text-axon-green", icon: <QrCode size={16} /> },
+          { label: "Total Geral", valor: moeda(total), cor: "text-emerald-400", icon: <TrendingUp size={16} /> },
+          { label: "PIX", valor: moeda(porForma.pix), cor: "text-emerald-400", icon: <QrCode size={16} /> },
           { label: "Cartão", valor: moeda(porForma.cartao), cor: "text-blue-400", icon: <CreditCard size={16} /> },
           { label: "Dinheiro", valor: moeda(porForma.dinheiro), cor: "text-yellow-400", icon: <Banknote size={16} /> },
         ].map(({ label, valor, cor, icon }) => (
@@ -357,96 +283,73 @@ function AbaVendas({ vendas }: { vendas: Venda[] }) {
         ))}
       </div>
 
-      {/* Lista de vendas */}
       {vendas.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-600 gap-3">
-          <ReceiptText size={40} className="opacity-30" />
-          <p className="text-sm">Nenhuma venda registrada ainda.</p>
+        <div className="flex flex-col items-center justify-center py-20 border border-dashed border-axon-border rounded-xl text-gray-600 gap-3">
+          <ReceiptText size={40} className="opacity-20 text-axon-gold" />
+          <p className="font-medium text-gray-300">Nenhuma venda registrada</p>
+          <p className="text-sm text-gray-500">As vendas do caixa aparecerão aqui em tempo real.</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {[...vendas]
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-            .map((v) => (
-              <div key={v.id} className="bg-axon-bg border border-axon-border rounded-xl overflow-hidden">
-                <button
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
-                  onClick={() => setExpandido(expandido === v.id ? null : v.id)}
-                >
-                  <div className="flex items-center gap-3">
-                    {iconeForma(v.forma_pagamento)}
-                    <div className="text-left">
-                      <p className="text-sm font-medium text-white">{moeda(v.total)}</p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(v.created_at).toLocaleString("pt-BR")}
-                      </p>
+          {[...vendas].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((v) => (
+            <div key={v.id} className="bg-axon-bg border border-axon-border rounded-xl overflow-hidden hover:border-gray-600 transition-colors">
+              <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
+                onClick={() => setExpandido(expandido === v.id ? null : v.id)}>
+                <div className="flex items-center gap-3">
+                  {iconeForma(v.forma_pagamento)}
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-white">{moeda(v.total)}</p>
+                    <p className="text-xs text-gray-500">{new Date(v.created_at).toLocaleString("pt-BR")}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {!v.sincronizado && (
+                    <span className="text-xs text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20">Pendente sync</span>
+                  )}
+                  <ChevronDown size={16} className={`text-gray-500 transition-transform ${expandido === v.id ? "rotate-180" : ""}`} />
+                </div>
+              </button>
+              {expandido === v.id && (
+                <div className="px-4 pb-4 border-t border-axon-border pt-3 space-y-1.5">
+                  {v.itens.map((item, i) => (
+                    <div key={i} className="flex justify-between text-sm text-gray-400">
+                      <span>{item.quantidade}× {item.nome}</span>
+                      <span>{moeda(item.preco * item.quantidade)}</span>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {!v.sincronizado && (
-                      <span className="text-xs text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20">
-                        Pendente sync
-                      </span>
-                    )}
-                    <ChevronDown
-                      size={16}
-                      className={`text-gray-500 transition-transform ${expandido === v.id ? "rotate-180" : ""}`}
-                    />
-                  </div>
-                </button>
-
-                {expandido === v.id && (
-                  <div className="px-4 pb-4 border-t border-axon-border pt-3 space-y-1.5">
-                    {v.itens.map((item, i) => (
-                      <div key={i} className="flex justify-between text-sm text-gray-400">
-                        <span>{item.quantidade}× {item.nome}</span>
-                        <span>{moeda(item.preco * item.quantidade)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Aba Configurações ────────────────────────────────────────────────────────
-
-function AbaConfig({
-  config,
-  onSalvar,
-  salvando,
-}: {
+function AbaConfig({ config, onSalvar, salvando }: {
   config: PdvConfig | null;
   onSalvar: (c: Partial<PdvConfig>) => void;
   salvando: boolean;
 }) {
   const [form, setForm] = useState<Partial<PdvConfig>>(config ?? {});
-
-  useEffect(() => {
-    if (config) setForm(config);
-  }, [config]);
+  useEffect(() => { if (config) setForm(config); }, [config]);
 
   return (
     <div className="max-w-lg space-y-6">
+      <Dica>
+        O PIN é usado pelos vendedores para acessar o caixa. A chave PIX gera QR Codes automaticamente na hora da venda — sem intermediário, o dinheiro vai direto para sua conta.
+      </Dica>
+
       <div className="space-y-4">
         <h3 className="text-sm font-semibold text-white">Acesso dos Vendedores</h3>
         <div className="space-y-1.5">
           <label className="text-xs text-gray-400 uppercase tracking-wider">PIN de 4 dígitos</label>
-          <input
-            type="password"
-            maxLength={4}
-            value={form.pin_vendedor ?? ""}
-            onChange={(e) => setForm((f) => ({ ...f, pin_vendedor: e.target.value }))}
-            className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green tracking-widest text-center text-2xl font-bold"
-            placeholder="••••"
-          />
-          <p className="text-xs text-gray-600">
-            O vendedor usa esse PIN para acessar as telas <code className="text-axon-green">/pdv</code> e <code className="text-axon-green">/bilheteria</code>.
-          </p>
+          <input type="password" maxLength={4} value={form.pin_vendedor ?? ""}
+            onChange={(e) => setForm((f) => ({ ...f, pin_vendedor: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
+            className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 tracking-widest text-center text-2xl font-bold transition-colors"
+            placeholder="••••" />
+          <p className="text-xs text-gray-600">Somente números. O vendedor usa este PIN para acessar o caixa.</p>
         </div>
       </div>
 
@@ -457,42 +360,30 @@ function AbaConfig({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <label className="text-xs text-gray-400 uppercase tracking-wider">Chave PIX</label>
-            <input
-              value={form.chave_pix ?? ""}
+            <input value={form.chave_pix ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, chave_pix: e.target.value }))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
-              placeholder="CPF, CNPJ, e-mail ou chave aleatória"
-            />
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+              placeholder="CPF, CNPJ, e-mail ou chave aleatória" />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs text-gray-400 uppercase tracking-wider">Nome do Recebedor</label>
-            <input
-              value={form.nome_recebedor ?? ""}
+            <input value={form.nome_recebedor ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, nome_recebedor: e.target.value }))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
-              placeholder="Nome que aparece no app do pagador"
-            />
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+              placeholder="Nome que aparece no app do pagador" />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs text-gray-400 uppercase tracking-wider">Cidade</label>
-            <input
-              value={form.cidade_recebedor ?? ""}
+            <input value={form.cidade_recebedor ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, cidade_recebedor: e.target.value }))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-axon-green"
-              placeholder="Rio de Janeiro"
-            />
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+              placeholder="Rio de Janeiro" />
           </div>
         </div>
-        <p className="text-xs text-gray-600">
-          O QR Code PIX é gerado localmente via padrão EMV — sem intermediário, o dinheiro cai direto na sua conta.
-        </p>
       </div>
 
-      <button
-        onClick={() => onSalvar(form)}
-        disabled={salvando}
-        className="flex items-center gap-2 bg-axon-green text-black px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#00c866] transition-colors disabled:opacity-40"
-      >
+      <button onClick={() => onSalvar(form)} disabled={salvando}
+        className="flex items-center gap-2 bg-emerald-500 text-black px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-emerald-400 active:scale-95 transition-all duration-200 disabled:opacity-40">
         <Save size={15} />
         {salvando ? "Salvando..." : "Salvar Configurações"}
       </button>
@@ -500,11 +391,7 @@ function AbaConfig({
   );
 }
 
-// ─── Componente Principal ─────────────────────────────────────────────────────
-
 export default function AdminPdvPage() {
-  const supabase = createClient();
-
   const [aba, setAba] = useState<"produtos" | "vendas" | "config">("produtos");
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [vendas, setVendas] = useState<Venda[]>([]);
@@ -518,9 +405,9 @@ export default function AdminPdvPage() {
     setTimeout(() => setToast((t) => ({ ...t, visivel: false })), 2500);
   };
 
-  // ── Carregar dados ──
   useEffect(() => {
     async function carregar() {
+      const supabase = createClient();
       const [{ data: prods }, { data: vends }, { data: cfg }] = await Promise.all([
         supabase.from("pdv_produtos").select("*").order("ordem"),
         supabase.from("pdv_vendas").select("*").order("created_at", { ascending: false }).limit(100),
@@ -533,8 +420,8 @@ export default function AdminPdvPage() {
     carregar();
   }, []);
 
-  // ── Realtime vendas ──
   useEffect(() => {
+    const supabase = createClient();
     const channel = supabase
       .channel("pdv_vendas_realtime")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "pdv_vendas" }, (payload) => {
@@ -544,48 +431,38 @@ export default function AdminPdvPage() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // ── CRUD Produtos ──
   const salvarProduto = async (form: Partial<Produto>) => {
+    const supabase = createClient();
     setSalvando(true);
     if (form.id) {
       const { error } = await supabase.from("pdv_produtos").update(form).eq("id", form.id);
-      if (!error) {
-        setProdutos((prev) => prev.map((p) => (p.id === form.id ? { ...p, ...form } as Produto : p)));
-        mostrarToast("Produto atualizado!");
-      } else mostrarToast("Erro ao atualizar.", true);
+      if (!error) { setProdutos((prev) => prev.map((p) => (p.id === form.id ? { ...p, ...form } as Produto : p))); mostrarToast("Produto atualizado!"); }
+      else mostrarToast("Erro ao atualizar.", true);
     } else {
       const { data, error } = await supabase.from("pdv_produtos").insert(form).select().single();
-      if (!error && data) {
-        setProdutos((prev) => [...prev, data as Produto]);
-        mostrarToast("Produto cadastrado!");
-      } else mostrarToast("Erro ao cadastrar.", true);
+      if (!error && data) { setProdutos((prev) => [...prev, data as Produto]); mostrarToast("Produto cadastrado!"); }
+      else mostrarToast("Erro ao cadastrar.", true);
     }
     setSalvando(false);
     setModalProduto(false);
   };
 
   const toggleAtivo = async (p: Produto) => {
-    const { error } = await supabase
-      .from("pdv_produtos")
-      .update({ ativo: !p.ativo })
-      .eq("id", p.id);
-    if (!error) {
-      setProdutos((prev) => prev.map((x) => (x.id === p.id ? { ...x, ativo: !x.ativo } : x)));
-      mostrarToast(p.ativo ? "Produto desativado." : "Produto ativado!");
-    }
+    const supabase = createClient();
+    const { error } = await supabase.from("pdv_produtos").update({ ativo: !p.ativo }).eq("id", p.id);
+    if (!error) { setProdutos((prev) => prev.map((x) => (x.id === p.id ? { ...x, ativo: !x.ativo } : x))); mostrarToast(p.ativo ? "Produto desativado." : "Produto ativado!"); }
   };
 
   const excluirProduto = async (id: string) => {
+    const supabase = createClient();
     if (!confirm("Excluir este produto?")) return;
     const { error } = await supabase.from("pdv_produtos").delete().eq("id", id);
-    if (!error) {
-      setProdutos((prev) => prev.filter((p) => p.id !== id));
-      mostrarToast("Produto excluído.");
-    } else mostrarToast("Erro ao excluir.", true);
+    if (!error) { setProdutos((prev) => prev.filter((p) => p.id !== id)); mostrarToast("Produto excluído."); }
+    else mostrarToast("Erro ao excluir.", true);
   };
 
-  // ── Salvar Config ──
   const salvarConfig = async (form: Partial<PdvConfig>) => {
+    const supabase = createClient();
     setSalvando(true);
     if (config?.id) {
       const { error } = await supabase.from("pdv_config").update(form).eq("id", config.id);
@@ -598,12 +475,6 @@ export default function AdminPdvPage() {
     }
     setSalvando(false);
   };
-
-  const abas = [
-    { id: "produtos" as const, label: "Produtos", icon: Package },
-    { id: "vendas" as const, label: "Vendas", icon: ReceiptText },
-    { id: "config" as const, label: "Configurações", icon: Settings },
-  ];
 
   return (
     <>
@@ -621,49 +492,33 @@ export default function AdminPdvPage() {
       <div className="max-w-5xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-white">PDV — Gestão</h1>
-          <p className="text-gray-400 mt-1 text-sm">
-            Cadastro de produtos, acompanhamento de vendas e configurações do caixa.
-          </p>
+          <p className="text-gray-400 mt-1 text-sm">Produtos, vendas e configurações do caixa do ARXUM Fest.</p>
         </div>
 
         <div className="bg-axon-panel border border-axon-border rounded-2xl overflow-hidden">
-          {/* Abas */}
           <div className="flex border-b border-axon-border px-4">
-            {abas.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => setAba(id)}
-                className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-colors ${
-                  aba === id
-                    ? "border-axon-green text-axon-green"
-                    : "border-transparent text-gray-400 hover:text-white"
-                }`}
-              >
+            {[
+              { id: "produtos" as const, label: "Produtos", icon: Package },
+              { id: "vendas" as const, label: "Vendas", icon: ReceiptText },
+              { id: "config" as const, label: "Configurações", icon: Settings },
+            ].map(({ id, label, icon: Icon }) => (
+              <button key={id} onClick={() => setAba(id)}
+                className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 transition-all duration-200 ${
+                  aba === id ? "border-emerald-500 text-emerald-400" : "border-transparent text-gray-400 hover:text-white hover:border-gray-600"
+                }`}>
                 <Icon size={16} />
                 {label}
                 {id === "vendas" && vendas.length > 0 && (
-                  <span className="ml-1 bg-axon-green/20 text-axon-green text-xs font-bold px-1.5 py-0.5 rounded-full">
-                    {vendas.length}
-                  </span>
+                  <span className="ml-1 bg-emerald-500/20 text-emerald-400 text-xs font-bold px-1.5 py-0.5 rounded-full">{vendas.length}</span>
                 )}
               </button>
             ))}
           </div>
 
           <div className="p-6">
-            {aba === "produtos" && (
-              <AbaProdutos
-                produtos={produtos}
-                onNovo={() => setModalProduto(null)}
-                onEditar={(p) => setModalProduto(p)}
-                onToggle={toggleAtivo}
-                onExcluir={excluirProduto}
-              />
-            )}
+            {aba === "produtos" && <AbaProdutos produtos={produtos} onNovo={() => setModalProduto(null)} onEditar={(p) => setModalProduto(p)} onToggle={toggleAtivo} onExcluir={excluirProduto} />}
             {aba === "vendas" && <AbaVendas vendas={vendas} />}
-            {aba === "config" && (
-              <AbaConfig config={config} onSalvar={salvarConfig} salvando={salvando} />
-            )}
+            {aba === "config" && <AbaConfig config={config} onSalvar={salvarConfig} salvando={salvando} />}
           </div>
         </div>
       </div>

@@ -14,21 +14,20 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE!
     );
 
-    // Convida o usuário via Auth (envia email automático)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://arxum-fest.vercel.app";
+
     const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(email, {
       data: { nome, role },
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://axon-fest.vercel.app"}/login`,
+      redirectTo: `${appUrl}/login`,
     });
 
     if (authError) {
-      // Se usuário já existe, apenas retorna sucesso
       if (authError.message.includes("already been registered")) {
         return NextResponse.json({ ok: true, jaExiste: true });
       }
       return NextResponse.json({ error: authError.message }, { status: 400 });
     }
 
-    // Cria ou atualiza registro na tabela usuarios
     if (authData.user) {
       await supabase.from("usuarios").upsert({
         id: authData.user.id,
@@ -40,7 +39,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: "Erro interno." }, { status: 500 });
   }
 }
