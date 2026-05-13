@@ -28,7 +28,7 @@ interface Jurado {
 interface Apresentacao {
   id: string;
   nome: string;
-  organizacao_id: string;
+  grupo_id: string;
   observacoes: string | null;
 }
 
@@ -599,7 +599,7 @@ export default function JuradosPage() {
                     ) : (
                       <div className="space-y-3">
                         {apresentacoes.map((a) => {
-                          const org = organizacoes.find((o) => o.id === a.organizacao_id);
+                          const org = organizacoes.find((o) => o.id === a.grupo_id)
                           const expandida = apresExpandida === a.id;
                           return (
                             <div key={a.id} className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
@@ -673,7 +673,7 @@ export default function JuradosPage() {
                   <p className="text-sm text-gray-600 text-center py-8">Nenhuma {termo.apresentacao.toLowerCase()} neste evento ainda.</p>
                 ) : (
                   apresentacoes.map((a) => {
-                    const org = organizacoes.find((o) => o.id === a.organizacao_id);
+                    const org = organizacoes.find((o) => o.id === a.grupo_id)
                     return (
                       <div key={a.id} className="bg-axon-panel border border-axon-border rounded-xl p-5 space-y-3">
                         <div>
