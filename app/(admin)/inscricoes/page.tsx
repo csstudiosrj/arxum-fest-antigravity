@@ -61,6 +61,12 @@ function formatMoeda(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function mascaraTelefone(valor: string) {
+  const n = valor.replace(/\D/g, "").slice(0, 11);
+  if (n.length <= 10) return n.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+  return n.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
+}
+
 function Dica({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2.5 bg-axon-gold/5 border border-axon-gold/15 rounded-xl px-4 py-3">
@@ -92,8 +98,20 @@ function ModalCadastrarGrupo({ termo, org, onClose, onSaved }: ModalCadastrarGru
     const supabase = createClient();
     setErro(null);
     if (!nome.trim()) { setErro(`Nome do ${termo.grupo.toLowerCase()} é obrigatório.`); return; }
-    if (!email.trim()) { setErro("E-mail do responsável é obrigatório para enviar o convite."); return; }
+    if (!email.trim()) { setErro("E-mail do responsável é obrigatório."); return; }
     setSalvando(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setErro("Sessão expirada. Faça login novamente."); setSalvando(false); return; }
+
+    const { data: userData } = await supabase
+      .from("usuarios")
+      .select("produtora_id")
+      .eq("id", user.id)
+      .single();
+
+    const produtoraId = userData?.produtora_id;
+    if (!produtoraId) { setErro("Conta não vinculada a uma produtora."); setSalvando(false); return; }
 
     if (org) {
       const { error } = await supabase
@@ -109,7 +127,7 @@ function ModalCadastrarGrupo({ termo, org, onClose, onSaved }: ModalCadastrarGru
 
     const { data: orgCadastrada, error: orgErr } = await supabase
       .from("organizacoes")
-      .insert({ nome: nome.trim(), responsavel: responsavel.trim() || null, telefone: telefone.trim() || null, email: email.trim() })
+      .insert({ nome: nome.trim(), responsavel: responsavel.trim() || null, telefone: telefone.trim() || null, email: email.trim(), produtora_id: produtoraId })
       .select()
       .single();
 
@@ -145,7 +163,7 @@ function ModalCadastrarGrupo({ termo, org, onClose, onSaved }: ModalCadastrarGru
     if (!orgSalva) return;
     const link = `${window.location.origin}/convite/${email.trim()}`;
     const msg = encodeURIComponent(
-      `Olá, ${responsavel.trim() || "responsável"}! ${termo.organizacao} convidou o ${termo.grupo.toLowerCase()} *${orgSalva.nome}* para se cadastrar no sistema.\n\nClique no link para criar sua senha e começar a cadastrar suas ${termo.apresentacao.toLowerCase()}s:\n\n${link}`
+      `Olá, ${responsavel.trim() || "responsável"}! ${termo.organizacao} convidou o ${termo.grupo.toLowerCase()} *${orgSalva.nome}* para se cadastrar no sistema.\n\nClique no link para criar sua senha:\n\n${link}`
     );
     window.open(`https://wa.me/?text=${msg}`, "_blank");
   }
@@ -182,7 +200,8 @@ function ModalCadastrarGrupo({ termo, org, onClose, onSaved }: ModalCadastrarGru
               </div>
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Telefone / WhatsApp</label>
-                <input type="text" value={telefone} onChange={(e) => setTelefone(e.target.value)}
+                <input type="tel" value={telefone}
+                  onChange={(e) => setTelefone(mascaraTelefone(e.target.value))}
                   className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
                   placeholder="(21) 99999-9999" />
               </div>
@@ -454,7 +473,6 @@ export default function InscricoesPage() {
   const [excluindo, setExcluindo] = useState(false);
   const [erroExcluir, setErroExcluir] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{ msg: string; tipo: "ok" | "erro" } | null>(null);
-
   const [kpis, setKpis] = useState({ grupos: 0, apresentacoes: 0, participantes: 0, totalPago: 0, totalPendente: 0 });
 
   const mostrarToast = useCallback((msg: string, tipo: "ok" | "erro" = "ok") => {
