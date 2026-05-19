@@ -34,6 +34,7 @@ interface Participante {
   data_nascimento: string;
   grupo_id: string | null;
   termo_assinado: boolean;
+  produtora_id: string;
 }
 
 interface Apresentacao {
@@ -258,7 +259,7 @@ function ModalCadastrarGrupo({ termo, org, onClose, onSaved }: ModalCadastrarGru
   );
 }
 
-// Modal cadastrar participante (corrigido: usa grupo_id ao invés de organizacao_id)
+// MODAL CORRIGIDO: Cadastrar participante usando grupo_id e produtora_id
 interface ModalCadastrarParticipanteProps {
   termo: Terminologia;
   grupoId: string;
@@ -309,11 +310,12 @@ function ModalCadastrarParticipante({
       return;
     }
 
+    // Insere usando grupo_id (coluna correta) e produtora_id
     const { error } = await supabase.from("participantes").insert({
       nome: nome.trim(),
       documento: documento.trim() || null,
       data_nascimento: dataNascimento || null,
-      grupo_id: grupoId,
+      grupo_id: grupoId,        // ← correto
       produtora_id: produtoraId,
       termo_assinado: termoAssinado,
     });
@@ -403,13 +405,13 @@ function ModalCadastrarParticipante({
   );
 }
 
-// CardGrupo modificado: ao adicionar participante, passa o grupoId correto
+// CardGrupo modificado para usar onAddParticipante com grupoId
 interface CardGrupoProps {
   org: OrgComDados;
   termo: Terminologia;
   onEdit: (org: OrgComDados) => void;
   onDelete: (org: OrgComDados) => void;
-  onAddParticipante: (org: OrgComDados) => void;
+  onAddParticipante: (groupId: string, groupName: string) => void;
 }
 
 function CardGrupo({ org, termo, onEdit, onDelete, onAddParticipante }: CardGrupoProps) {
@@ -537,7 +539,7 @@ function CardGrupo({ org, termo, onEdit, onDelete, onAddParticipante }: CardGrup
             <div className="p-5">
               <div className="flex justify-end mb-3">
                 <button
-                  onClick={() => onAddParticipante(org)}
+                  onClick={() => onAddParticipante(org.id, org.nome)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-axon-gold/10 border border-axon-gold/30 text-axon-gold text-xs font-medium hover:bg-axon-gold/20 transition-all"
                 >
                   <UserPlus size={14} /> Cadastrar {termo.participante.toLowerCase()}
@@ -632,7 +634,7 @@ export default function InscricoesPage() {
   const [toastMsg, setToastMsg] = useState<{ msg: string; tipo: "ok" | "erro" } | null>(null);
   const [kpis, setKpis] = useState({ grupos: 0, apresentacoes: 0, participantes: 0, totalPago: 0, totalPendente: 0 });
 
-  const [modalParticipante, setModalParticipante] = useState<{ grupoId: string; grupoNome: string } | null>(null);
+  const [modalParticipante, setModalParticipante] = useState<{ groupId: string; groupName: string } | null>(null);
 
   const mostrarToast = useCallback((msg: string, tipo: "ok" | "erro" = "ok") => {
     setToastMsg({ msg, tipo });
@@ -675,7 +677,7 @@ export default function InscricoesPage() {
     const compostas: OrgComDados[] = orgsArr.map((o) => ({
       ...o,
       apresentacoes: apresArr.filter((a) => a.grupo_id === o.id),
-      participantes: partArr.filter((p) => p.grupo_id === o.id),
+      participantes: partArr.filter((p) => p.grupo_id === o.id), // agora usando grupo_id
       elenco: elencoArr.filter((el) => apresArr.filter((a) => a.grupo_id === o.id).some((a) => a.id === el.apresentacao_id)),
     }));
 
@@ -735,8 +737,8 @@ export default function InscricoesPage() {
       {modalParticipante && (
         <ModalCadastrarParticipante
           termo={termo}
-          grupoId={modalParticipante.grupoId}
-          grupoNome={modalParticipante.grupoNome}
+          grupoId={modalParticipante.groupId}
+          grupoNome={modalParticipante.groupName}
           onClose={() => setModalParticipante(null)}
           onSaved={() => { carregar(); mostrarToast(`${termo.participante} cadastrado com sucesso!`); }}
         />
@@ -757,7 +759,7 @@ export default function InscricoesPage() {
         </div>
 
         <Dica>
-          Cadastre os {termo.grupo.toLowerCase()}s participantes e envie o convite de acesso. Use o botão "Cadastrar {termo.participante.toLowerCase()}" dentro de cada grupo para inclusão emergencial.
+          Cadastre os {termo.grupo.toLowerCase()}s participantes e envie o convite de acesso. Eles se conectarão pelo portal próprio para inserir {termo.apresentacao.toLowerCase()}s e {termo.participante.toLowerCase()}s diretamente. Use o botão "Cadastrar {termo.participante.toLowerCase()}" dentro de cada grupo para inclusão emergencial.
         </Dica>
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -815,7 +817,7 @@ export default function InscricoesPage() {
                 termo={termo}
                 onEdit={(o) => { setEditarOrg(o); setModalGrupo(true); }}
                 onDelete={(o) => setOrgExcluir(o)}
-                onAddParticipante={(o) => setModalParticipante({ grupoId: o.id, grupoNome: o.nome })}
+                onAddParticipante={(groupId, groupName) => setModalParticipante({ groupId, groupName })}
               />
             ))}
           </div>
