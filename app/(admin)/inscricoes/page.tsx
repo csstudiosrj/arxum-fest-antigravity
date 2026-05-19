@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronRight, Search, Plus, X, Loader2,
   AlertCircle, Users, Music4, CircleDollarSign, CheckCircle2,
   Clock3, Copy, Check, MessageCircle, Pencil, Trash2, Info,
+  UserPlus,
 } from "lucide-react";
 
 type StatusPagamento = "pago" | "pendente";
@@ -76,6 +77,7 @@ function Dica({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Modal para cadastrar/editar grupo (já existente)
 interface ModalCadastrarGrupoProps {
   termo: Terminologia;
   org?: Organizacao | null;
@@ -256,14 +258,161 @@ function ModalCadastrarGrupo({ termo, org, onClose, onSaved }: ModalCadastrarGru
   );
 }
 
+// NOVO MODAL: Cadastrar participante diretamente pelo produtor
+interface ModalCadastrarParticipanteProps {
+  termo: Terminologia;
+  organizacaoId: string;
+  organizacaoNome: string;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function ModalCadastrarParticipante({
+  termo,
+  organizacaoId,
+  organizacaoNome,
+  onClose,
+  onSaved,
+}: ModalCadastrarParticipanteProps) {
+  const [nome, setNome] = useState("");
+  const [documento, setDocumento] = useState("");
+  const [dataNascimento, setDataNascimento] = useState("");
+  const [termoAssinado, setTermoAssinado] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function salvar() {
+    setErro(null);
+    if (!nome.trim()) {
+      setErro(`Nome do ${termo.participante.toLowerCase()} é obrigatório.`);
+      return;
+    }
+    setSalvando(true);
+    const supabase = createClient();
+
+    // Obter produtora_id do usuário logado
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setErro("Sessão expirada. Faça login novamente.");
+      setSalvando(false);
+      return;
+    }
+    const { data: userData } = await supabase
+      .from("usuarios")
+      .select("produtora_id")
+      .eq("id", user.id)
+      .single();
+    const produtoraId = userData?.produtora_id;
+    if (!produtoraId) {
+      setErro("Conta não vinculada a uma produtora.");
+      setSalvando(false);
+      return;
+    }
+
+    const { error } = await supabase.from("participantes").insert({
+      nome: nome.trim(),
+      documento: documento.trim() || null,
+      data_nascimento: dataNascimento || null,
+      organizacao_id: organizacaoId,
+      produtora_id: produtoraId,
+      termo_assinado: termoAssinado,
+    });
+    if (error) {
+      setErro(error.message);
+      setSalvando(false);
+      return;
+    }
+
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
+          <div>
+            <h2 className="text-base font-semibold text-white">Cadastrar {termo.participante}</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Para o grupo: {organizacaoNome}</p>
+          </div>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-white transition-colors"><X size={18} /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Nome completo *</label>
+            <input
+              type="text"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
+              placeholder={`Nome do ${termo.participante.toLowerCase()}`}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Documento (RG/CPF)</label>
+            <input
+              type="text"
+              value={documento}
+              onChange={(e) => setDocumento(e.target.value)}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
+              placeholder="Opcional"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Data de nascimento</label>
+            <input
+              type="date"
+              value={dataNascimento}
+              onChange={(e) => setDataNascimento(e.target.value)}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="termoAssinado"
+              checked={termoAssinado}
+              onChange={(e) => setTermoAssinado(e.target.checked)}
+              className="w-4 h-4 rounded border-axon-border bg-axon-bg focus:ring-axon-gold"
+            />
+            <label htmlFor="termoAssinado" className="text-sm text-gray-300">
+              Termo de consentimento assinado
+            </label>
+          </div>
+          {erro && (
+            <p className="flex items-start gap-2 text-xs text-red-400">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" /> {erro}
+            </p>
+          )}
+        </div>
+        <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-gray-500 transition-all duration-200">
+            Cancelar
+          </button>
+          <button
+            onClick={salvar}
+            disabled={salvando}
+            className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2"
+          >
+            {salvando && <Loader2 size={14} className="animate-spin" />}
+            Cadastrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// CardGrupo modificado para incluir botão de cadastrar participante
 interface CardGrupoProps {
   org: OrgComDados;
   termo: Terminologia;
   onEdit: (org: OrgComDados) => void;
   onDelete: (org: OrgComDados) => void;
+  onAddParticipante: (org: OrgComDados) => void;
 }
 
-function CardGrupo({ org, termo, onEdit, onDelete }: CardGrupoProps) {
+function CardGrupo({ org, termo, onEdit, onDelete, onAddParticipante }: CardGrupoProps) {
   const [expandido, setExpandido] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"apresentacoes" | "participantes">("apresentacoes");
 
@@ -386,6 +535,14 @@ function CardGrupo({ org, termo, onEdit, onDelete }: CardGrupoProps) {
 
           {abaAtiva === "participantes" && (
             <div className="p-5">
+              <div className="flex justify-end mb-3">
+                <button
+                  onClick={() => onAddParticipante(org)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-axon-gold/10 border border-axon-gold/30 text-axon-gold text-xs font-medium hover:bg-axon-gold/20 transition-all"
+                >
+                  <UserPlus size={14} /> Cadastrar {termo.participante.toLowerCase()}
+                </button>
+              </div>
               {org.participantes.length === 0 ? (
                 <p className="text-sm text-gray-600 text-center py-6">Nenhum {termo.participante.toLowerCase()} cadastrado.</p>
               ) : (
@@ -474,6 +631,9 @@ export default function InscricoesPage() {
   const [erroExcluir, setErroExcluir] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{ msg: string; tipo: "ok" | "erro" } | null>(null);
   const [kpis, setKpis] = useState({ grupos: 0, apresentacoes: 0, participantes: 0, totalPago: 0, totalPendente: 0 });
+
+  // Estado para o modal de cadastro de participante
+  const [modalParticipante, setModalParticipante] = useState<{ orgId: string; orgNome: string } | null>(null);
 
   const mostrarToast = useCallback((msg: string, tipo: "ok" | "erro" = "ok") => {
     setToastMsg({ msg, tipo });
@@ -573,6 +733,16 @@ export default function InscricoesPage() {
         />
       )}
 
+      {modalParticipante && (
+        <ModalCadastrarParticipante
+          termo={termo}
+          organizacaoId={modalParticipante.orgId}
+          organizacaoNome={modalParticipante.orgNome}
+          onClose={() => setModalParticipante(null)}
+          onSaved={() => { carregar(); mostrarToast(`${termo.participante} cadastrado com sucesso!`); }}
+        />
+      )}
+
       <div className="max-w-5xl mx-auto space-y-6 p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -588,7 +758,7 @@ export default function InscricoesPage() {
         </div>
 
         <Dica>
-          Cadastre os {termo.grupo.toLowerCase()}s participantes e envie o convite de acesso. Eles se conectarão pelo portal próprio para inserir {termo.apresentacao.toLowerCase()}s e {termo.participante.toLowerCase()}s diretamente.
+          Cadastre os {termo.grupo.toLowerCase()}s participantes e envie o convite de acesso. Eles se conectarão pelo portal próprio para inserir {termo.apresentacao.toLowerCase()}s e {termo.participante.toLowerCase()}s diretamente. Use o botão "Cadastrar {termo.participante.toLowerCase()}" dentro de cada grupo para inclusão emergencial.
         </Dica>
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -640,9 +810,13 @@ export default function InscricoesPage() {
         ) : (
           <div className="space-y-3">
             {filtrados.map((org) => (
-              <CardGrupo key={org.id} org={org} termo={termo}
+              <CardGrupo
+                key={org.id}
+                org={org}
+                termo={termo}
                 onEdit={(o) => { setEditarOrg(o); setModalGrupo(true); }}
                 onDelete={(o) => setOrgExcluir(o)}
+                onAddParticipante={(o) => setModalParticipante({ orgId: o.id, orgNome: o.nome })}
               />
             ))}
           </div>
