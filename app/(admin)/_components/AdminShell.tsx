@@ -1,104 +1,57 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
-  LayoutDashboard, CalendarDays, Users, Mic2, Ticket,
-  Settings, LogOut, ChevronLeft, ChevronRight, ChevronDown,
-  User, Gavel, ShoppingBag, FileSignature, Megaphone, Loader2, ShieldCheck
+  LayoutDashboard,
+  CalendarDays,
+  Users,
+  Mic2,
+  Ticket,
+  Settings,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  User,
+  Gavel,
+  ShoppingBag,
+  FileSignature,
+  Megaphone,
+  ShieldCheck,
 } from "lucide-react";
 
 const navLinks = [
-  { name: "Dashboard",          href: "/dashboard",    icon: LayoutDashboard },
-  { name: "Line-up & Eventos",  href: "/eventos",      icon: CalendarDays },
-  { name: "Inscrições & Elenco",href: "/inscricoes",   icon: Users },
-  { name: "Mídias & Áudio",     href: "/midias",       icon: Mic2 },
-  { name: "Jurados & Apuração", href: "/jurados",      icon: Gavel },
-  { name: "Loja & Upsell",      href: "/loja",         icon: ShoppingBag },
-  { name: "Termos & Contratos", href: "/termos",       icon: FileSignature },
-  { name: "Marketing",          href: "/marketing",    icon: Megaphone },
-  { name: "PDV & Bilheteria",   href: "/pdv",          icon: Ticket },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Line-up & Eventos", href: "/eventos", icon: CalendarDays },
+  { name: "Inscrições & Elenco", href: "/inscricoes", icon: Users },
+  { name: "Mídias & Áudio", href: "/midias", icon: Mic2 },
+  { name: "Jurados & Apuração", href: "/jurados", icon: Gavel },
+  { name: "Loja & Upsell", href: "/loja", icon: ShoppingBag },
+  { name: "Termos & Contratos", href: "/termos", icon: FileSignature },
+  { name: "Marketing", href: "/marketing", icon: Megaphone },
+  { name: "PDV & Bilheteria", href: "/pdv", icon: Ticket },
 ];
 
-const ROLES_ADMIN = ["admin", "super_admin", "produtora_admin", "produtora_staff"];
+interface AdminShellProps {
+  children: React.ReactNode;
+  userEmail: string;
+  userName: string;
+  userRole: string;
+}
 
-export default function AdminShell({ children }: { children: React.ReactNode }) {
+export default function AdminShell({
+  children,
+  userEmail,
+  userName,
+  userRole,
+}: AdminShellProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isUserMenuOpen, setIsUserMenuOpen]   = useState(false);
-  const [loading, setLoading]       = useState(true);
-  const [authorized, setAuthorized] = useState(false);
-  const [userEmail, setUserEmail]   = useState("");
-  const [userName, setUserName]     = useState("");
-  const [hasError, setHasError]     = useState(false);
-  const [debugMsg, setDebugMsg]     = useState("Iniciando verificação...");
-
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const pathname = usePathname();
-  const router   = useRouter();
-
-  useEffect(() => {
-    const checkUser = async () => {
-      try {
-        const supabase = createClient();
-        setDebugMsg("1. Verificando sessão no navegador...");
-
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          setDebugMsg("Erro de Sessão: " + sessionError.message);
-          setHasError(true);
-          return;
-        }
-
-        if (!session) {
-          setDebugMsg("Nenhuma sessão encontrada. Faça login novamente.");
-          setHasError(true);
-          return;
-        }
-
-        setDebugMsg("2. Sessão encontrada! Buscando cargo no banco...");
-
-        const { data: userData, error: userError } = await supabase
-          .from("usuarios")
-          .select("role, nome, email")
-          .eq("id", session.user.id)
-          .single();
-
-        if (userError) {
-          setDebugMsg("Erro ao ler tabela 'usuarios': " + userError.message);
-          setHasError(true);
-          return;
-        }
-
-        if (!userData) {
-          setDebugMsg("Usuário não encontrado na tabela 'usuarios'.");
-          setHasError(true);
-          return;
-        }
-
-        setDebugMsg("3. Cargo encontrado: " + userData.role);
-
-        if (!ROLES_ADMIN.includes(userData.role)) {
-          setDebugMsg("Acesso negado. Seu cargo é: " + userData.role);
-          setHasError(true);
-          return;
-        }
-
-        setUserEmail(userData.email || session.user.email || "");
-        setUserName(userData.nome || "Organizador");
-        setAuthorized(true);
-        setLoading(false);
-
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        setDebugMsg("Erro fatal: " + message);
-        setHasError(true);
-      }
-    };
-
-    checkUser();
-  }, [router]);
+  const router = useRouter();
 
   async function handleLogout() {
     const supabase = createClient();
@@ -106,32 +59,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     router.push("/login");
   }
 
-  if (hasError) {
-    return (
-      <div className="h-screen w-full bg-axon-bg flex flex-col items-center justify-center p-8 text-white">
-        <div className="bg-axon-panel border border-red-500 p-8 rounded-xl max-w-2xl w-full text-center shadow-2xl">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Diagnóstico de Erro</h1>
-          <p className="text-lg font-mono text-gray-300 bg-black p-4 rounded mb-6">{debugMsg}</p>
-          <button
-            onClick={() => router.push("/login")}
-            className="bg-axon-gold text-black px-6 py-2 rounded font-bold hover:opacity-90"
-          >
-            Voltar para o Login
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="h-screen w-full bg-axon-bg flex items-center justify-center">
-        <Loader2 className="animate-spin text-axon-gold" size={48} />
-      </div>
-    );
-  }
-
-  if (!authorized) return null;
+  const roleDisplay = userRole === "super_admin" ? "Super Admin" : "Organizador";
 
   return (
     <div className="flex h-screen overflow-hidden bg-axon-bg text-white">
@@ -147,7 +75,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               <span className="text-white font-light"> Fest</span>
             </span>
           ) : (
-            <span className="text-xl font-bold tracking-wider mx-auto text-axon-gold">AR</span>
+            <span className="text-xl font-bold tracking-wider mx-auto text-axon-gold">
+              AR
+            </span>
           )}
         </div>
 
@@ -160,7 +90,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
         <nav className="flex-1 py-6 flex flex-col gap-1 px-3 overflow-y-auto">
           {navLinks.map((link) => {
-            const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
+            const isActive =
+              pathname === link.href || pathname.startsWith(link.href + "/");
             const Icon = link.icon;
             return (
               <Link
@@ -182,7 +113,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
         <header className="h-16 bg-axon-panel/80 backdrop-blur-md border-b border-axon-border flex items-center justify-between px-8 sticky top-0 z-10">
-          <div className="text-gray-400 text-sm font-medium">Painel do Organizador</div>
+          <div className="text-gray-400 text-sm font-medium">{roleDisplay}</div>
 
           <div className="relative">
             <button
@@ -193,18 +124,27 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 {(userName || userEmail).substring(0, 2)}
               </div>
               <div className="text-left hidden sm:block">
-                <div className="text-sm font-medium text-white leading-tight">{userName}</div>
-                <div className="text-xs text-gray-500 leading-tight truncate max-w-[140px]">{userEmail}</div>
+                <div className="text-sm font-medium text-white leading-tight">
+                  {userName}
+                </div>
+                <div className="text-xs text-gray-500 leading-tight truncate max-w-[140px]">
+                  {userEmail}
+                </div>
               </div>
               <ChevronDown
                 size={16}
-                className={`text-gray-400 transition-transform duration-200 ${isUserMenuOpen ? "rotate-180" : ""}`}
+                className={`text-gray-400 transition-transform duration-200 ${
+                  isUserMenuOpen ? "rotate-180" : ""
+                }`}
               />
             </button>
 
             {isUserMenuOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)} />
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsUserMenuOpen(false)}
+                />
                 <div className="fixed top-16 right-6 w-64 bg-axon-panel border border-axon-border rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
                   <div className="px-4 py-3 border-b border-axon-border mb-1">
                     <p className="text-sm text-white font-medium">{userName}</p>
@@ -221,7 +161,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   </Link>
 
                   <div className="h-px bg-axon-border my-1" />
-                  <p className="px-4 py-1.5 text-xs text-gray-600 font-medium uppercase tracking-wider">Gestão</p>
+                  <p className="px-4 py-1.5 text-xs text-gray-600 font-medium uppercase tracking-wider">
+                    Gestão
+                  </p>
 
                   <Link
                     href="/usuarios"
