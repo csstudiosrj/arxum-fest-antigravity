@@ -3,10 +3,26 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  ChevronDown, ChevronRight, Search, Plus, X, Loader2,
-  AlertCircle, Users, Music4, CircleDollarSign, CheckCircle2,
-  Clock3, Copy, Check, MessageCircle, Pencil, Trash2, Info,
+  ChevronDown,
+  ChevronRight,
+  Search,
+  Plus,
+  X,
+  Loader2,
+  AlertCircle,
+  Users,
+  Music4,
+  CircleDollarSign,
+  CheckCircle2,
+  Clock3,
+  Copy,
+  Check,
+  MessageCircle,
+  Pencil,
+  Trash2,
+  Info,
   UserPlus,
+  MailCheck,
 } from "lucide-react";
 
 type StatusPagamento = "pago" | "pendente";
@@ -19,12 +35,14 @@ interface Terminologia {
   organizacao: string;
 }
 
-interface Organizacao {
+interface Grupo {
   id: string;
   nome: string;
   responsavel: string | null;
   telefone: string | null;
   email: string;
+  email_contato: string | null;
+  documento: string | null;
 }
 
 interface Participante {
@@ -32,9 +50,10 @@ interface Participante {
   nome: string;
   documento: string | null;
   data_nascimento: string;
-  grupo_id: string | null;
   termo_assinado: boolean;
-  produtora_id: string;
+  email_contato: string | null;
+  confirmado_vinculo: boolean;
+  status_disponibilidade: string;
 }
 
 interface Apresentacao {
@@ -46,17 +65,12 @@ interface Apresentacao {
   valor_total: number;
   status_pagamento: StatusPagamento;
   created_at: string;
+  evento_id: string;
 }
 
-interface ElencoRow {
-  apresentacao_id: string;
-  participante_id: string;
-}
-
-interface OrgComDados extends Organizacao {
+interface GrupoComDados extends Grupo {
   apresentacoes: Apresentacao[];
   participantes: Participante[];
-  elenco: ElencoRow[];
 }
 
 function formatMoeda(value: number): string {
@@ -65,7 +79,8 @@ function formatMoeda(value: number): string {
 
 function mascaraTelefone(valor: string) {
   const n = valor.replace(/\D/g, "").slice(0, 11);
-  if (n.length <= 10) return n.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+  if (n.length <= 10)
+    return n.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
   return n.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
 }
 
@@ -78,323 +93,175 @@ function Dica({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Modal para cadastrar/editar grupo (já existente)
+// Modal cadastrar grupo (global)
 interface ModalCadastrarGrupoProps {
   termo: Terminologia;
-  org?: Organizacao | null;
+  grupo?: Grupo | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function ModalCadastrarGrupo({ termo, org, onClose, onSaved }: ModalCadastrarGrupoProps) {
-  const [nome, setNome] = useState(org?.nome ?? "");
-  const [responsavel, setResponsavel] = useState(org?.responsavel ?? "");
-  const [telefone, setTelefone] = useState(org?.telefone ?? "");
-  const [email, setEmail] = useState(org?.email ?? "");
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [etapa, setEtapa] = useState<"formulario" | "confirmacao">("formulario");
-  const [copiado, setCopiado] = useState(false);
-  const [orgSalva, setOrgSalva] = useState<Organizacao | null>(null);
-
-  async function salvar() {
-    const supabase = createClient();
-    setErro(null);
-    if (!nome.trim()) { setErro(`Nome do ${termo.grupo.toLowerCase()} é obrigatório.`); return; }
-    if (!email.trim()) { setErro("E-mail do responsável é obrigatório."); return; }
-    setSalvando(true);
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setErro("Sessão expirada. Faça login novamente."); setSalvando(false); return; }
-
-    const { data: userData } = await supabase
-      .from("usuarios")
-      .select("produtora_id")
-      .eq("id", user.id)
-      .single();
-
-    const produtoraId = userData?.produtora_id;
-    if (!produtoraId) { setErro("Conta não vinculada a uma produtora."); setSalvando(false); return; }
-
-    if (org) {
-      const { error } = await supabase
-        .from("organizacoes")
-        .update({ nome: nome.trim(), responsavel: responsavel.trim() || null, telefone: telefone.trim() || null, email: email.trim() })
-        .eq("id", org.id);
-      if (error) { setErro(error.message); setSalvando(false); return; }
-      setOrgSalva({ ...org, nome: nome.trim(), responsavel: responsavel.trim() || null, telefone: telefone.trim() || null, email: email.trim() });
-      setEtapa("confirmacao");
-      onSaved();
-      return;
-    }
-
-    const { data: orgCadastrada, error: orgErr } = await supabase
-      .from("organizacoes")
-      .insert({ nome: nome.trim(), responsavel: responsavel.trim() || null, telefone: telefone.trim() || null, email: email.trim(), produtora_id: produtoraId })
-      .select()
-      .single();
-
-    if (orgErr) { setErro(orgErr.message); setSalvando(false); return; }
-
-    const res = await fetch("/api/convite", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), nome: responsavel.trim() || nome.trim(), role: "org_admin" }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setErro(`${termo.grupo} cadastrado, mas erro ao criar usuário: ${json.error || "Erro desconhecido"}`);
-      setSalvando(false);
-      setOrgSalva(orgCadastrada as Organizacao);
-      setEtapa("confirmacao");
-      return;
-    }
-
-    setOrgSalva(orgCadastrada as Organizacao);
-    setEtapa("confirmacao");
-    onSaved();
-    setSalvando(false);
-  }
-
-  function copiarLink() {
-    navigator.clipboard.writeText(`${window.location.origin}/convite/${email.trim()}`);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 2000);
-  }
-
-  function abrirWhatsApp() {
-    if (!orgSalva) return;
-    const link = `${window.location.origin}/convite/${email.trim()}`;
-    const msg = encodeURIComponent(
-      `Olá, ${responsavel.trim() || "responsável"}! ${termo.organizacao} convidou o ${termo.grupo.toLowerCase()} *${orgSalva.nome}* para se cadastrar no sistema.\n\nClique no link para criar sua senha:\n\n${link}`
-    );
-    window.open(`https://wa.me/?text=${msg}`, "_blank");
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
-          <div>
-            <h2 className="text-base font-semibold text-white">
-              {etapa === "formulario" ? `Cadastrar ${termo.grupo}` : `${termo.grupo} cadastrado`}
-            </h2>
-            {etapa === "formulario" && (
-              <p className="text-xs text-gray-500 mt-0.5">Um convite por e-mail será enviado automaticamente.</p>
-            )}
-          </div>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-white transition-colors"><X size={18} /></button>
-        </div>
-
-        {etapa === "formulario" && (
-          <>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Nome do {termo.grupo.toLowerCase()} *</label>
-                <input type="text" value={nome} onChange={(e) => setNome(e.target.value)}
-                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
-                  placeholder={`Nome do ${termo.grupo.toLowerCase()}`} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Nome do responsável</label>
-                <input type="text" value={responsavel} onChange={(e) => setResponsavel(e.target.value)}
-                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
-                  placeholder="Nome do diretor / responsável" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Telefone / WhatsApp</label>
-                <input type="tel" value={telefone}
-                  onChange={(e) => setTelefone(mascaraTelefone(e.target.value))}
-                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
-                  placeholder="(21) 99999-9999" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">E-mail do responsável *</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
-                  placeholder="email@exemplo.com" />
-                <p className="text-xs text-gray-600 mt-1">Um convite será enviado para este e-mail.</p>
-              </div>
-              {erro && <p className="flex items-start gap-2 text-xs text-red-400"><AlertCircle size={14} className="shrink-0 mt-0.5" /> {erro}</p>}
-            </div>
-            <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
-              <button onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-gray-500 transition-all duration-200">Cancelar</button>
-              <button onClick={salvar} disabled={salvando}
-                className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2">
-                {salvando && <Loader2 size={14} className="animate-spin" />}
-                Cadastrar e convidar
-              </button>
-            </div>
-          </>
-        )}
-
-        {etapa === "confirmacao" && orgSalva && (
-          <>
-            <div className="p-6 space-y-5">
-              <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-white">{orgSalva.nome} cadastrado</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Convite enviado para <span className="text-white">{email}</span></p>
-                </div>
-              </div>
-              {erro && <p className="flex items-start gap-2 text-xs text-yellow-400"><AlertCircle size={14} className="shrink-0 mt-0.5" /> {erro}</p>}
-              <div className="space-y-2">
-                <button onClick={copiarLink} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200">
-                  {copiado ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
-                  {copiado ? "Link copiado!" : "Copiar link de acesso"}
-                </button>
-                <button onClick={abrirWhatsApp} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200">
-                  <MessageCircle size={15} /> Enviar pelo WhatsApp
-                </button>
-              </div>
-            </div>
-            <div className="px-6 py-4 border-t border-axon-border">
-              <button onClick={onClose} className="w-full px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 transition-all duration-200">Concluir</button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// MODAL CORRIGIDO: Cadastrar participante usando grupo_id e produtora_id
-interface ModalCadastrarParticipanteProps {
-  termo: Terminologia;
-  grupoId: string;
-  grupoNome: string;
-  onClose: () => void;
-  onSaved: () => void;
-}
-
-function ModalCadastrarParticipante({
+function ModalCadastrarGrupo({
   termo,
-  grupoId,
-  grupoNome,
+  grupo,
   onClose,
   onSaved,
-}: ModalCadastrarParticipanteProps) {
-  const [nome, setNome] = useState("");
-  const [documento, setDocumento] = useState("");
-  const [dataNascimento, setDataNascimento] = useState("");
-  const [termoAssinado, setTermoAssinado] = useState(false);
+}: ModalCadastrarGrupoProps) {
+  const [nome, setNome] = useState(grupo?.nome ?? "");
+  const [responsavel, setResponsavel] = useState(grupo?.responsavel ?? "");
+  const [telefone, setTelefone] = useState(grupo?.telefone ?? "");
+  const [email, setEmail] = useState(grupo?.email ?? "");
+  const [documento, setDocumento] = useState(grupo?.documento ?? "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   async function salvar() {
+    const supabase = createClient();
     setErro(null);
     if (!nome.trim()) {
-      setErro(`Nome do ${termo.participante.toLowerCase()} é obrigatório.`);
+      setErro(`Nome do ${termo.grupo.toLowerCase()} é obrigatório.`);
+      return;
+    }
+    if (!email.trim()) {
+      setErro("E-mail do responsável é obrigatório.");
       return;
     }
     setSalvando(true);
-    const supabase = createClient();
 
-    // Obter produtora_id do usuário logado
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setErro("Sessão expirada. Faça login novamente.");
+    if (grupo) {
+      const { error } = await supabase
+        .from("grupos")
+        .update({
+          nome: nome.trim(),
+          responsavel: responsavel.trim() || null,
+          telefone: telefone.trim() || null,
+          email: email.trim(),
+          documento: documento.trim() || null,
+        })
+        .eq("id", grupo.id);
+      if (error) {
+        setErro(error.message);
+        setSalvando(false);
+        return;
+      }
+      onSaved();
+      onClose();
       setSalvando(false);
       return;
     }
-    const { data: userData } = await supabase
-      .from("usuarios")
-      .select("produtora_id")
-      .eq("id", user.id)
-      .single();
-    const produtoraId = userData?.produtora_id;
-    if (!produtoraId) {
-      setErro("Conta não vinculada a uma produtora.");
-      setSalvando(false);
-      return;
-    }
 
-    // Insere usando grupo_id (coluna correta) e produtora_id
-    const { error } = await supabase.from("participantes").insert({
+    const { error: grupoErr } = await supabase.from("grupos").insert({
       nome: nome.trim(),
+      responsavel: responsavel.trim() || null,
+      telefone: telefone.trim() || null,
+      email: email.trim(),
       documento: documento.trim() || null,
-      data_nascimento: dataNascimento || null,
-      grupo_id: grupoId,        // ← correto
-      produtora_id: produtoraId,
-      termo_assinado: termoAssinado,
     });
-    if (error) {
-      setErro(error.message);
+
+    if (grupoErr) {
+      setErro(grupoErr.message);
       setSalvando(false);
       return;
     }
+
+    await fetch("/api/convite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        nome: responsavel.trim() || nome.trim(),
+        role: "org_admin",
+      }),
+    }).catch(() => {});
 
     onSaved();
     onClose();
+    setSalvando(false);
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
       <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
-          <div>
-            <h2 className="text-base font-semibold text-white">Cadastrar {termo.participante}</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Para o grupo: {grupoNome}</p>
-          </div>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-white transition-colors"><X size={18} /></button>
+          <h2 className="text-base font-semibold text-white">
+            Cadastrar {termo.grupo}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1 text-gray-400 hover:text-white"
+          >
+            <X size={18} />
+          </button>
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Nome completo *</label>
+            <label className="block text-xs text-gray-400 mb-1">
+              Nome do {termo.grupo.toLowerCase()} *
+            </label>
             <input
               type="text"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
-              placeholder={`Nome do ${termo.participante.toLowerCase()}`}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Documento (RG/CPF)</label>
+            <label className="block text-xs text-gray-400 mb-1">
+              Nome do responsável
+            </label>
+            <input
+              type="text"
+              value={responsavel}
+              onChange={(e) => setResponsavel(e.target.value)}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">
+              Telefone
+            </label>
+            <input
+              type="tel"
+              value={telefone}
+              onChange={(e) => setTelefone(mascaraTelefone(e.target.value))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">
+              E-mail *
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">
+              CNPJ (opcional)
+            </label>
             <input
               type="text"
               value={documento}
               onChange={(e) => setDocumento(e.target.value)}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
-              placeholder="Opcional"
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
             />
           </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Data de nascimento</label>
-            <input
-              type="date"
-              value={dataNascimento}
-              onChange={(e) => setDataNascimento(e.target.value)}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="termoAssinado"
-              checked={termoAssinado}
-              onChange={(e) => setTermoAssinado(e.target.checked)}
-              className="w-4 h-4 rounded border-axon-border bg-axon-bg focus:ring-axon-gold"
-            />
-            <label htmlFor="termoAssinado" className="text-sm text-gray-300">
-              Termo de consentimento assinado
-            </label>
-          </div>
-          {erro && (
-            <p className="flex items-start gap-2 text-xs text-red-400">
-              <AlertCircle size={14} className="shrink-0 mt-0.5" /> {erro}
-            </p>
-          )}
+          {erro && <p className="text-xs text-red-400">{erro}</p>}
         </div>
         <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-gray-500 transition-all duration-200">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white"
+          >
             Cancelar
           </button>
           <button
             onClick={salvar}
             disabled={salvando}
-            className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black font-bold disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {salvando && <Loader2 size={14} className="animate-spin" />}
             Cadastrar
@@ -405,211 +272,551 @@ function ModalCadastrarParticipante({
   );
 }
 
-// CardGrupo modificado para usar onAddParticipante com grupoId
-interface CardGrupoProps {
-  org: OrgComDados;
+// Modal cadastrar participante (global + vinculação + email)
+interface ModalCadastrarParticipanteProps {
   termo: Terminologia;
-  onEdit: (org: OrgComDados) => void;
-  onDelete: (org: OrgComDados) => void;
-  onAddParticipante: (groupId: string, groupName: string) => void;
+  grupoId: string;
+  grupoNome: string;
+  eventoId: string;
+  onClose: () => void;
+  onSaved: () => void;
 }
 
-function CardGrupo({ org, termo, onEdit, onDelete, onAddParticipante }: CardGrupoProps) {
-  const [expandido, setExpandido] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<"apresentacoes" | "participantes">("apresentacoes");
+function ModalCadastrarParticipante({
+  termo,
+  grupoId,
+  grupoNome,
+  eventoId,
+  onClose,
+  onSaved,
+}: ModalCadastrarParticipanteProps) {
+  const [cpf, setCpf] = useState("");
+  const [nome, setNome] = useState("");
+  const [dataNascimento, setDataNascimento] = useState("");
+  const [emailContato, setEmailContato] = useState("");
+  const [termoAssinado, setTermoAssinado] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [buscando, setBuscando] = useState(false);
+  const [participanteExistente, setParticipanteExistente] =
+    useState<Participante | null>(null);
 
-  const totalApres = org.apresentacoes.length;
-  const totalParticipantes = org.participantes.length;
-  const totalValor = org.apresentacoes.reduce((acc, c) => acc + (c.valor_total ?? 0), 0);
-  const totalPago = org.apresentacoes.filter((c) => c.status_pagamento === "pago").reduce((acc, c) => acc + (c.valor_total ?? 0), 0);
+  async function buscarPorCpf() {
+    if (!cpf.trim() || cpf.trim().length < 11) {
+      setErro("Digite um CPF válido com 11 dígitos");
+      return;
+    }
+    setBuscando(true);
+    setErro(null);
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("participantes")
+      .select("*")
+      .eq("documento", cpf.trim())
+      .maybeSingle();
+    if (error) {
+      setErro("Erro ao buscar participante");
+      setBuscando(false);
+      return;
+    }
+    if (data) {
+      setParticipanteExistente(data as Participante);
+      setNome(data.nome || "");
+      setDataNascimento(data.data_nascimento || "");
+      setEmailContato(data.email_contato || "");
+    } else {
+      setParticipanteExistente(null);
+    }
+    setBuscando(false);
+  }
+
+  async function salvar() {
+    setErro(null);
+    if (!nome.trim()) {
+      setErro(`Nome obrigatório`);
+      return;
+    }
+    if (!cpf.trim() || cpf.trim().length < 11) {
+      setErro("CPF inválido");
+      return;
+    }
+    if (!emailContato.trim()) {
+      setErro("E-mail de contato obrigatório");
+      return;
+    }
+    setSalvando(true);
+    const supabase = createClient();
+
+    let participanteId = participanteExistente?.id;
+    if (!participanteExistente) {
+      const { data: novo, error: insertErr } = await supabase
+        .from("participantes")
+        .insert({
+          nome: nome.trim(),
+          documento: cpf.trim(),
+          data_nascimento: dataNascimento || null,
+          email_contato: emailContato.trim(),
+          termo_assinado: termoAssinado,
+          confirmado_vinculo: false,
+          status_disponibilidade: "disponivel",
+        })
+        .select()
+        .single();
+      if (insertErr) {
+        setErro(insertErr.message);
+        setSalvando(false);
+        return;
+      }
+      participanteId = novo.id;
+    }
+
+    const { data: vinculo, error: vinculoErr } = await supabase
+      .from("participacoes_participante_grupo_evento")
+      .insert({
+        participante_id: participanteId,
+        grupo_id: grupoId,
+        evento_id: eventoId,
+        confirmado: false,
+        status_disponibilidade: "disponivel",
+      })
+      .select()
+      .single();
+
+    if (vinculoErr) {
+      setErro(vinculoErr.message);
+      setSalvando(false);
+      return;
+    }
+
+    const vinculoId = vinculo.id;
+    const token = crypto.randomUUID();
+
+    const { error: tokenErr } = await supabase
+      .from("participacoes_participante_grupo_evento")
+      .update({ token_confirmacao: token })
+      .eq("id", vinculoId);
+
+    if (tokenErr) {
+      setErro("Erro ao gerar token de confirmação");
+      setSalvando(false);
+      return;
+    }
+
+    try {
+      await fetch("/api/enviar-confirmacao-participante", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: emailContato.trim(),
+          nome: nome.trim(),
+          grupoNome: grupoNome,
+          token: token,
+        }),
+      });
+    } catch (err) {
+      console.error("Erro ao enviar e-mail:", err);
+    }
+
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-auto py-8">
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
+          <div>
+            <h2 className="text-base font-semibold text-white">
+              Cadastrar {termo.participante}
+            </h2>
+            <p className="text-xs text-gray-500">Grupo: {grupoNome}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 text-gray-400 hover:text-white"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">CPF *</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={cpf}
+                onChange={(e) =>
+                  setCpf(e.target.value.replace(/\D/g, "").slice(0, 11))
+                }
+                className="flex-1 bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
+                placeholder="00000000000"
+                maxLength={11}
+              />
+              <button
+                onClick={buscarPorCpf}
+                disabled={buscando}
+                className="px-3 py-2 rounded-lg border border-axon-border text-axon-gold hover:border-axon-gold disabled:opacity-50"
+              >
+                {buscando ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  "Buscar"
+                )}
+              </button>
+            </div>
+          </div>
+          {participanteExistente && (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+              <p className="text-xs text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 size={12} /> Participante já cadastrado
+              </p>
+              <p className="text-sm text-white mt-1">
+                {participanteExistente.nome}
+              </p>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">
+              Nome completo *
+            </label>
+            <input
+              type="text"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              readOnly={!!participanteExistente}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">
+              Data nascimento
+            </label>
+            <input
+              type="date"
+              value={dataNascimento}
+              onChange={(e) => setDataNascimento(e.target.value)}
+              readOnly={!!participanteExistente}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">
+              E-mail de contato *
+            </label>
+            <input
+              type="email"
+              value={emailContato}
+              onChange={(e) => setEmailContato(e.target.value)}
+              readOnly={!!participanteExistente}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
+            />
+          </div>
+          {!participanteExistente && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="termo"
+                checked={termoAssinado}
+                onChange={(e) => setTermoAssinado(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <label htmlFor="termo" className="text-sm text-gray-300">
+                Termo de consentimento assinado
+              </label>
+            </div>
+          )}
+          {erro && <p className="text-xs text-red-400">{erro}</p>}
+        </div>
+        <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={salvar}
+            disabled={salvando}
+            className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {salvando && <Loader2 size={14} className="animate-spin" />}
+            {participanteExistente ? "Vincular" : "Cadastrar e vincular"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// CardGrupo
+interface CardGrupoProps {
+  grupo: GrupoComDados;
+  termo: Terminologia;
+  onEdit: (grupo: GrupoComDados) => void;
+  onDelete: (grupo: GrupoComDados) => void;
+  onAddParticipante: (groupId: string, groupName: string, eventoId: string) => void;
+  eventoId: string;
+}
+
+function CardGrupo({
+  grupo,
+  termo,
+  onEdit,
+  onDelete,
+  onAddParticipante,
+  eventoId,
+}: CardGrupoProps) {
+  const [expandido, setExpandido] = useState(false);
+  const [abaAtiva, setAbaAtiva] = useState<"apresentacoes" | "participantes">(
+    "apresentacoes"
+  );
+
+  const totalApres = grupo.apresentacoes.length;
+  const totalParticipantes = grupo.participantes.length;
+  const totalValor = grupo.apresentacoes.reduce(
+    (acc, c) => acc + (c.valor_total ?? 0),
+    0
+  );
+  const totalPago = grupo.apresentacoes
+    .filter((c) => c.status_pagamento === "pago")
+    .reduce((acc, c) => acc + (c.valor_total ?? 0), 0);
   const totalPendente = totalValor - totalPago;
   const tudoPago = totalPendente === 0 && totalApres > 0;
 
   return (
-    <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden hover:border-gray-600 transition-colors">
-      <div role="button" onClick={() => setExpandido((p) => !p)}
-        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-colors cursor-pointer">
-        <div className="flex-1 min-w-0">
+    <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
+      <div
+        role="button"
+        onClick={() => setExpandido(!expandido)}
+        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] cursor-pointer"
+      >
+        <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-semibold text-white truncate">{org.nome}</span>
+            <span className="text-sm font-semibold text-white truncate">
+              {grupo.nome}
+            </span>
             {tudoPago ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <CheckCircle2 size={11} /> Quitado
+              <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">
+                Quitado
               </span>
             ) : totalPendente > 0 ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-axon-gold/10 text-axon-gold border border-axon-gold/20">
-                <Clock3 size={11} /> Pendente
+              <span className="text-xs bg-axon-gold/10 text-axon-gold px-2 py-0.5 rounded-full">
+                Pendente
               </span>
             ) : null}
           </div>
-          {org.responsavel && <p className="text-xs text-gray-500 mt-0.5">{org.responsavel}</p>}
+          {grupo.responsavel && (
+            <p className="text-xs text-gray-500 mt-0.5">{grupo.responsavel}</p>
+          )}
         </div>
-
-        <div className="hidden sm:flex items-center gap-6 shrink-0">
+        <div className="hidden sm:flex items-center gap-6">
           <div className="text-center">
             <p className="text-xs text-gray-500">{termo.apresentacao}s</p>
-            <p className="text-sm font-semibold text-white tabular-nums">{totalApres}</p>
+            <p className="text-sm font-semibold text-white">{totalApres}</p>
           </div>
           <div className="text-center">
             <p className="text-xs text-gray-500">{termo.participante}s</p>
-            <p className="text-sm font-semibold text-white tabular-nums">{totalParticipantes}</p>
+            <p className="text-sm font-semibold text-white">
+              {totalParticipantes}
+            </p>
           </div>
           <div className="text-center">
             <p className="text-xs text-gray-500">Total</p>
-            <p className="text-sm font-semibold text-white tabular-nums">{formatMoeda(totalValor)}</p>
+            <p className="text-sm font-semibold text-white">
+              {formatMoeda(totalValor)}
+            </p>
           </div>
           {totalPendente > 0 && (
             <div className="text-center">
               <p className="text-xs text-gray-500">A receber</p>
-              <p className="text-sm font-semibold text-axon-gold tabular-nums">{formatMoeda(totalPendente)}</p>
+              <p className="text-sm font-semibold text-axon-gold">
+                {formatMoeda(totalPendente)}
+              </p>
             </div>
           )}
         </div>
-
-        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => onEdit(org)} className="p-2 text-gray-400 hover:text-axon-gold hover:bg-axon-gold/10 rounded-lg transition-all duration-200"><Pencil size={15} /></button>
-          <button onClick={() => onDelete(org)} className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200"><Trash2 size={15} /></button>
-          <div className="text-gray-500 ml-1">{expandido ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</div>
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => onEdit(grupo)}
+            className="p-2 text-gray-400 hover:text-axon-gold"
+          >
+            <Pencil size={15} />
+          </button>
+          <button
+            onClick={() => onDelete(grupo)}
+            className="p-2 text-gray-400 hover:text-red-400"
+          >
+            <Trash2 size={15} />
+          </button>
+          <div className="text-gray-500">
+            {expandido ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+          </div>
         </div>
       </div>
-
       {expandido && (
         <div className="border-t border-axon-border">
           <div className="flex border-b border-axon-border px-5">
-            {(["apresentacoes", "participantes"] as const).map((id) => (
-              <button key={id} onClick={() => setAbaAtiva(id)}
-                className={`px-4 py-3 text-xs font-medium border-b-2 transition-colors ${
-                  abaAtiva === id ? "border-axon-gold text-axon-gold" : "border-transparent text-gray-500 hover:text-white"
-                }`}>
-                {id === "apresentacoes" ? `${termo.apresentacao}s` : `${termo.participante}s`}
+            {(["apresentacoes", "participantes"] as const).map((aba) => (
+              <button
+                key={aba}
+                onClick={() => setAbaAtiva(aba)}
+                className={`px-4 py-3 text-xs font-medium border-b-2 ${
+                  abaAtiva === aba
+                    ? "border-axon-gold text-axon-gold"
+                    : "border-transparent text-gray-500"
+                }`}
+              >
+                {aba === "apresentacoes"
+                  ? `${termo.apresentacao}s`
+                  : `${termo.participante}s`}
               </button>
             ))}
           </div>
-
-          {abaAtiva === "apresentacoes" && (
-            <div className="p-5">
-              {org.apresentacoes.length === 0 ? (
-                <p className="text-sm text-gray-600 text-center py-6">Nenhuma {termo.apresentacao.toLowerCase()} inscrita.</p>
+          <div className="p-5">
+            {abaAtiva === "apresentacoes" &&
+              (grupo.apresentacoes.length === 0 ? (
+                <p className="text-gray-600 text-center py-6">
+                  Nenhuma {termo.apresentacao.toLowerCase()} inscrita.
+                </p>
               ) : (
-                <div className="space-y-3">
-                  {org.apresentacoes.map((c) => {
-                    const participantesNa = org.elenco
-                      .filter((e) => e.apresentacao_id === c.id)
-                      .map((e) => org.participantes.find((b) => b.id === e.participante_id))
-                      .filter(Boolean) as Participante[];
-                    return (
-                      <div key={c.id} className="bg-axon-bg border border-axon-border rounded-lg p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white">{c.nome}</p>
-                            <div className="flex flex-wrap gap-2 mt-1">
-                              <span className="text-xs text-gray-500 capitalize">{c.tipo}</span>
-                              <span className="text-gray-700">·</span>
-                              <span className="text-xs text-gray-500">{c.quantidade_bailarinos} {termo.participante.toLowerCase()}{c.quantidade_bailarinos !== 1 ? "s" : ""}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            <span className="text-sm font-semibold text-white tabular-nums">{formatMoeda(c.valor_total ?? 0)}</span>
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                              c.status_pagamento === "pago" ? "bg-emerald-500/10 text-emerald-400" : "bg-axon-gold/10 text-axon-gold"
-                            }`}>
-                              {c.status_pagamento === "pago" ? "Pago" : "Pendente"}
+                grupo.apresentacoes.map((c) => (
+                  <div
+                    key={c.id}
+                    className="bg-axon-bg border border-axon-border rounded-lg p-4 mb-3"
+                  >
+                    <div className="flex justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-white">
+                          {c.nome}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {c.tipo} · {c.quantidade_bailarinos} participantes
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-white">
+                          {formatMoeda(c.valor_total)}
+                        </p>
+                        <span
+                          className={`text-xs ${
+                            c.status_pagamento === "pago"
+                              ? "text-emerald-400"
+                              : "text-axon-gold"
+                          }`}
+                        >
+                          {c.status_pagamento === "pago" ? "Pago" : "Pendente"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ))}
+            {abaAtiva === "participantes" && (
+              <div>
+                <div className="flex justify-end mb-3">
+                  <button
+                    onClick={() =>
+                      onAddParticipante(grupo.id, grupo.nome, eventoId)
+                    }
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-axon-gold/10 border border-axon-gold/30 text-axon-gold text-xs font-medium"
+                  >
+                    <UserPlus size={14} /> Cadastrar{" "}
+                    {termo.participante.toLowerCase()}
+                  </button>
+                </div>
+                {grupo.participantes.length === 0 ? (
+                  <p className="text-gray-600 text-center py-6">
+                    Nenhum participante vinculado.
+                  </p>
+                ) : (
+                  grupo.participantes.map((p) => (
+                    <div
+                      key={p.id}
+                      className="bg-axon-bg border border-axon-border rounded-lg px-4 py-3 mb-2"
+                    >
+                      <div className="flex justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-white">
+                            {p.nome}
+                          </p>
+                          {p.documento && (
+                            <p className="text-xs text-gray-500">
+                              {p.documento}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {p.confirmado_vinculo ? (
+                            <span className="text-xs text-emerald-400 flex items-center gap-1">
+                              <CheckCircle2 size={11} /> Confirmado
                             </span>
-                          </div>
+                          ) : (
+                            <span className="text-xs text-amber-400 flex items-center gap-1">
+                              <MailCheck size={11} /> Pendente
+                            </span>
+                          )}
+                          {p.status_disponibilidade === "indisponivel" && (
+                            <span className="text-xs text-red-400">
+                              Indisponível
+                            </span>
+                          )}
                         </div>
-                        {participantesNa.length > 0 && (
-                          <div className="mt-3 pt-3 border-t border-axon-border/50">
-                            <p className="text-xs text-gray-500 mb-2">{termo.participante}s</p>
-                            <div className="flex flex-wrap gap-2">
-                              {participantesNa.map((b) => (
-                                <span key={b.id} className="text-xs bg-white/5 border border-axon-border rounded-full px-2.5 py-1 text-gray-300">{b.nome}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {abaAtiva === "participantes" && (
-            <div className="p-5">
-              <div className="flex justify-end mb-3">
-                <button
-                  onClick={() => onAddParticipante(org.id, org.nome)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-axon-gold/10 border border-axon-gold/30 text-axon-gold text-xs font-medium hover:bg-axon-gold/20 transition-all"
-                >
-                  <UserPlus size={14} /> Cadastrar {termo.participante.toLowerCase()}
-                </button>
+                    </div>
+                  ))
+                )}
               </div>
-              {org.participantes.length === 0 ? (
-                <p className="text-sm text-gray-600 text-center py-6">Nenhum {termo.participante.toLowerCase()} cadastrado.</p>
-              ) : (
-                <div className="space-y-2">
-                  {org.participantes.map((b) => {
-                    const apresDoP = org.elenco
-                      .filter((e) => e.participante_id === b.id)
-                      .map((e) => org.apresentacoes.find((c) => c.id === e.apresentacao_id))
-                      .filter(Boolean) as Apresentacao[];
-                    return (
-                      <div key={b.id} className="bg-axon-bg border border-axon-border rounded-lg px-4 py-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-white">{b.nome}</p>
-                            {b.documento && <p className="text-xs text-gray-500 tabular-nums mt-0.5">{b.documento}</p>}
-                          </div>
-                          <div className="shrink-0">
-                            {b.termo_assinado ? (
-                              <span className="text-xs text-emerald-400 flex items-center gap-1"><CheckCircle2 size={11} /> Termo OK</span>
-                            ) : (
-                              <span className="text-xs text-gray-600">Sem termo</span>
-                            )}
-                          </div>
-                        </div>
-                        {apresDoP.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {apresDoP.map((c) => (
-                              <span key={c.id} className="text-xs bg-axon-gold/10 text-axon-gold rounded-full px-2.5 py-0.5 border border-axon-gold/20">{c.nome}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function ModalConfirmarExclusao({ org, onConfirmar, onCancelar, excluindo, erro }: {
-  org: OrgComDados; onConfirmar: () => void; onCancelar: () => void; excluindo: boolean; erro: string | null;
-}) {
+function ModalConfirmarExclusao({
+  grupo,
+  onConfirmar,
+  onCancelar,
+  excluindo,
+  erro,
+}: any) {
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-axon-panel border border-red-500/30 rounded-2xl w-full max-w-sm p-6 space-y-5">
-        <div className="flex flex-col items-center text-center gap-3">
-          <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+      <div className="bg-axon-panel border border-red-500/30 rounded-2xl w-full max-w-sm p-6">
+        <div className="text-center">
+          <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
             <Trash2 size={22} className="text-red-400" />
           </div>
-          <div>
-            <h2 className="text-lg font-semibold text-white">Excluir organização</h2>
-            <p className="text-sm text-gray-400 mt-1">Tem certeza que deseja excluir <span className="text-white font-medium">{org.nome}</span>?</p>
-            <p className="text-xs text-gray-500 mt-2">Esta ação também remove as inscrições e participantes associados.</p>
-          </div>
+          <h2 className="text-lg font-semibold text-white">
+            Excluir {grupo.nome}?
+          </h2>
+          <p className="text-sm text-gray-400 mt-1">
+            Isso remove a inscrição e todos os dados deste festival.
+          </p>
         </div>
-        {erro && <div className="flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-300"><AlertCircle size={16} /> {erro}</div>}
+        {erro && (
+          <div className="bg-red-500/10 p-3 rounded text-sm text-red-300 my-4">
+            {erro}
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={onCancelar} disabled={excluindo} className="py-3 rounded-xl border border-axon-border text-gray-400 hover:text-white text-sm transition-all duration-200 disabled:opacity-50">Cancelar</button>
-          <button onClick={onConfirmar} disabled={excluindo} className="py-3 rounded-xl bg-red-500 text-white font-bold text-sm hover:bg-red-600 active:scale-95 transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2">
-            {excluindo ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+          <button
+            onClick={onCancelar}
+            className="py-3 rounded-xl border border-axon-border text-gray-400"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirmar}
+            disabled={excluindo}
+            className="py-3 rounded-xl bg-red-500 text-white font-bold flex items-center justify-center gap-2"
+          >
+            {excluindo ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Trash2 size={15} />
+            )}
             {excluindo ? "Excluindo..." : "Sim, excluir"}
           </button>
         </div>
@@ -619,22 +826,35 @@ function ModalConfirmarExclusao({ org, onConfirmar, onCancelar, excluindo, erro 
 }
 
 export default function InscricoesPage() {
-  const [orgsComDados, setOrgsComDados] = useState<OrgComDados[]>([]);
+  const [gruposComDados, setGruposComDados] = useState<GrupoComDados[]>([]);
   const [termo, setTermo] = useState<Terminologia>({
-    grupo: "Grupo", participante: "Participante",
-    apresentacao: "Apresentação", inscricao: "Inscrição", organizacao: "Organização",
+    grupo: "Grupo",
+    participante: "Participante",
+    apresentacao: "Apresentação",
+    inscricao: "Inscrição",
+    organizacao: "Organização",
   });
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [modalGrupo, setModalGrupo] = useState(false);
-  const [editarOrg, setEditarOrg] = useState<Organizacao | null>(null);
-  const [orgExcluir, setOrgExcluir] = useState<OrgComDados | null>(null);
+  const [editarGrupo, setEditarGrupo] = useState<Grupo | null>(null);
+  const [grupoExcluir, setGrupoExcluir] = useState<GrupoComDados | null>(null);
   const [excluindo, setExcluindo] = useState(false);
   const [erroExcluir, setErroExcluir] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{ msg: string; tipo: "ok" | "erro" } | null>(null);
-  const [kpis, setKpis] = useState({ grupos: 0, apresentacoes: 0, participantes: 0, totalPago: 0, totalPendente: 0 });
-
-  const [modalParticipante, setModalParticipante] = useState<{ groupId: string; groupName: string } | null>(null);
+  const [kpis, setKpis] = useState({
+    grupos: 0,
+    apresentacoes: 0,
+    participantes: 0,
+    totalPago: 0,
+    totalPendente: 0,
+  });
+  const [modalParticipante, setModalParticipante] = useState<{
+    groupId: string;
+    groupName: string;
+    eventoId: string;
+  } | null>(null);
+  const [eventoAtualId, setEventoAtualId] = useState("");
 
   const mostrarToast = useCallback((msg: string, tipo: "ok" | "erro" = "ok") => {
     setToastMsg({ msg, tipo });
@@ -644,82 +864,129 @@ export default function InscricoesPage() {
   const carregar = useCallback(async () => {
     const supabase = createClient();
     setCarregando(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setCarregando(false);
+      return;
+    }
+    const { data: userData } = await supabase
+      .from("usuarios")
+      .select("produtora_id")
+      .eq("id", user.id)
+      .single();
+    const produtoraId = userData?.produtora_id;
+    if (!produtoraId) {
+      setCarregando(false);
+      return;
+    }
+    const { data: eventoAtual } = await supabase
+      .from("eventos")
+      .select("id")
+      .eq("produtora_id", produtoraId)
+      .limit(1)
+      .single();
+    if (!eventoAtual) {
+      setCarregando(false);
+      return;
+    }
+    setEventoAtualId(eventoAtual.id);
 
     const [
       { data: config },
-      { data: orgs },
+      { data: grupos },
+      { data: inscricoesGrupo },
       { data: apres },
-      { data: participantes },
-      { data: elenco },
+      { data: participacoes },
+      { data: participantesAll },
     ] = await Promise.all([
-      supabase.from("tenant_config").select("termo_grupo, termo_participante, termo_apresentacao, termo_inscricao, nome_organizacao").maybeSingle(),
-      supabase.from("organizacoes").select("*").order("nome"),
-      supabase.from("apresentacoes").select("*").order("created_at", { ascending: false }),
-      supabase.from("participantes").select("*").order("nome"),
-      supabase.from("apresentacao_elenco").select("apresentacao_id, participante_id"),
+      supabase
+        .from("tenant_config")
+        .select("termo_grupo, termo_participante, termo_apresentacao, termo_inscricao, nome_organizacao")
+        .maybeSingle(),
+      supabase.from("grupos").select("*").order("nome"),
+      supabase.from("inscricoes_grupo_evento").select("*").eq("evento_id", eventoAtual.id),
+      supabase.from("apresentacoes").select("*").eq("evento_id", eventoAtual.id),
+      supabase.from("participacoes_participante_grupo_evento").select("*").eq("evento_id", eventoAtual.id),
+      supabase.from("participantes").select("*"),
     ]);
 
     if (config) {
       setTermo({
-        grupo:        (config as Record<string, string>).termo_grupo        || "Grupo",
-        participante: (config as Record<string, string>).termo_participante || "Participante",
-        apresentacao: (config as Record<string, string>).termo_apresentacao || "Apresentação",
-        inscricao:    (config as Record<string, string>).termo_inscricao    || "Inscrição",
-        organizacao:  (config as Record<string, string>).nome_organizacao   || "Organização",
+        ...termo,
+        grupo: config.termo_grupo || "Grupo",
+        participante: config.termo_participante || "Participante",
+        apresentacao: config.termo_apresentacao || "Apresentação",
+        inscricao: config.termo_inscricao || "Inscrição",
+        organizacao: config.nome_organizacao || "Organização",
       });
     }
 
-    const orgsArr = (orgs as Organizacao[]) ?? [];
-    const apresArr = (apres as Apresentacao[]) ?? [];
-    const partArr = (participantes as Participante[]) ?? [];
-    const elencoArr = (elenco as ElencoRow[]) ?? [];
+    const gruposArr = grupos ?? [];
+    const inscricoesArr = inscricoesGrupo ?? [];
+    const apresArr = apres ?? [];
+    const participacoesArr = participacoes ?? [];
+    const participantesAllArr = participantesAll ?? [];
 
-    const compostas: OrgComDados[] = orgsArr.map((o) => ({
-      ...o,
-      apresentacoes: apresArr.filter((a) => a.grupo_id === o.id),
-      participantes: partArr.filter((p) => p.grupo_id === o.id), // agora usando grupo_id
-      elenco: elencoArr.filter((el) => apresArr.filter((a) => a.grupo_id === o.id).some((a) => a.id === el.apresentacao_id)),
+    const gruposInscritos = gruposArr.filter((g) =>
+      inscricoesArr.some((i) => i.grupo_id === g.id)
+    );
+    const compostos = gruposInscritos.map((g) => ({
+      ...g,
+      apresentacoes: apresArr.filter((a) => a.grupo_id === g.id),
+      participantes: participantesAllArr.filter((p) =>
+        participacoesArr.some((pp) => pp.participante_id === p.id && pp.grupo_id === g.id)
+      ),
     }));
-
-    setOrgsComDados(compostas);
-
-    const totalPago = apresArr.filter((a) => a.status_pagamento === "pago").reduce((acc, a) => acc + (a.valor_total ?? 0), 0);
-    const totalPendente = apresArr.filter((a) => a.status_pagamento === "pendente").reduce((acc, a) => acc + (a.valor_total ?? 0), 0);
-    setKpis({ grupos: orgsArr.length, apresentacoes: apresArr.length, participantes: partArr.length, totalPago, totalPendente });
-
+    setGruposComDados(compostos);
+    const totalPago = apresArr
+      .filter((a) => a.status_pagamento === "pago")
+      .reduce((s, a) => s + (a.valor_total ?? 0), 0);
+    const totalPendente = apresArr
+      .filter((a) => a.status_pagamento === "pendente")
+      .reduce((s, a) => s + (a.valor_total ?? 0), 0);
+    setKpis({
+      grupos: gruposInscritos.length,
+      apresentacoes: apresArr.length,
+      participantes: participacoesArr.length,
+      totalPago,
+      totalPendente,
+    });
     setCarregando(false);
   }, []);
 
-  useEffect(() => { carregar(); }, [carregar]);
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
 
-  const filtrados = orgsComDados.filter((o) =>
-    o.nome.toLowerCase().includes(busca.toLowerCase()) ||
-    (o.responsavel ?? "").toLowerCase().includes(busca.toLowerCase())
+  const filtrados = gruposComDados.filter(
+    (g) =>
+      g.nome.toLowerCase().includes(busca.toLowerCase()) ||
+      (g.responsavel ?? "").toLowerCase().includes(busca.toLowerCase())
   );
 
   async function confirmarExcluir() {
     const supabase = createClient();
-    if (!orgExcluir) return;
+    if (!grupoExcluir) return;
     setErroExcluir(null);
     setExcluindo(true);
-
-    const apresIds = orgExcluir.apresentacoes.map((a) => a.id);
-    if (apresIds.length > 0) {
-      const { error } = await supabase.from("apresentacao_elenco").delete().in("apresentacao_id", apresIds);
-      if (error) { setErroExcluir(error.message); setExcluindo(false); return; }
-      const { error: e2 } = await supabase.from("apresentacoes").delete().eq("grupo_id", orgExcluir.id);
-      if (e2) { setErroExcluir(e2.message); setExcluindo(false); return; }
-    }
-
-    const { error: e3 } = await supabase.from("participantes").delete().eq("grupo_id", orgExcluir.id);
-    if (e3) { setErroExcluir(e3.message); setExcluindo(false); return; }
-
-    const { error: e4 } = await supabase.from("organizacoes").delete().eq("id", orgExcluir.id);
-    if (e4) { setErroExcluir(e4.message); setExcluindo(false); return; }
-
-    setOrgExcluir(null);
+    await supabase
+      .from("inscricoes_grupo_evento")
+      .delete()
+      .eq("grupo_id", grupoExcluir.id)
+      .eq("evento_id", eventoAtualId);
+    await supabase
+      .from("apresentacoes")
+      .delete()
+      .eq("grupo_id", grupoExcluir.id)
+      .eq("evento_id", eventoAtualId);
+    await supabase
+      .from("participacoes_participante_grupo_evento")
+      .delete()
+      .eq("grupo_id", grupoExcluir.id)
+      .eq("evento_id", eventoAtualId);
+    setGrupoExcluir(null);
     setExcluindo(false);
-    mostrarToast("Organização excluída com sucesso.");
+    mostrarToast("Grupo removido do festival.");
     carregar();
   }
 
@@ -728,117 +995,180 @@ export default function InscricoesPage() {
       {modalGrupo && (
         <ModalCadastrarGrupo
           termo={termo}
-          org={editarOrg}
-          onClose={() => { setModalGrupo(false); setEditarOrg(null); }}
-          onSaved={() => { setEditarOrg(null); carregar(); }}
+          grupo={editarGrupo}
+          onClose={() => {
+            setModalGrupo(false);
+            setEditarGrupo(null);
+          }}
+          onSaved={() => {
+            setEditarGrupo(null);
+            carregar();
+          }}
         />
       )}
-
       {modalParticipante && (
         <ModalCadastrarParticipante
           termo={termo}
           grupoId={modalParticipante.groupId}
           grupoNome={modalParticipante.groupName}
+          eventoId={eventoAtualId}
           onClose={() => setModalParticipante(null)}
-          onSaved={() => { carregar(); mostrarToast(`${termo.participante} cadastrado com sucesso!`); }}
+          onSaved={() => {
+            carregar();
+            mostrarToast(`${termo.participante} cadastrado com sucesso!`);
+          }}
         />
       )}
-
       <div className="max-w-5xl mx-auto space-y-6 p-6">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-xl font-semibold text-white">{termo.inscricao}s e Elenco</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Gerencie os {termo.grupo.toLowerCase()}s participantes, suas {termo.apresentacao.toLowerCase()}s e {termo.participante.toLowerCase()}s.
+            <h1 className="text-xl font-semibold text-white">
+              {termo.inscricao}s e Elenco
+            </h1>
+            <p className="text-sm text-gray-500">
+              Gerencie grupos, apresentações e participantes.
             </p>
           </div>
-          <button onClick={() => setModalGrupo(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 transition-all duration-200 whitespace-nowrap shrink-0">
-            <Plus size={15} /> Cadastrar {termo.grupo.toLowerCase()}
+          <button
+            onClick={() => setModalGrupo(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-axon-gold text-black font-bold"
+          >
+            <Plus size={15} /> Cadastrar {termo.grupo}
           </button>
         </div>
-
         <Dica>
-          Cadastre os {termo.grupo.toLowerCase()}s participantes e envie o convite de acesso. Eles se conectarão pelo portal próprio para inserir {termo.apresentacao.toLowerCase()}s e {termo.participante.toLowerCase()}s diretamente. Use o botão "Cadastrar {termo.participante.toLowerCase()}" dentro de cada grupo para inclusão emergencial.
+          Cadastre grupos e envie convite. Use o botão "Cadastrar participante"
+          dentro de cada grupo para inclusão emergencial.
         </Dica>
-
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {[
-            { label: `${termo.grupo}s`,        value: kpis.grupos.toString(),          icon: Users,            cor: "" },
-            { label: `${termo.apresentacao}s`, value: kpis.apresentacoes.toString(),   icon: Music4,           cor: "" },
-            { label: `${termo.participante}s`, value: kpis.participantes.toString(),   icon: Users,            cor: "" },
-            { label: "Total pago",             value: formatMoeda(kpis.totalPago),     icon: CircleDollarSign, cor: "green" },
-            { label: "A receber",              value: formatMoeda(kpis.totalPendente), icon: CircleDollarSign, cor: "gold" },
+            { label: `${termo.grupo}s`, value: kpis.grupos, icon: Users },
+            {
+              label: `${termo.apresentacao}s`,
+              value: kpis.apresentacoes,
+              icon: Music4,
+            },
+            {
+              label: `${termo.participante}s`,
+              value: kpis.participantes,
+              icon: Users,
+            },
+            {
+              label: "Total pago",
+              value: formatMoeda(kpis.totalPago),
+              icon: CircleDollarSign,
+              cor: "green",
+            },
+            {
+              label: "A receber",
+              value: formatMoeda(kpis.totalPendente),
+              icon: CircleDollarSign,
+              cor: "gold",
+            },
           ].map(({ label, value, icon: Icon, cor }) => (
-            <div key={label} className="bg-axon-panel border border-axon-border rounded-xl p-4">
+            <div
+              key={label}
+              className="bg-axon-panel border border-axon-border rounded-xl p-4"
+            >
               <div className="flex items-center gap-2 mb-2">
-                <Icon size={14} className={cor === "green" ? "text-emerald-400" : cor === "gold" ? "text-axon-gold" : "text-gray-500"} />
+                <Icon
+                  size={14}
+                  className={
+                    cor === "green"
+                      ? "text-emerald-400"
+                      : cor === "gold"
+                      ? "text-axon-gold"
+                      : "text-gray-500"
+                  }
+                />
                 <p className="text-xs text-gray-500">{label}</p>
               </div>
-              <p className={`text-lg font-semibold tabular-nums ${cor === "green" ? "text-emerald-400" : cor === "gold" ? "text-axon-gold" : "text-white"}`}>{value}</p>
+              <p
+                className={`text-lg font-semibold ${
+                  cor === "green"
+                    ? "text-emerald-400"
+                    : cor === "gold"
+                    ? "text-axon-gold"
+                    : "text-white"
+                }`}
+              >
+                {value}
+              </p>
             </div>
           ))}
         </div>
-
         <div className="relative max-w-sm">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input type="text" value={busca} onChange={(e) => setBusca(e.target.value)}
-            placeholder={`Buscar ${termo.grupo.toLowerCase()} ou responsável...`}
-            className="w-full bg-axon-panel border border-axon-border rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors" />
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder={`Buscar ${termo.grupo.toLowerCase()}...`}
+            className="w-full bg-axon-panel border border-axon-border rounded-lg pl-9 pr-3 py-2 text-sm text-white"
+          />
         </div>
-
         {carregando ? (
           <div className="space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="bg-axon-panel border border-axon-border rounded-xl p-5">
-                <div className="flex items-center gap-4">
-                  <div className="flex-1 h-4 bg-white/5 rounded animate-pulse" />
-                  <div className="w-24 h-4 bg-white/5 rounded animate-pulse" />
-                </div>
-              </div>
-            ))}
+            {Array(3)
+              .fill(0)
+              .map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-axon-panel border border-axon-border rounded-xl p-5 h-20 animate-pulse"
+                ></div>
+              ))}
           </div>
         ) : filtrados.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 border border-dashed border-axon-border rounded-xl text-gray-600">
-            <Users size={36} className="mb-3 opacity-20 text-axon-gold" />
-            <p className="font-medium text-gray-300">{busca ? `Nenhum ${termo.grupo.toLowerCase()} encontrado` : `Nenhum ${termo.grupo.toLowerCase()} cadastrado ainda`}</p>
-            {!busca && (
-              <button onClick={() => setModalGrupo(true)} className="mt-3 text-sm text-axon-gold hover:text-white border border-axon-gold/30 hover:border-axon-gold hover:bg-axon-gold/10 px-4 py-2 rounded-lg transition-all duration-200">
-                Cadastrar primeiro {termo.grupo.toLowerCase()}
-              </button>
-            )}
+          <div className="text-center py-16 border border-dashed rounded-xl text-gray-600">
+            <Users size={36} className="mx-auto mb-3 opacity-20" />
+            <p className="font-medium">Nenhum grupo encontrado</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {filtrados.map((org) => (
+            {filtrados.map((g) => (
               <CardGrupo
-                key={org.id}
-                org={org}
+                key={g.id}
+                grupo={g}
                 termo={termo}
-                onEdit={(o) => { setEditarOrg(o); setModalGrupo(true); }}
-                onDelete={(o) => setOrgExcluir(o)}
-                onAddParticipante={(groupId, groupName) => setModalParticipante({ groupId, groupName })}
+                onEdit={(g) => {
+                  setEditarGrupo(g);
+                  setModalGrupo(true);
+                }}
+                onDelete={setGrupoExcluir}
+                onAddParticipante={(id, name) =>
+                  setModalParticipante({
+                    groupId: id,
+                    groupName: name,
+                    eventoId: eventoAtualId,
+                  })
+                }
+                eventoId={eventoAtualId}
               />
             ))}
           </div>
         )}
       </div>
-
-      {orgExcluir && (
+      {grupoExcluir && (
         <ModalConfirmarExclusao
-          org={orgExcluir}
+          grupo={grupoExcluir}
           onConfirmar={confirmarExcluir}
-          onCancelar={() => { setOrgExcluir(null); setErroExcluir(null); }}
+          onCancelar={() => {
+            setGrupoExcluir(null);
+            setErroExcluir(null);
+          }}
           excluindo={excluindo}
           erro={erroExcluir}
         />
       )}
-
       {toastMsg && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-full text-sm font-semibold shadow-xl transition-all duration-300 ${
-          toastMsg.tipo === "ok" ? "bg-axon-gold text-black" : "bg-red-500/90 text-white"
-        }`}>
-          {toastMsg.tipo === "ok" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+        <div
+          className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-full text-sm font-semibold shadow-xl ${
+            toastMsg.tipo === "ok"
+              ? "bg-axon-gold text-black"
+              : "bg-red-500/90 text-white"
+          }`}
+        >
+          <CheckCircle2 size={16} />
           {toastMsg.msg}
         </div>
       )}
