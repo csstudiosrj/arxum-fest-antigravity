@@ -144,8 +144,9 @@ export default function EventosPage() {
           .eq("produtora_id", userData.produtora_id)
           .maybeSingle();
 
-        if ((config?.perfis_festival as any)?.slug) {
-          setPerfilSlug((config!.perfis_festival as any).slug);
+        const slugConfig = (config as any)?.perfis_festival?.slug;
+        if (slugConfig) {
+          setPerfilSlug(slugConfig);
         }
 
         await carregarEventos(userData.produtora_id);

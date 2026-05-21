@@ -203,8 +203,9 @@ export default function PainelEventoPage() {
           .eq("produtora_id", ev.produtora_id)
           .maybeSingle();
 
-        if ((config?.perfis_festival as any)?.slug) {
-          setPerfilSlug((config!.perfis_festival as any).slug);
+        const slugConfig = (config as any)?.perfis_festival?.slug;
+        if (slugConfig) {
+          setPerfilSlug(slugConfig);
         }
       }
 
