@@ -25,8 +25,6 @@ import {
   MailCheck,
 } from "lucide-react";
 
-type StatusPagamento = "pago" | "pendente";
-
 interface Terminologia {
   grupo: string;
   participante: string;
@@ -41,9 +39,9 @@ interface Grupo {
   responsavel: string | null;
   telefone: string | null;
   email: string;
-  email_contato: string | null;
   documento: string | null;
   tipo_documento: "cpf" | "cnpj" | null;
+  created_at: string;
 }
 
 interface Participante {
@@ -51,27 +49,9 @@ interface Participante {
   nome: string;
   documento: string | null;
   data_nascimento: string;
-  termo_assinado: boolean;
   email_contato: string | null;
-  confirmado_vinculo: boolean;
-  status_disponibilidade: string;
-}
-
-interface Apresentacao {
-  id: string;
-  nome: string;
-  grupo_id: string | null;
-  tipo: string;
-  quantidade_bailarinos: number;
-  valor_total: number;
-  status_pagamento: StatusPagamento;
+  termo_assinado: boolean;
   created_at: string;
-  evento_id: string;
-}
-
-interface GrupoComDados extends Grupo {
-  apresentacoes: Apresentacao[];
-  participantes: Participante[];
 }
 
 function formatMoeda(value: number): string {
@@ -104,16 +84,15 @@ function Dica({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Modal cadastrar GRUPO (com reutilização)
+// Modal cadastrar GRUPO (global, sem evento)
 interface ModalCadastrarGrupoProps {
   termo: Terminologia;
   grupo?: Grupo | null;
-  eventoId: string; // evento atual para inscrever o grupo
   onClose: () => void;
   onSaved: () => void;
 }
 
-function ModalCadastrarGrupo({ termo, grupo, eventoId, onClose, onSaved }: ModalCadastrarGrupoProps) {
+function ModalCadastrarGrupo({ termo, grupo, onClose, onSaved }: ModalCadastrarGrupoProps) {
   const [nome, setNome] = useState(grupo?.nome ?? "");
   const [responsavel, setResponsavel] = useState(grupo?.responsavel ?? "");
   const [telefone, setTelefone] = useState(grupo?.telefone ?? "");
@@ -151,30 +130,27 @@ function ModalCadastrarGrupo({ termo, grupo, eventoId, onClose, onSaved }: Modal
 
     setSalvando(true);
 
-    // 1. Verificar se já existe grupo com este e-mail ou documento
+    // Verificar se já existe grupo com este e-mail ou documento
     let grupoExistente: Grupo | null = null;
     if (email.trim()) {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("grupos")
         .select("*")
         .eq("email", email.trim())
         .maybeSingle();
-      if (!error && data) grupoExistente = data;
+      if (data) grupoExistente = data;
     }
     if (!grupoExistente && docLimpo) {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("grupos")
         .select("*")
         .eq("documento", docLimpo)
         .maybeSingle();
-      if (!error && data) grupoExistente = data;
+      if (data) grupoExistente = data;
     }
 
-    let grupoId: string;
-
     if (grupoExistente) {
-      // Grupo já existe: apenas atualizar dados (se necessário)
-      grupoId = grupoExistente.id;
+      // Atualizar dados do grupo existente
       const { error: updateErr } = await supabase
         .from("grupos")
         .update({
@@ -184,64 +160,24 @@ function ModalCadastrarGrupo({ termo, grupo, eventoId, onClose, onSaved }: Modal
           tipo_documento: tipoDocumento,
           documento: docLimpo,
         })
-        .eq("id", grupoId);
+        .eq("id", grupoExistente.id);
       if (updateErr) {
         setErro(updateErr.message);
         setSalvando(false);
         return;
       }
     } else {
-      // Criar novo grupo
-      const { data: novo, error: insertErr } = await supabase
-        .from("grupos")
-        .insert({
-          nome: nome.trim(),
-          responsavel: responsavel.trim() || null,
-          telefone: telefone.trim() || null,
-          email: email.trim(),
-          tipo_documento: tipoDocumento,
-          documento: docLimpo,
-        })
-        .select()
-        .single();
+      // Criar novo grupo global
+      const { error: insertErr } = await supabase.from("grupos").insert({
+        nome: nome.trim(),
+        responsavel: responsavel.trim() || null,
+        telefone: telefone.trim() || null,
+        email: email.trim(),
+        tipo_documento: tipoDocumento,
+        documento: docLimpo,
+      });
       if (insertErr) {
         setErro(insertErr.message);
-        setSalvando(false);
-        return;
-      }
-      grupoId = novo.id;
-
-      // Enviar convite apenas se for novo grupo
-      await fetch("/api/convite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim(),
-          nome: responsavel.trim() || nome.trim(),
-          role: "org_admin",
-          grupo_id: grupoId,
-        }),
-      }).catch(() => {});
-    }
-
-    // 2. Verificar se o grupo já está inscrito neste evento
-    const { data: inscricaoExistente } = await supabase
-      .from("inscricoes_grupo_evento")
-      .select("*")
-      .eq("grupo_id", grupoId)
-      .eq("evento_id", eventoId)
-      .maybeSingle();
-
-    if (!inscricaoExistente) {
-      const { error: inscErr } = await supabase
-        .from("inscricoes_grupo_evento")
-        .insert({
-          grupo_id: grupoId,
-          evento_id: eventoId,
-          status: "pendente",
-        });
-      if (inscErr) {
-        setErro(inscErr.message);
         setSalvando(false);
         return;
       }
@@ -323,24 +259,14 @@ function ModalCadastrarGrupo({ termo, grupo, eventoId, onClose, onSaved }: Modal
   );
 }
 
-// Modal cadastrar PARTICIPANTE (apenas CPF, obrigatório) - SEM MUDANÇAS
+// Modal cadastrar PARTICIPANTE (global, sem vínculo com grupo/evento)
 interface ModalCadastrarParticipanteProps {
   termo: Terminologia;
-  grupoId: string;
-  grupoNome: string;
-  eventoId: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function ModalCadastrarParticipante({
-  termo,
-  grupoId,
-  grupoNome,
-  eventoId,
-  onClose,
-  onSaved,
-}: ModalCadastrarParticipanteProps) {
+function ModalCadastrarParticipante({ termo, onClose, onSaved }: ModalCadastrarParticipanteProps) {
   const [cpf, setCpf] = useState("");
   const [nome, setNome] = useState("");
   const [dataNascimento, setDataNascimento] = useState("");
@@ -402,66 +328,24 @@ function ModalCadastrarParticipante({
     setSalvando(true);
     const supabase = createClient();
 
-    let participanteId = participanteExistente?.id;
     if (!participanteExistente) {
-      const { data: novo, error: insertErr } = await supabase
-        .from("participantes")
-        .insert({
-          nome: nome.trim(),
-          documento: cpfLimpo,
-          data_nascimento: dataNascimento || null,
-          email_contato: emailContato.trim(),
-          termo_assinado: termoAssinado,
-          confirmado_vinculo: false,
-          status_disponibilidade: "disponivel",
-        })
-        .select()
-        .single();
+      const { error: insertErr } = await supabase.from("participantes").insert({
+        nome: nome.trim(),
+        documento: cpfLimpo,
+        data_nascimento: dataNascimento || null,
+        email_contato: emailContato.trim(),
+        termo_assinado: termoAssinado,
+      });
       if (insertErr) {
         setErro(insertErr.message);
         setSalvando(false);
         return;
       }
-      participanteId = novo.id;
-    }
-
-    const { data: vinculo, error: vinculoErr } = await supabase
-      .from("participacoes_participante_grupo_evento")
-      .insert({
-        participante_id: participanteId,
-        grupo_id: grupoId,
-        evento_id: eventoId,
-        confirmado: false,
-        status_disponibilidade: "disponivel",
-      })
-      .select()
-      .single();
-
-    if (vinculoErr) {
-      setErro(vinculoErr.message);
+      // Aqui poderíamos enviar e-mail de boas-vindas, mas sem vínculo com grupo/evento.
+    } else {
+      setErro("Participante já existe. Atualização ainda não implementada.");
       setSalvando(false);
       return;
-    }
-
-    const token = crypto.randomUUID();
-    await supabase
-      .from("participacoes_participante_grupo_evento")
-      .update({ token_confirmacao: token })
-      .eq("id", vinculo.id);
-
-    try {
-      await fetch("/api/enviar-confirmacao-participante", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: emailContato.trim(),
-          nome: nome.trim(),
-          grupoNome: grupoNome,
-          token: token,
-        }),
-      });
-    } catch (err) {
-      console.error("Erro ao enviar e-mail:", err);
     }
 
     onSaved();
@@ -474,7 +358,6 @@ function ModalCadastrarParticipante({
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
           <div>
             <h2 className="text-base font-semibold text-white">Cadastrar {termo.participante}</h2>
-            <p className="text-xs text-gray-500">Grupo: {grupoNome}</p>
           </div>
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-white"><X size={18} /></button>
         </div>
@@ -517,7 +400,7 @@ function ModalCadastrarParticipante({
           {!participanteExistente && (
             <div className="flex items-center gap-2">
               <input type="checkbox" id="termo" checked={termoAssinado} onChange={(e) => setTermoAssinado(e.target.checked)} className="w-4 h-4" />
-              <label htmlFor="termo" className="text-sm text-gray-300">Termo de consentimento assinado *</label>
+              <label htmlFor="termo" className="text-sm text-gray-300">Termo de consentimento assinado</label>
             </div>
           )}
           {erro && <p className="text-xs text-red-400">{erro}</p>}
@@ -527,7 +410,7 @@ function ModalCadastrarParticipante({
           <button onClick={salvar} disabled={salvando}
             className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black font-bold disabled:opacity-50 flex items-center justify-center gap-2">
             {salvando && <Loader2 size={14} className="animate-spin" />}
-            {participanteExistente ? "Vincular" : "Cadastrar e vincular"}
+            {participanteExistente ? "Participante já existe" : "Cadastrar"}
           </button>
         </div>
       </div>
@@ -535,135 +418,23 @@ function ModalCadastrarParticipante({
   );
 }
 
-// CardGrupo (sem alterações, apenas ajuste para exibir CPF/CNPJ se desejar – não necessário)
-interface CardGrupoProps {
-  grupo: GrupoComDados;
-  termo: Terminologia;
-  onEdit: (grupo: GrupoComDados) => void;
-  onDelete: (grupo: GrupoComDados) => void;
-  onAddParticipante: (groupId: string, groupName: string, eventoId: string) => void;
-  eventoId: string;
-}
-
-function CardGrupo({ grupo, termo, onEdit, onDelete, onAddParticipante, eventoId }: CardGrupoProps) {
-  const [expandido, setExpandido] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<"apresentacoes" | "participantes">("apresentacoes");
-
-  const totalApres = grupo.apresentacoes.length;
-  const totalParticipantes = grupo.participantes.length;
-  const totalValor = grupo.apresentacoes.reduce((acc, c) => acc + (c.valor_total ?? 0), 0);
-  const totalPago = grupo.apresentacoes.filter(c => c.status_pagamento === "pago").reduce((acc, c) => acc + (c.valor_total ?? 0), 0);
-  const totalPendente = totalValor - totalPago;
-  const tudoPago = totalPendente === 0 && totalApres > 0;
-
-  return (
-    <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
-      <div role="button" onClick={() => setExpandido(!expandido)} className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] cursor-pointer">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-semibold text-white truncate">{grupo.nome}</span>
-            {tudoPago ? <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full">Quitado</span> :
-              totalPendente > 0 && <span className="text-xs bg-axon-gold/10 text-axon-gold px-2 py-0.5 rounded-full">Pendente</span>}
-          </div>
-          {grupo.responsavel && <p className="text-xs text-gray-500 mt-0.5">{grupo.responsavel}</p>}
-        </div>
-        <div className="hidden sm:flex items-center gap-6">
-          <div className="text-center"><p className="text-xs text-gray-500">{termo.apresentacao}s</p><p className="text-sm font-semibold text-white">{totalApres}</p></div>
-          <div className="text-center"><p className="text-xs text-gray-500">{termo.participante}s</p><p className="text-sm font-semibold text-white">{totalParticipantes}</p></div>
-          <div className="text-center"><p className="text-xs text-gray-500">Total</p><p className="text-sm font-semibold text-white">{formatMoeda(totalValor)}</p></div>
-          {totalPendente > 0 && <div className="text-center"><p className="text-xs text-gray-500">A receber</p><p className="text-sm font-semibold text-axon-gold">{formatMoeda(totalPendente)}</p></div>}
-        </div>
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => onEdit(grupo)} className="p-2 text-gray-400 hover:text-axon-gold"><Pencil size={15} /></button>
-          <button onClick={() => onDelete(grupo)} className="p-2 text-gray-400 hover:text-red-400"><Trash2 size={15} /></button>
-          <div className="text-gray-500">{expandido ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</div>
-        </div>
-      </div>
-      {expandido && (
-        <div className="border-t border-axon-border">
-          <div className="flex border-b border-axon-border px-5">
-            {(["apresentacoes", "participantes"] as const).map(aba => (
-              <button key={aba} onClick={() => setAbaAtiva(aba)}
-                className={`px-4 py-3 text-xs font-medium border-b-2 ${abaAtiva === aba ? "border-axon-gold text-axon-gold" : "border-transparent text-gray-500 hover:text-white"}`}>
-                {aba === "apresentacoes" ? `${termo.apresentacao}s` : `${termo.participante}s`}
-              </button>
-            ))}
-          </div>
-          <div className="p-5">
-            {abaAtiva === "apresentacoes" && (grupo.apresentacoes.length === 0 ? <p className="text-gray-600 text-center py-6">Nenhuma {termo.apresentacao.toLowerCase()} inscrita.</p> :
-              grupo.apresentacoes.map(c => (
-                <div key={c.id} className="bg-axon-bg border border-axon-border rounded-lg p-4 mb-3">
-                  <div className="flex justify-between">
-                    <div><p className="text-sm font-semibold text-white">{c.nome}</p><p className="text-xs text-gray-500">{c.tipo} · {c.quantidade_bailarinos} participantes</p></div>
-                    <div className="text-right"><p className="text-sm font-semibold text-white">{formatMoeda(c.valor_total)}</p><span className={`text-xs ${c.status_pagamento === "pago" ? "text-emerald-400" : "text-axon-gold"}`}>{c.status_pagamento === "pago" ? "Pago" : "Pendente"}</span></div>
-                  </div>
-                </div>
-              ))
-            )}
-            {abaAtiva === "participantes" && (
-              <div>
-                <div className="flex justify-end mb-3">
-                  <button onClick={() => onAddParticipante(grupo.id, grupo.nome, eventoId)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-axon-gold/10 border border-axon-gold/30 text-axon-gold text-xs font-medium">
-                    <UserPlus size={14} /> Cadastrar {termo.participante.toLowerCase()}
-                  </button>
-                </div>
-                {grupo.participantes.length === 0 ? <p className="text-gray-600 text-center py-6">Nenhum participante vinculado.</p> :
-                  grupo.participantes.map(p => (
-                    <div key={p.id} className="bg-axon-bg border border-axon-border rounded-lg px-4 py-3 mb-2">
-                      <div className="flex justify-between">
-                        <div><p className="text-sm font-medium text-white">{p.nome}</p><p className="text-xs text-gray-500 tabular-nums">{mascaraCPF(p.documento || "")}</p></div>
-                        <div className="flex items-center gap-2">
-                          {p.confirmado_vinculo ? <span className="text-xs text-emerald-400 flex items-center gap-1"><CheckCircle2 size={11} /> Confirmado</span> :
-                            <span className="text-xs text-amber-400 flex items-center gap-1"><MailCheck size={11} /> Pendente</span>}
-                          {p.status_disponibilidade === "indisponivel" && <span className="text-xs text-red-400">Indisponível</span>}
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                }
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ModalConfirmarExclusao({ grupo, onConfirmar, onCancelar, excluindo, erro }: any) {
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-axon-panel border border-red-500/30 rounded-2xl w-full max-w-sm p-6">
-        <div className="text-center"><div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4"><Trash2 size={22} className="text-red-400" /></div>
-          <h2 className="text-lg font-semibold text-white">Excluir {grupo.nome}?</h2><p className="text-sm text-gray-400 mt-1">Remove a inscrição e todos os dados deste festival.</p></div>
-        {erro && <div className="bg-red-500/10 p-3 rounded text-sm text-red-300 my-4">{erro}</div>}
-        <div className="grid grid-cols-2 gap-3">
-          <button onClick={onCancelar} className="py-3 rounded-xl border border-axon-border text-gray-400">Cancelar</button>
-          <button onClick={onConfirmar} disabled={excluindo} className="py-3 rounded-xl bg-red-500 text-white font-bold flex items-center justify-center gap-2">
-            {excluindo ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
-            {excluindo ? "Excluindo..." : "Sim, excluir"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+// Componente principal – página de inscrições (listagem global de grupos e participantes)
 export default function InscricoesPage() {
-  const [gruposComDados, setGruposComDados] = useState<GrupoComDados[]>([]);
-  const [termo, setTermo] = useState<Terminologia>({ grupo: "Grupo", participante: "Participante", apresentacao: "Apresentação", inscricao: "Inscrição", organizacao: "Organização" });
+  const [grupos, setGrupos] = useState<Grupo[]>([]);
+  const [participantes, setParticipantes] = useState<Participante[]>([]);
+  const [termo, setTermo] = useState<Terminologia>({
+    grupo: "Grupo",
+    participante: "Participante",
+    apresentacao: "Apresentação",
+    inscricao: "Inscrição",
+    organizacao: "Organização",
+  });
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [modalGrupo, setModalGrupo] = useState(false);
   const [editarGrupo, setEditarGrupo] = useState<Grupo | null>(null);
-  const [grupoExcluir, setGrupoExcluir] = useState<GrupoComDados | null>(null);
-  const [excluindo, setExcluindo] = useState(false);
-  const [erroExcluir, setErroExcluir] = useState<string | null>(null);
+  const [modalParticipante, setModalParticipante] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ msg: string; tipo: "ok" | "erro" } | null>(null);
-  const [kpis, setKpis] = useState({ grupos: 0, apresentacoes: 0, participantes: 0, totalPago: 0, totalPendente: 0 });
-  const [modalParticipante, setModalParticipante] = useState<{ groupId: string; groupName: string; eventoId: string } | null>(null);
-  const [eventoAtualId, setEventoAtualId] = useState("");
 
   const mostrarToast = useCallback((msg: string, tipo: "ok" | "erro" = "ok") => {
     setToastMsg({ msg, tipo });
@@ -673,83 +444,203 @@ export default function InscricoesPage() {
   const carregar = useCallback(async () => {
     const supabase = createClient();
     setCarregando(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setCarregando(false); return; }
-    const { data: userData } = await supabase.from("usuarios").select("produtora_id").eq("id", user.id).single();
-    const produtoraId = userData?.produtora_id;
-    if (!produtoraId) { setCarregando(false); return; }
-    const { data: eventoAtual } = await supabase.from("eventos").select("id").eq("produtora_id", produtoraId).limit(1).single();
-    if (!eventoAtual) { setCarregando(false); return; }
-    setEventoAtualId(eventoAtual.id);
 
-    const [{ data: config }, { data: grupos }, { data: inscricoesGrupo }, { data: apres }, { data: participacoes }, { data: participantesAll }] = await Promise.all([
+    const [{ data: config }, { data: gruposData }, { data: participantesData }] = await Promise.all([
       supabase.from("tenant_config").select("termo_grupo, termo_participante, termo_apresentacao, termo_inscricao, nome_organizacao").maybeSingle(),
       supabase.from("grupos").select("*").order("nome"),
-      supabase.from("inscricoes_grupo_evento").select("*").eq("evento_id", eventoAtual.id),
-      supabase.from("apresentacoes").select("*").eq("evento_id", eventoAtual.id),
-      supabase.from("participacoes_participante_grupo_evento").select("*").eq("evento_id", eventoAtual.id),
-      supabase.from("participantes").select("*"),
+      supabase.from("participantes").select("*").order("nome"),
     ]);
 
-    if (config) setTermo({ ...termo, grupo: config.termo_grupo || "Grupo", participante: config.termo_participante || "Participante", apresentacao: config.termo_apresentacao || "Apresentação", inscricao: config.termo_inscricao || "Inscrição", organizacao: config.nome_organizacao || "Organização" });
+    if (config) {
+      setTermo({
+        grupo: (config as any).termo_grupo || "Grupo",
+        participante: (config as any).termo_participante || "Participante",
+        apresentacao: (config as any).termo_apresentacao || "Apresentação",
+        inscricao: (config as any).termo_inscricao || "Inscrição",
+        organizacao: (config as any).nome_organizacao || "Organização",
+      });
+    }
 
-    const gruposArr = grupos ?? [];
-    const inscricoesArr = inscricoesGrupo ?? [];
-    const apresArr = apres ?? [];
-    const participacoesArr = participacoes ?? [];
-    const participantesAllArr = participantesAll ?? [];
-
-    const gruposInscritos = gruposArr.filter(g => inscricoesArr.some(i => i.grupo_id === g.id));
-    const compostos = gruposInscritos.map(g => ({
-      ...g,
-      apresentacoes: apresArr.filter(a => a.grupo_id === g.id),
-      participantes: participantesAllArr.filter(p => participacoesArr.some(pp => pp.participante_id === p.id && pp.grupo_id === g.id)),
-    }));
-    setGruposComDados(compostos);
-    const totalPago = apresArr.filter(a => a.status_pagamento === "pago").reduce((s, a) => s + (a.valor_total ?? 0), 0);
-    const totalPendente = apresArr.filter(a => a.status_pagamento === "pendente").reduce((s, a) => s + (a.valor_total ?? 0), 0);
-    setKpis({ grupos: gruposInscritos.length, apresentacoes: apresArr.length, participantes: participacoesArr.length, totalPago, totalPendente });
+    setGrupos(gruposData ?? []);
+    setParticipantes(participantesData ?? []);
     setCarregando(false);
   }, []);
 
-  useEffect(() => { carregar(); }, [carregar]);
-
-  const filtrados = gruposComDados.filter(g => g.nome.toLowerCase().includes(busca.toLowerCase()) || (g.responsavel ?? "").toLowerCase().includes(busca.toLowerCase()));
-
-  async function confirmarExcluir() {
-    const supabase = createClient();
-    if (!grupoExcluir) return;
-    setErroExcluir(null);
-    setExcluindo(true);
-    await supabase.from("inscricoes_grupo_evento").delete().eq("grupo_id", grupoExcluir.id).eq("evento_id", eventoAtualId);
-    await supabase.from("apresentacoes").delete().eq("grupo_id", grupoExcluir.id).eq("evento_id", eventoAtualId);
-    await supabase.from("participacoes_participante_grupo_evento").delete().eq("grupo_id", grupoExcluir.id).eq("evento_id", eventoAtualId);
-    setGrupoExcluir(null);
-    setExcluindo(false);
-    mostrarToast("Grupo removido do festival.");
+  useEffect(() => {
     carregar();
+  }, [carregar]);
+
+  const gruposFiltrados = grupos.filter(g =>
+    g.nome.toLowerCase().includes(busca.toLowerCase()) ||
+    (g.responsavel ?? "").toLowerCase().includes(busca.toLowerCase())
+  );
+
+  const participantesFiltrados = participantes.filter(p =>
+    p.nome.toLowerCase().includes(busca.toLowerCase()) ||
+    (p.documento ?? "").includes(busca.replace(/\D/g, ""))
+  );
+
+  async function excluirGrupo(id: string) {
+    if (!confirm("Tem certeza que deseja excluir este grupo?")) return;
+    const supabase = createClient();
+    const { error } = await supabase.from("grupos").delete().eq("id", id);
+    if (error) {
+      mostrarToast("Erro ao excluir grupo: " + error.message, "erro");
+    } else {
+      mostrarToast("Grupo excluído com sucesso.");
+      carregar();
+    }
+  }
+
+  async function excluirParticipante(id: string) {
+    if (!confirm("Tem certeza que deseja excluir este participante?")) return;
+    const supabase = createClient();
+    const { error } = await supabase.from("participantes").delete().eq("id", id);
+    if (error) {
+      mostrarToast("Erro ao excluir participante: " + error.message, "erro");
+    } else {
+      mostrarToast("Participante excluído com sucesso.");
+      carregar();
+    }
   }
 
   return (
     <>
-      {modalGrupo && <ModalCadastrarGrupo termo={termo} grupo={editarGrupo} eventoId={eventoAtualId} onClose={() => { setModalGrupo(false); setEditarGrupo(null); }} onSaved={() => { setEditarGrupo(null); carregar(); }} />}
-      {modalParticipante && <ModalCadastrarParticipante termo={termo} grupoId={modalParticipante.groupId} grupoNome={modalParticipante.groupName} eventoId={eventoAtualId} onClose={() => setModalParticipante(null)} onSaved={() => { carregar(); mostrarToast(`${termo.participante} cadastrado com sucesso!`); }} />}
+      {modalGrupo && (
+        <ModalCadastrarGrupo
+          termo={termo}
+          grupo={editarGrupo}
+          onClose={() => { setModalGrupo(false); setEditarGrupo(null); }}
+          onSaved={() => { setEditarGrupo(null); carregar(); }}
+        />
+      )}
+      {modalParticipante && (
+        <ModalCadastrarParticipante
+          termo={termo}
+          onClose={() => setModalParticipante(false)}
+          onSaved={() => { carregar(); mostrarToast(`${termo.participante} cadastrado com sucesso!`); }}
+        />
+      )}
+
       <div className="max-w-5xl mx-auto space-y-6 p-6">
         <div className="flex justify-between items-start">
-          <div><h1 className="text-xl font-semibold text-white">{termo.inscricao}s e Elenco</h1><p className="text-sm text-gray-500">Gerencie grupos, apresentações e participantes.</p></div>
-          <button onClick={() => setModalGrupo(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-axon-gold text-black font-bold"><Plus size={15} /> Cadastrar {termo.grupo}</button>
+          <div>
+            <h1 className="text-xl font-semibold text-white">Base de Dados</h1>
+            <p className="text-sm text-gray-500">
+              Gerencie grupos e participantes. Esta é a sua base global, independente de eventos.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setModalGrupo(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-axon-gold text-black font-bold"
+            >
+              <Plus size={15} /> Cadastrar {termo.grupo}
+            </button>
+            <button
+              onClick={() => setModalParticipante(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-axon-gold text-axon-gold font-bold hover:bg-axon-gold/10"
+            >
+              <UserPlus size={15} /> Cadastrar {termo.participante}
+            </button>
+          </div>
         </div>
-        <Dica>Cadastre grupos e envie convite. Use o botão "Cadastrar participante" dentro de cada grupo para inclusão emergencial.</Dica>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          {[{ label: `${termo.grupo}s`, value: kpis.grupos, icon: Users }, { label: `${termo.apresentacao}s`, value: kpis.apresentacoes, icon: Music4 }, { label: `${termo.participante}s`, value: kpis.participantes, icon: Users }, { label: "Total pago", value: formatMoeda(kpis.totalPago), icon: CircleDollarSign, cor: "green" }, { label: "A receber", value: formatMoeda(kpis.totalPendente), icon: CircleDollarSign, cor: "gold" }].map(({ label, value, icon: Icon, cor }) => (
-            <div key={label} className="bg-axon-panel border border-axon-border rounded-xl p-4"><div className="flex items-center gap-2 mb-2"><Icon size={14} className={cor === "green" ? "text-emerald-400" : cor === "gold" ? "text-axon-gold" : "text-gray-500"} /><p className="text-xs text-gray-500">{label}</p></div><p className={`text-lg font-semibold ${cor === "green" ? "text-emerald-400" : cor === "gold" ? "text-axon-gold" : "text-white"}`}>{value}</p></div>
-          ))}
+
+        <Dica>
+          Cadastre grupos e participantes independentemente de eventos. Depois, ao criar um festival, você poderá inscrever grupos e vincular participantes.
+        </Dica>
+
+        <div className="relative max-w-sm">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder={`Buscar ${termo.grupo.toLowerCase()} ou ${termo.participante.toLowerCase()}...`}
+            className="w-full bg-axon-panel border border-axon-border rounded-lg pl-9 pr-3 py-2 text-sm text-white"
+          />
         </div>
-        <div className="relative max-w-sm"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" /><input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder={`Buscar ${termo.grupo.toLowerCase()}...`} className="w-full bg-axon-panel border border-axon-border rounded-lg pl-9 pr-3 py-2 text-sm text-white" /></div>
-        {carregando ? <div className="space-y-3">{Array(3).fill(0).map((_,i)=><div key={i} className="bg-axon-panel border border-axon-border rounded-xl p-5 h-20 animate-pulse"></div>)}</div> : filtrados.length === 0 ? <div className="text-center py-16 border border-dashed rounded-xl text-gray-600"><Users size={36} className="mx-auto mb-3 opacity-20" /><p className="font-medium">Nenhum grupo encontrado</p></div> : <div className="space-y-3">{filtrados.map(g => <CardGrupo key={g.id} grupo={g} termo={termo} onEdit={(g)=>{setEditarGrupo(g); setModalGrupo(true);}} onDelete={setGrupoExcluir} onAddParticipante={(id,name)=>setModalParticipante({groupId:id, groupName:name, eventoId:eventoAtualId})} eventoId={eventoAtualId} />)}</div>}
+
+        {carregando ? (
+          <div className="space-y-3">
+            {Array(3).fill(0).map((_, i) => (
+              <div key={i} className="bg-axon-panel border border-axon-border rounded-xl p-5 h-20 animate-pulse"></div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Lista de Grupos */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-white">{termo.grupo}s</h2>
+                <span className="text-xs text-gray-500">{grupos.length} registros</span>
+              </div>
+              <div className="space-y-2">
+                {gruposFiltrados.length === 0 ? (
+                  <p className="text-gray-600 text-center py-8 border border-dashed rounded-xl">
+                    Nenhum {termo.grupo.toLowerCase()} cadastrado.
+                  </p>
+                ) : (
+                  gruposFiltrados.map(g => (
+                    <div key={g.id} className="bg-axon-panel border border-axon-border rounded-lg p-4 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-white">{g.nome}</p>
+                        <p className="text-xs text-gray-500">{g.responsavel || "Sem responsável"} • {g.email}</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          {g.tipo_documento === "cpf" ? "CPF" : "CNPJ"}: {g.tipo_documento === "cpf" ? mascaraCPF(g.documento || "") : mascaraCNPJ(g.documento || "")}
+                        </p>
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => { setEditarGrupo(g); setModalGrupo(true); }} className="p-1.5 text-gray-400 hover:text-axon-gold">
+                          <Pencil size={16} />
+                        </button>
+                        <button onClick={() => excluirGrupo(g.id)} className="p-1.5 text-gray-400 hover:text-red-400">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Lista de Participantes */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-white">{termo.participante}s</h2>
+                <span className="text-xs text-gray-500">{participantes.length} registros</span>
+              </div>
+              <div className="space-y-2">
+                {participantesFiltrados.length === 0 ? (
+                  <p className="text-gray-600 text-center py-8 border border-dashed rounded-xl">
+                    Nenhum {termo.participante.toLowerCase()} cadastrado.
+                  </p>
+                ) : (
+                  participantesFiltrados.map(p => (
+                    <div key={p.id} className="bg-axon-panel border border-axon-border rounded-lg p-4 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-white">{p.nome}</p>
+                        <p className="text-xs text-gray-500">CPF: {mascaraCPF(p.documento || "")}</p>
+                        <p className="text-xs text-gray-500">{p.email_contato}</p>
+                      </div>
+                      <button onClick={() => excluirParticipante(p.id)} className="p-1.5 text-gray-400 hover:text-red-400">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-      {grupoExcluir && <ModalConfirmarExclusao grupo={grupoExcluir} onConfirmar={confirmarExcluir} onCancelar={()=>{setGrupoExcluir(null); setErroExcluir(null);}} excluindo={excluindo} erro={erroExcluir} />}
-      {toastMsg && <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-full text-sm font-semibold shadow-xl ${toastMsg.tipo === "ok" ? "bg-axon-gold text-black" : "bg-red-500/90 text-white"}`}><CheckCircle2 size={16} />{toastMsg.msg}</div>}
+
+      {toastMsg && (
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-full text-sm font-semibold shadow-xl ${toastMsg.tipo === "ok" ? "bg-axon-gold text-black" : "bg-red-500/90 text-white"}`}>
+          <CheckCircle2 size={16} />
+          {toastMsg.msg}
+        </div>
+      )}
     </>
   );
 }
