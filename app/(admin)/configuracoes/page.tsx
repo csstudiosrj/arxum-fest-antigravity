@@ -430,7 +430,7 @@ export default function ConfiguracoesPage() {
             estilo_id: estilo.id,
             produtora_id: produtoraId,
             ativo: !atualAtivo,
-          }, { onConflict: 'id' })
+          }, { onConflict: 'produtora_id,estilo_id' })
           .select()
           .single();
 
@@ -449,7 +449,7 @@ export default function ConfiguracoesPage() {
             estilo_id: estilo.id,
             produtora_id: produtoraId,
             ativo: true,
-          })
+          }, { onConflict: 'produtora_id,estilo_id' })
           .select()
           .single();
 
@@ -490,7 +490,7 @@ export default function ConfiguracoesPage() {
 
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .upsert(dadosUpsert, { onConflict: 'id' })
+          .upsert(dadosUpsert, { onConflict: 'produtora_id,estilo_id' })
           .select();
 
         if (error) throw error;
@@ -526,7 +526,7 @@ export default function ConfiguracoesPage() {
 
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .upsert(dadosUpsert, { onConflict: 'id' })
+          .upsert(dadosUpsert, { onConflict: 'produtora_id,estilo_id' })
           .select();
 
         if (error) throw error;
