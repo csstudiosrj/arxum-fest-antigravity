@@ -8,6 +8,59 @@ import {
   MoreHorizontal, Loader2, Trash2, Settings, X,
 } from "lucide-react";
 
+// ============================================================
+// MAPEAMENTO DE PRESETS DINÂMICOS
+// ============================================================
+const PRESETS: Record<string, {
+  placeholderNovo: string;
+  dica: React.ReactNode;
+  placeholderNome: string;
+  taxaSolo: string;
+  taxaDuo: string;
+  taxaConjunto: string;
+  explicacaoSub: string;
+}> = {
+  danca: {
+    placeholderNovo: "Ex: Festival de Dança ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Ballet</em>) e, dentro delas, subcategorias por faixa etária ou gênero (ex: <em>Ballet Infantil Feminino</em>). As taxas de inscrição são definidas por categoria. Solo, Duo e Conjunto têm valores diferentes.
+      </>
+    ),
+    placeholderNome: "Ex: Ballet Clássico, Jazz Adulto, Contemporâneo...",
+    taxaSolo: "Solo (R$)",
+    taxaDuo: "Duo (R$)",
+    taxaConjunto: "Conjunto/pax (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o estilo, mas tem faixa etária e gênero próprios.",
+  },
+  musica: {
+    placeholderNovo: "Ex: Festival de Música ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>MPB, Rock</em>) e, dentro delas, subcategorias por formato (ex: <em>Solo Vocal, Banda Instrumental</em>). As taxas de inscrição são definidas por categoria.
+      </>
+    ),
+    placeholderNome: "Ex: MPB, Rock, Solo Vocal, Música Clássica...",
+    taxaSolo: "Solo (R$)",
+    taxaDuo: "Duo/Dupla (R$)",
+    taxaConjunto: "Banda/Grupo (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o estilo musical, mas tem formato e características próprias.",
+  },
+  teatro: {
+    placeholderNovo: "Ex: Mostra de Teatro ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Comédia, Drama</em>) e, dentro delas, subcategorias (ex: <em>Cena Curta, Monólogo</em>). As taxas de inscrição são definidas por categoria.
+      </>
+    ),
+    placeholderNome: "Ex: Comédia, Drama, Monólogo, Teatro Musical...",
+    taxaSolo: "Monólogo (R$)",
+    taxaDuo: "Cena em Dupla (R$)",
+    taxaConjunto: "Elenco/Grupo (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o gênero teatral, mas tem duração ou elenco específicos.",
+  },
+};
+
 type Evento = {
   id: string; nome: string; data_inicio: string; data_fim: string;
   local: string; status: string; inscritos_count: number;
@@ -33,13 +86,14 @@ function formatarPeriodo(inicio: string, fim: string) {
 
 export default function EventosPage() {
   const router = useRouter();
-  const [eventos, setEventos]       = useState<Evento[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [menuAberto, setMenuAberto] = useState<string | null>(null);
-  const [modalNovo, setModalNovo]   = useState(false);
-  const [criando, setCriando]       = useState(false);
-  const [excluindo, setExcluindo]   = useState<string | null>(null);
-  const [produtoraId, setProdutoraId] = useState<string | null>(null);
+  const [eventos, setEventos]           = useState<Evento[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [menuAberto, setMenuAberto]     = useState<string | null>(null);
+  const [modalNovo, setModalNovo]       = useState(false);
+  const [criando, setCriando]           = useState(false);
+  const [excluindo, setExcluindo]       = useState<string | null>(null);
+  const [produtoraId, setProdutoraId]   = useState<string | null>(null);
+  const [perfilSlug, setPerfilSlug]     = useState("danca");
   const [form, setForm] = useState({ nome: "", data_inicio: "", data_fim: "" });
 
   const supabase = createClient();
@@ -82,6 +136,18 @@ export default function EventosPage() {
 
       if (userData.produtora_id) {
         setProdutoraId(userData.produtora_id);
+
+        // Busca o preset ativo da produtora via join com perfis_festival
+        const { data: config } = await supabase
+          .from("tenant_config")
+          .select("perfis_festival:perfil_id ( slug )")
+          .eq("produtora_id", userData.produtora_id)
+          .maybeSingle();
+
+        if ((config?.perfis_festival as any)?.slug) {
+          setPerfilSlug((config!.perfis_festival as any).slug);
+        }
+
         await carregarEventos(userData.produtora_id);
       } else {
         setLoading(false);
@@ -258,7 +324,7 @@ export default function EventosPage() {
                   <label className="text-sm text-gray-400">Nome do Festival *</label>
                   <input
                     type="text"
-                    placeholder="Ex: Festival de Dança ARXUM 2026"
+                    placeholder={PRESETS[perfilSlug]?.placeholderNovo || PRESETS.danca.placeholderNovo}
                     value={form.nome}
                     onChange={(e) => setForm({ ...form, nome: e.target.value })}
                     disabled={criando}

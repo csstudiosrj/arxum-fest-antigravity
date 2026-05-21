@@ -12,9 +12,66 @@ import {
   LayoutDashboard, Info, AlertCircle,
 } from "lucide-react";
 
+// ============================================================
+// MAPEAMENTO DE PRESETS DINÂMICOS
+// ============================================================
+const PRESETS: Record<string, {
+  placeholderNovo: string;
+  dica: React.ReactNode;
+  placeholderNome: string;
+  taxaSolo: string;
+  taxaDuo: string;
+  taxaConjunto: string;
+  explicacaoSub: string;
+}> = {
+  danca: {
+    placeholderNovo: "Ex: Festival de Dança ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Ballet</em>) e, dentro delas, subcategorias por faixa etária ou gênero (ex: <em>Ballet Infantil Feminino</em>). As taxas de inscrição são definidas por categoria. Solo, Duo e Conjunto têm valores diferentes.
+      </>
+    ),
+    placeholderNome: "Ex: Ballet Clássico, Jazz Adulto, Contemporâneo...",
+    taxaSolo: "Solo (R$)",
+    taxaDuo: "Duo (R$)",
+    taxaConjunto: "Conjunto/pax (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o estilo, mas tem faixa etária e gênero próprios.",
+  },
+  musica: {
+    placeholderNovo: "Ex: Festival de Música ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>MPB, Rock</em>) e, dentro delas, subcategorias por formato (ex: <em>Solo Vocal, Banda Instrumental</em>). As taxas de inscrição são definidas por categoria.
+      </>
+    ),
+    placeholderNome: "Ex: MPB, Rock, Solo Vocal, Música Clássica...",
+    taxaSolo: "Solo (R$)",
+    taxaDuo: "Duo/Dupla (R$)",
+    taxaConjunto: "Banda/Grupo (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o estilo musical, mas tem formato e características próprias.",
+  },
+  teatro: {
+    placeholderNovo: "Ex: Mostra de Teatro ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Comédia, Drama</em>) e, dentro delas, subcategorias (ex: <em>Cena Curta, Monólogo</em>). As taxas de inscrição são definidas por categoria.
+      </>
+    ),
+    placeholderNome: "Ex: Comédia, Drama, Monólogo, Teatro Musical...",
+    taxaSolo: "Monólogo (R$)",
+    taxaDuo: "Cena em Dupla (R$)",
+    taxaConjunto: "Elenco/Grupo (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o gênero teatral, mas tem duração ou elenco específicos.",
+  },
+};
+
+// ============================================================
+// TIPOS
+// ============================================================
 type Evento = {
   id: string; nome: string; data_inicio: string; data_fim: string;
   local: string; status: string; descricao: string | null;
+  produtora_id: string | null;
 };
 type Categoria = {
   id: string; nome: string; valor_solo: number; valor_duo: number; valor_conjunto: number;
@@ -98,6 +155,7 @@ export default function PainelEventoPage() {
   const [totalInscritos, setTotalInscritos] = useState(0);
   const [totalPendentes, setTotalPendentes] = useState(0);
   const [toasts, setToasts]             = useState<Toast[]>([]);
+  const [perfilSlug, setPerfilSlug]     = useState("danca");
 
   const [modalCat, setModalCat]         = useState(false);
   const [catEditando, setCatEditando]   = useState<Categoria | null>(null);
@@ -137,6 +195,19 @@ export default function PainelEventoPage() {
       setEvento(ev);
       setForm(ev);
 
+      // Busca o preset ativo da produtora via join com perfis_festival
+      if (ev.produtora_id) {
+        const { data: config } = await supabase
+          .from("tenant_config")
+          .select("perfis_festival:perfil_id ( slug )")
+          .eq("produtora_id", ev.produtora_id)
+          .maybeSingle();
+
+        if ((config?.perfis_festival as any)?.slug) {
+          setPerfilSlug((config!.perfis_festival as any).slug);
+        }
+      }
+
       const todasCats = (cats ?? []) as Categoria[];
       const pais = todasCats
         .filter((c) => !c.categoria_pai_id)
@@ -147,7 +218,6 @@ export default function PainelEventoPage() {
       setCategorias(pais);
       setApresentacoes((apres ?? []) as Apresentacao[]);
 
-      // Contagens a partir de apresentacoes
       const total = (apres ?? []).length;
       const pendentes = (apres ?? []).filter((a: any) => a.status_pagamento === "Pendente").length;
       setTotalInscritos(total);
@@ -271,6 +341,9 @@ export default function PainelEventoPage() {
   if (!evento) return null;
 
   const categoriasRaiz = categorias.filter((c) => !c.categoria_pai_id);
+
+  // Preset ativo resolvido com fallback para dança
+  const presetAtual = PRESETS[perfilSlug] || PRESETS.danca;
 
   return (
     <>
@@ -555,9 +628,9 @@ export default function PainelEventoPage() {
                   </button>
                 </div>
 
+                {/* Dica dinâmica baseada no preset ativo */}
                 <Dica>
-                  <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Ballet</em>) e, dentro delas, subcategorias por faixa etária ou gênero (ex: <em>Ballet Infantil Feminino</em>).
-                  As taxas de inscrição são definidas por categoria. Solo, Duo e Conjunto têm valores diferentes.
+                  {presetAtual.dica}
                 </Dica>
 
                 {categorias.length === 0 ? (
@@ -589,9 +662,9 @@ export default function PainelEventoPage() {
                               )}
                             </div>
                             <p className="text-sm text-gray-400 mt-1.5">
-                              Solo: <span className="text-white">{moeda(cat.valor_solo)}</span>
-                              {" · "}Duo: <span className="text-white">{moeda(cat.valor_duo)}</span>
-                              {" · "}Conjunto: <span className="text-white">{moeda(cat.valor_conjunto)}/pax</span>
+                              {presetAtual.taxaSolo.replace(" (R$)", "")}: <span className="text-white">{moeda(cat.valor_solo)}</span>
+                              {" · "}{presetAtual.taxaDuo.replace(" (R$)", "")}: <span className="text-white">{moeda(cat.valor_duo)}</span>
+                              {" · "}{presetAtual.taxaConjunto.replace(" (R$)", "")}: <span className="text-white">{moeda(cat.valor_conjunto)}/pax</span>
                             </p>
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -626,7 +699,7 @@ export default function PainelEventoPage() {
                                       )}
                                     </div>
                                     <p className="text-xs text-gray-500 mt-0.5">
-                                      Solo: {moeda(sub.valor_solo)} · Duo: {moeda(sub.valor_duo)} · Conjunto: {moeda(sub.valor_conjunto)}/pax
+                                      {presetAtual.taxaSolo.replace(" (R$)", "")}: {moeda(sub.valor_solo)} · {presetAtual.taxaDuo.replace(" (R$)", "")}: {moeda(sub.valor_duo)} · {presetAtual.taxaConjunto.replace(" (R$)", "")}: {moeda(sub.valor_conjunto)}/pax
                                     </p>
                                   </div>
                                 </div>
@@ -737,9 +810,10 @@ export default function PainelEventoPage() {
                   <h3 className="text-lg font-semibold text-white">
                     {catEditando ? "Editar Categoria" : formCat.categoria_pai_id ? "Nova Subcategoria" : "Nova Categoria"}
                   </h3>
+                  {/* Descrição da subcategoria dinâmica pelo preset */}
                   <p className="text-xs text-gray-500 mt-0.5">
                     {formCat.categoria_pai_id
-                      ? "Subcategoria vinculada a uma categoria-pai. Herda o estilo, mas tem faixa etária e gênero próprios."
+                      ? (presetAtual.explicacaoSub)
                       : "Categoria principal. Você pode adicionar subcategorias depois."}
                   </p>
                 </div>
@@ -765,7 +839,9 @@ export default function PainelEventoPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400 font-medium">Nome *</label>
-                  <input type="text" placeholder="Ex: Ballet Clássico, Jazz Adulto..."
+                  {/* Placeholder dinâmico pelo preset */}
+                  <input type="text"
+                    placeholder={presetAtual.placeholderNome}
                     value={formCat.nome}
                     onChange={(e) => setFormCat({ ...formCat, nome: e.target.value })}
                     className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200" />
@@ -816,18 +892,25 @@ export default function PainelEventoPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400 font-medium">Taxas de Inscrição</label>
-                  <p className="text-xs text-gray-500">Valor cobrado por modalidade. Conjunto é o valor por participante.</p>
+                  <p className="text-xs text-gray-500">Valor cobrado por modalidade. O terceiro campo é o valor por participante.</p>
                   <div className="grid grid-cols-3 gap-3">
-                    {(["valor_solo", "valor_duo", "valor_conjunto"] as const).map((campo) => (
-                      <div key={campo} className="space-y-1">
-                        <label className="text-xs text-gray-500">
-                          {campo === "valor_solo" ? "Solo (R$)" : campo === "valor_duo" ? "Duo (R$)" : "Conjunto/pax (R$)"}
-                        </label>
-                        <input type="number" min={0} value={formCat[campo]}
-                          onChange={(e) => setFormCat({ ...formCat, [campo]: Number(e.target.value) })}
-                          className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200" />
-                      </div>
-                    ))}
+                    {(["valor_solo", "valor_duo", "valor_conjunto"] as const).map((campo) => {
+                      // Labels dinâmicas pelo preset ativo
+                      const labelTaxa =
+                        campo === "valor_solo"
+                          ? presetAtual.taxaSolo
+                          : campo === "valor_duo"
+                          ? presetAtual.taxaDuo
+                          : presetAtual.taxaConjunto;
+                      return (
+                        <div key={campo} className="space-y-1">
+                          <label className="text-xs text-gray-500">{labelTaxa}</label>
+                          <input type="number" min={0} value={formCat[campo]}
+                            onChange={(e) => setFormCat({ ...formCat, [campo]: Number(e.target.value) })}
+                            className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200" />
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
