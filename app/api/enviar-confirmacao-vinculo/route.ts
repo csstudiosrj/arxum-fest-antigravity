@@ -12,7 +12,9 @@ export async function POST(request: NextRequest) {
     }
 
     const confirmLink = `${process.env.NEXT_PUBLIC_APP_URL}/confirmar-participacao/${token}`;
-    const funcaoLabel = {
+
+    // Objeto com tipagem explícita para evitar erro de TypeScript
+    const funcaoLabel: Record<string, string> = {
       bailarino: "Bailarino(a)",
       cantor: "Cantor(a)",
       musico: "Músico(a)",
@@ -21,7 +23,9 @@ export async function POST(request: NextRequest) {
       producao: "Produção",
       coreografo: "Coreógrafo(a)",
       outro: "Outro",
-    }[funcao] || funcao;
+    };
+
+    const funcaoTraduzida = funcaoLabel[funcao] || funcao;
 
     await resend.emails.send({
       from: "ARXUM Fest <noreply@csstudios.site>",
@@ -31,7 +35,7 @@ export async function POST(request: NextRequest) {
         <div style="font-family: sans-serif; max-width: 500px;">
           <h2>Olá, ${nome}!</h2>
           <p>Você foi adicionado(a) ao grupo <strong>${grupoNome}</strong> no ARXUM Fest.</p>
-          <p><strong>Sua função neste grupo:</strong> ${funcaoLabel}</p>
+          <p><strong>Sua função neste grupo:</strong> ${funcaoTraduzida}</p>
           <p>Para confirmar seu vínculo e participar dos festivais, clique no link abaixo:</p>
           <a href="${confirmLink}" style="background-color: #C5A059; color: black; padding: 10px 20px; text-decoration: none; border-radius: 8px;">Confirmar vínculo</a>
           <p>Se você não solicitou este vínculo, ignore este e-mail.</p>
