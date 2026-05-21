@@ -410,25 +410,39 @@ export default function ConfiguracoesPage() {
   }
 
   // ============================================================
-  // FUNÇÕES CORRIGIDAS (sem onConflict manual)
+  // toggleEstilo — usa o id do registro existente para UPDATE limpo
   // ============================================================
   async function toggleEstilo(estilo: Estilo) {
     if (!produtoraId) return;
 
-    const jaAtivo = estilosAtivos.find((e) => e.estilo_id === estilo.id);
+    const registroExistente = estilosAtivos.find(
+      (e) => e.estilo_id === estilo.id
+    );
+    const atualAtivo = !!(registroExistente && registroExistente.ativo);
 
     try {
-      if (jaAtivo) {
-        const { error } = await supabase
+      if (registroExistente) {
+        // Registro já existe: faz UPDATE por id (sem risco de 409)
+        const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .delete()
-          .eq("estilo_id", estilo.id)
-          .eq("produtora_id", produtoraId);
+          .upsert({
+            id: registroExistente.id,
+            estilo_id: estilo.id,
+            produtora_id: produtoraId,
+            ativo: !atualAtivo,
+          })
+          .select()
+          .single();
 
         if (error) throw error;
 
-        setEstilosAtivos((p) => p.filter((e) => e.estilo_id !== estilo.id));
+        if (data) {
+          setEstilosAtivos((p) =>
+            p.map((e) => (e.id === registroExistente.id ? data : e))
+          );
+        }
       } else {
+        // Registro não existe: INSERT via upsert sem id
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
           .upsert({
@@ -445,18 +459,21 @@ export default function ConfiguracoesPage() {
     } catch {
       addToast(
         "erro",
-        `Erro ao ${jaAtivo ? "desativar" : "ativar"} ${estilo.nome}.`
+        `Erro ao ${atualAtivo ? "desativar" : "ativar"} ${estilo.nome}.`
       );
     }
   }
 
+  // ============================================================
+  // toggleTodos — passa id nos registros existentes para evitar 409
+  // ============================================================
   async function toggleTodos(ativar: boolean) {
     if (!produtoraId) return;
 
     try {
       if (ativar) {
         const faltando = estilos.filter(
-          (e) => !estilosAtivos.find((a) => a.estilo_id === e.id)
+          (e) => !estilosAtivos.find((a) => a.estilo_id === e.id && a.ativo)
         );
 
         if (faltando.length === 0) {
@@ -464,10 +481,47 @@ export default function ConfiguracoesPage() {
           return;
         }
 
-        const dadosUpsert = faltando.map((e) => ({
-          estilo_id: e.id,
+        const dadosUpsert = faltando.map((e) => {
+          const existente = estilosAtivos.find((a) => a.estilo_id === e.id);
+          return existente
+            ? { id: existente.id, estilo_id: e.id, produtora_id: produtoraId, ativo: true }
+            : { estilo_id: e.id, produtora_id: produtoraId, ativo: true };
+        });
+
+        const { data, error } = await supabase
+          .from("tenant_estilos_ativos")
+          .upsert(dadosUpsert)
+          .select();
+
+        if (error) throw error;
+
+        if (data) {
+          setEstilosAtivos((prev) => {
+            const mapa = new Map(prev.map((a) => [a.estilo_id, a]));
+            for (const item of data) {
+              mapa.set(item.estilo_id, item);
+            }
+            return Array.from(mapa.values());
+          });
+        }
+
+        addToast("sucesso", `${faltando.length} estilos ativados!`);
+      } else {
+        // Desativar todos: usa upsert com id (quando existir) e ativo: false
+        const registrosParaDesativar = estilosAtivos.filter((a) =>
+          estilos.find((e) => e.id === a.estilo_id)
+        );
+
+        if (registrosParaDesativar.length === 0) {
+          addToast("aviso", "Nenhum estilo ativo para desativar.");
+          return;
+        }
+
+        const dadosUpsert = registrosParaDesativar.map((a) => ({
+          id: a.id,
+          estilo_id: a.estilo_id,
           produtora_id: produtoraId,
-          ativo: true,
+          ativo: false,
         }));
 
         const { data, error } = await supabase
@@ -477,21 +531,16 @@ export default function ConfiguracoesPage() {
 
         if (error) throw error;
 
-        setEstilosAtivos((p) => [...p, ...(data ?? [])]);
-        addToast("sucesso", `${faltando.length} estilos ativados!`);
-      } else {
-        const { error } = await supabase
-          .from("tenant_estilos_ativos")
-          .delete()
-          .eq("produtora_id", produtoraId)
-          .in(
-            "estilo_id",
-            estilos.map((e) => e.id)
-          );
+        if (data) {
+          setEstilosAtivos((prev) => {
+            const mapa = new Map(prev.map((a) => [a.estilo_id, a]));
+            for (const item of data) {
+              mapa.set(item.estilo_id, item);
+            }
+            return Array.from(mapa.values());
+          });
+        }
 
-        if (error) throw error;
-
-        setEstilosAtivos([]);
         addToast("sucesso", "Todos os estilos foram desativados.");
       }
     } catch {
@@ -499,6 +548,9 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  // ============================================================
+  // criarEstiloManual — INSERT novo estilo + INSERT novo registro ativo
+  // ============================================================
   async function criarEstiloManual() {
     if (!novoEstilo.nome.trim() || !formConfig.perfil_id || !produtoraId) return;
 
@@ -528,9 +580,11 @@ export default function ConfiguracoesPage() {
 
       setEstilos((p) => [...p, estiloData]);
 
+      // Novo estilo: nunca terá registro em tenant_estilos_ativos ainda,
+      // então faz INSERT direto (sem id) — sem risco de 409.
       const { data: ativoData, error: ativoError } = await supabase
         .from("tenant_estilos_ativos")
-        .upsert({
+        .insert({
           estilo_id: estiloData.id,
           produtora_id: produtoraId,
           ativo: true,
@@ -665,8 +719,10 @@ export default function ConfiguracoesPage() {
   if (loading) return <LoadingSkeleton />;
 
   const perfilAtivo = perfis.find((p) => p.id === formConfig.perfil_id);
-  const totalAtivos = estilosAtivos.filter((a) =>
-    estilos.find((e) => e.id === a.estilo_id)
+
+  // FIX: checa a propriedade .ativo do registro (corrige o bug "0 de N estilos ativos")
+  const totalAtivos = estilosAtivos.filter(
+    (a) => estilos.find((e) => e.id === a.estilo_id) && a.ativo
   ).length;
 
   const abas: { id: AbaId; label: string; icon: React.ElementType }[] = [
@@ -764,7 +820,6 @@ export default function ConfiguracoesPage() {
                     Cancelar
                   </button>
                 )}
-
                 <button
                   onClick={() => void criarEstiloManual()}
                   disabled={criandoEstilo || !novoEstilo.nome.trim()}
@@ -971,7 +1026,10 @@ export default function ConfiguracoesPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                       {estilos.map((estilo) => {
-                        const ativo = !!estilosAtivos.find((a) => a.estilo_id === estilo.id);
+                        // FIX: checa explicitamente a propriedade .ativo do registro
+                        const ativo = !!estilosAtivos.find(
+                          (a) => a.estilo_id === estilo.id && a.ativo
+                        );
 
                         return (
                           <button
@@ -1234,7 +1292,8 @@ export default function ConfiguracoesPage() {
                         onChange={(e) =>
                           setFormConfig((p) => ({ ...p, cor_primaria: e.target.value }))
                         }
-                        className="flex-1 bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-[#C5A059] transition-colors maxLength={7}"
+                        className="flex-1 bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-[#C5A059] transition-colors"
+                        maxLength={7}
                       />
                     </div>
                     <p className="text-xs text-gray-600">
