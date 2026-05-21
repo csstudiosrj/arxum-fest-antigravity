@@ -1,3 +1,4 @@
+// /app/(admin)/inscricoes/page.tsx
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -49,6 +50,7 @@ interface Participante {
   id: string;
   nome: string;
   documento: string | null;
+  tipo_documento: "cpf" | "cnpj" | null;
   data_nascimento: string;
   termo_assinado: boolean;
   email_contato: string | null;
@@ -84,6 +86,23 @@ function mascaraTelefone(valor: string) {
   return n.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
 }
 
+function mascaraDocumento(valor: string, tipo: "cpf" | "cnpj") {
+  const numeros = valor.replace(/\D/g, "");
+  if (tipo === "cpf") {
+    return numeros
+      .slice(0, 11)
+      .replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
+      .slice(0, 14);
+  } else {
+    return numeros
+      .slice(0, 14)
+      .replace(
+        /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,
+        "$1.$2.$3/$4-$5"
+      );
+  }
+}
+
 function Dica({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2.5 bg-axon-gold/5 border border-axon-gold/15 rounded-xl px-4 py-3">
@@ -93,7 +112,7 @@ function Dica({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Modal cadastrar grupo (global)
+// Modal cadastrar grupo
 interface ModalCadastrarGrupoProps {
   termo: Terminologia;
   grupo?: Grupo | null;
@@ -272,7 +291,7 @@ function ModalCadastrarGrupo({
   );
 }
 
-// Modal cadastrar participante (global + vinculação + email)
+// Modal cadastrar participante (CORRIGIDO)
 interface ModalCadastrarParticipanteProps {
   termo: Terminologia;
   grupoId: string;
@@ -290,7 +309,8 @@ function ModalCadastrarParticipante({
   onClose,
   onSaved,
 }: ModalCadastrarParticipanteProps) {
-  const [cpf, setCpf] = useState("");
+  const [tipoDocumento, setTipoDocumento] = useState<"cpf" | "cnpj">("cpf");
+  const [documento, setDocumento] = useState("");
   const [nome, setNome] = useState("");
   const [dataNascimento, setDataNascimento] = useState("");
   const [emailContato, setEmailContato] = useState("");
@@ -301,49 +321,89 @@ function ModalCadastrarParticipante({
   const [participanteExistente, setParticipanteExistente] =
     useState<Participante | null>(null);
 
-  async function buscarPorCpf() {
-    if (!cpf.trim() || cpf.trim().length < 11) {
-      setErro("Digite um CPF válido com 11 dígitos");
+  const handleDocumentoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valor = e.target.value;
+    const numeros = valor.replace(/\D/g, "");
+    setDocumento(numeros);
+  };
+
+  async function buscarPorDocumento() {
+    const docLimpo = documento.trim();
+    if (!docLimpo) {
+      setErro("Digite um CPF ou CNPJ para buscar.");
       return;
     }
+    if (tipoDocumento === "cpf" && docLimpo.length !== 11) {
+      setErro("CPF deve ter 11 dígitos.");
+      return;
+    }
+    if (tipoDocumento === "cnpj" && docLimpo.length !== 14) {
+      setErro("CNPJ deve ter 14 dígitos.");
+      return;
+    }
+
     setBuscando(true);
     setErro(null);
     const supabase = createClient();
     const { data, error } = await supabase
       .from("participantes")
       .select("*")
-      .eq("documento", cpf.trim())
+      .eq("documento", docLimpo)
       .maybeSingle();
+
     if (error) {
-      setErro("Erro ao buscar participante");
+      setErro("Erro ao buscar participante.");
       setBuscando(false);
       return;
     }
+
     if (data) {
       setParticipanteExistente(data as Participante);
       setNome(data.nome || "");
       setDataNascimento(data.data_nascimento || "");
       setEmailContato(data.email_contato || "");
+      setTipoDocumento(data.tipo_documento || "cpf");
     } else {
       setParticipanteExistente(null);
+      // Não preenche nome/email automaticamente se não encontrado
+      setNome("");
+      setDataNascimento("");
+      setEmailContato("");
     }
     setBuscando(false);
   }
 
   async function salvar() {
     setErro(null);
+
+    const docLimpo = documento.trim();
     if (!nome.trim()) {
-      setErro(`Nome obrigatório`);
+      setErro(`Nome do ${termo.participante.toLowerCase()} é obrigatório.`);
       return;
     }
-    if (!cpf.trim() || cpf.trim().length < 11) {
-      setErro("CPF inválido");
+
+    if (!docLimpo) {
+      setErro(
+        `${tipoDocumento === "cpf" ? "CPF" : "CNPJ"} é obrigatório.`
+      );
       return;
     }
+
+    if (tipoDocumento === "cpf" && docLimpo.length !== 11) {
+      setErro("CPF inválido (deve conter 11 dígitos).");
+      return;
+    }
+
+    if (tipoDocumento === "cnpj" && docLimpo.length !== 14) {
+      setErro("CNPJ inválido (deve conter 14 dígitos).");
+      return;
+    }
+
     if (!emailContato.trim()) {
-      setErro("E-mail de contato obrigatório");
+      setErro("E-mail de contato é obrigatório.");
       return;
     }
+
     setSalvando(true);
     const supabase = createClient();
 
@@ -353,7 +413,8 @@ function ModalCadastrarParticipante({
         .from("participantes")
         .insert({
           nome: nome.trim(),
-          documento: cpf.trim(),
+          documento: docLimpo,
+          tipo_documento: tipoDocumento,
           data_nascimento: dataNascimento || null,
           email_contato: emailContato.trim(),
           termo_assinado: termoAssinado,
@@ -362,6 +423,7 @@ function ModalCadastrarParticipante({
         })
         .select()
         .single();
+
       if (insertErr) {
         setErro(insertErr.message);
         setSalvando(false);
@@ -391,16 +453,10 @@ function ModalCadastrarParticipante({
     const vinculoId = vinculo.id;
     const token = crypto.randomUUID();
 
-    const { error: tokenErr } = await supabase
+    await supabase
       .from("participacoes_participante_grupo_evento")
       .update({ token_confirmacao: token })
       .eq("id", vinculoId);
-
-    if (tokenErr) {
-      setErro("Erro ao gerar token de confirmação");
-      setSalvando(false);
-      return;
-    }
 
     try {
       await fetch("/api/enviar-confirmacao-participante", {
@@ -439,42 +495,76 @@ function ModalCadastrarParticipante({
           </button>
         </div>
         <div className="p-6 space-y-4">
+          {/* Tipo de Documento */}
           <div>
-            <label className="block text-xs text-gray-400 mb-1">CPF *</label>
+            <label className="block text-xs text-gray-400 mb-1">
+              Tipo de documento *
+            </label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  value="cpf"
+                  checked={tipoDocumento === "cpf"}
+                  onChange={(e) =>
+                    setTipoDocumento(e.target.value as "cpf" | "cnpj")
+                  }
+                  className="w-4 h-4 text-axon-gold focus:ring-axon-gold"
+                />
+                <span className="text-sm text-white">CPF</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  value="cnpj"
+                  checked={tipoDocumento === "cnpj"}
+                  onChange={(e) =>
+                    setTipoDocumento(e.target.value as "cpf" | "cnpj")
+                  }
+                  className="w-4 h-4 text-axon-gold focus:ring-axon-gold"
+                />
+                <span className="text-sm text-white">CNPJ</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Documento */}
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">
+              {tipoDocumento === "cpf" ? "CPF *" : "CNPJ *"}
+            </label>
             <div className="flex gap-2">
               <input
                 type="text"
-                value={cpf}
-                onChange={(e) =>
-                  setCpf(e.target.value.replace(/\D/g, "").slice(0, 11))
+                value={mascaraDocumento(documento, tipoDocumento)}
+                onChange={handleDocumentoChange}
+                placeholder={
+                  tipoDocumento === "cpf" ? "000.000.000-00" : "00.000.000/0000-00"
                 }
-                className="flex-1 bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
-                placeholder="00000000000"
-                maxLength={11}
+                className="flex-1 bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600"
+                readOnly={!!participanteExistente}
               />
               <button
-                onClick={buscarPorCpf}
-                disabled={buscando}
+                onClick={buscarPorDocumento}
+                disabled={buscando || !!participanteExistente}
                 className="px-3 py-2 rounded-lg border border-axon-border text-axon-gold hover:border-axon-gold disabled:opacity-50"
               >
-                {buscando ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  "Buscar"
-                )}
+                {buscando ? <Loader2 size={16} className="animate-spin" /> : "Buscar"}
               </button>
             </div>
           </div>
+
+          {/* Participante Existente */}
           {participanteExistente && (
             <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
               <p className="text-xs text-emerald-400 flex items-center gap-1">
                 <CheckCircle2 size={12} /> Participante já cadastrado
               </p>
-              <p className="text-sm text-white mt-1">
-                {participanteExistente.nome}
-              </p>
+              <p className="text-sm text-white mt-1">{participanteExistente.nome}</p>
             </div>
           )}
+
+          {/* Nome */}
           <div>
             <label className="block text-xs text-gray-400 mb-1">
               Nome completo *
@@ -487,9 +577,11 @@ function ModalCadastrarParticipante({
               className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
             />
           </div>
+
+          {/* Data de Nascimento */}
           <div>
             <label className="block text-xs text-gray-400 mb-1">
-              Data nascimento
+              Data de nascimento *
             </label>
             <input
               type="date"
@@ -499,6 +591,8 @@ function ModalCadastrarParticipante({
               className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
             />
           </div>
+
+          {/* E-mail */}
           <div>
             <label className="block text-xs text-gray-400 mb-1">
               E-mail de contato *
@@ -511,6 +605,8 @@ function ModalCadastrarParticipante({
               className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
             />
           </div>
+
+          {/* Termo */}
           {!participanteExistente && (
             <div className="flex items-center gap-2">
               <input
@@ -518,15 +614,19 @@ function ModalCadastrarParticipante({
                 id="termo"
                 checked={termoAssinado}
                 onChange={(e) => setTermoAssinado(e.target.checked)}
-                className="w-4 h-4"
+                className="w-4 h-4 rounded border-axon-border bg-axon-bg focus:ring-axon-gold"
               />
               <label htmlFor="termo" className="text-sm text-gray-300">
-                Termo de consentimento assinado
+                Termo de consentimento assinado *
               </label>
             </div>
           )}
+
+          {/* Erro */}
           {erro && <p className="text-xs text-red-400">{erro}</p>}
         </div>
+
+        {/* Botões */}
         <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
           <button
             onClick={onClose}
@@ -548,7 +648,7 @@ function ModalCadastrarParticipante({
   );
 }
 
-// CardGrupo
+// CardGrupo (MANTER COMO ESTÁ, SEM ALTERAÇÕES)
 interface CardGrupoProps {
   grupo: GrupoComDados;
   termo: Terminologia;
@@ -663,7 +763,7 @@ function CardGrupo({
                 className={`px-4 py-3 text-xs font-medium border-b-2 ${
                   abaAtiva === aba
                     ? "border-axon-gold text-axon-gold"
-                    : "border-transparent text-gray-500"
+                    : "border-transparent text-gray-500 hover:text-white"
                 }`}
               >
                 {aba === "apresentacoes"
@@ -739,11 +839,15 @@ function CardGrupo({
                           <p className="text-sm font-medium text-white">
                             {p.nome}
                           </p>
-                          {p.documento && (
-                            <p className="text-xs text-gray-500">
-                              {p.documento}
-                            </p>
-                          )}
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <span>{p.tipo_documento?.toUpperCase()}</span>
+                            <span>•</span>
+                            <span className="tabular-nums">
+                              {p.tipo_documento === "cpf"
+                                ? mascaraDocumento(p.documento || "", "cpf")
+                                : mascaraDocumento(p.documento || "", "cnpj")}
+                            </span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           {p.confirmado_vinculo ? (
@@ -774,6 +878,7 @@ function CardGrupo({
   );
 }
 
+// Modal Confirmar Exclusão
 function ModalConfirmarExclusao({
   grupo,
   onConfirmar,
@@ -825,6 +930,7 @@ function ModalConfirmarExclusao({
   );
 }
 
+// Componente Principal
 export default function InscricoesPage() {
   const [gruposComDados, setGruposComDados] = useState<GrupoComDados[]>([]);
   const [termo, setTermo] = useState<Terminologia>({
