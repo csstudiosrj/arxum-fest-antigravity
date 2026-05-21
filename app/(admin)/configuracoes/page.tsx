@@ -409,7 +409,9 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // Função corrigida: usa upsert para evitar conflito 409
+  // ============================================================
+  // FUNÇÕES CORRIGIDAS (sem onConflict manual)
+  // ============================================================
   async function toggleEstilo(estilo: Estilo) {
     if (!produtoraId) return;
 
@@ -417,7 +419,6 @@ export default function ConfiguracoesPage() {
 
     try {
       if (jaAtivo) {
-        // Desativar: remove o registro
         const { error } = await supabase
           .from("tenant_estilos_ativos")
           .delete()
@@ -428,16 +429,12 @@ export default function ConfiguracoesPage() {
 
         setEstilosAtivos((p) => p.filter((e) => e.estilo_id !== estilo.id));
       } else {
-        // Ativar: upsert (insere ou ignora se já existir)
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
           .upsert({
             estilo_id: estilo.id,
             produtora_id: produtoraId,
             ativo: true,
-          }, {
-            onConflict: 'estilo_id, produtora_id',
-            ignoreDuplicates: false,
           })
           .select()
           .single();
@@ -453,7 +450,6 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // Função corrigida: ativação em lote usando upsert
   async function toggleTodos(ativar: boolean) {
     if (!produtoraId) return;
 
@@ -476,10 +472,7 @@ export default function ConfiguracoesPage() {
 
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .upsert(dadosUpsert, {
-            onConflict: 'estilo_id, produtora_id',
-            ignoreDuplicates: false,
-          })
+          .upsert(dadosUpsert)
           .select();
 
         if (error) throw error;
@@ -487,7 +480,6 @@ export default function ConfiguracoesPage() {
         setEstilosAtivos((p) => [...p, ...(data ?? [])]);
         addToast("sucesso", `${faltando.length} estilos ativados!`);
       } else {
-        // Desativar todos: remove todos os registros
         const { error } = await supabase
           .from("tenant_estilos_ativos")
           .delete()
@@ -536,16 +528,12 @@ export default function ConfiguracoesPage() {
 
       setEstilos((p) => [...p, estiloData]);
 
-      // Ativar automaticamente usando upsert
       const { data: ativoData, error: ativoError } = await supabase
         .from("tenant_estilos_ativos")
         .upsert({
           estilo_id: estiloData.id,
           produtora_id: produtoraId,
           ativo: true,
-        }, {
-          onConflict: 'estilo_id, produtora_id',
-          ignoreDuplicates: false,
         })
         .select()
         .single();
