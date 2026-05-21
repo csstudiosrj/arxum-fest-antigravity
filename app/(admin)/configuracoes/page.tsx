@@ -426,8 +426,7 @@ export default function ConfiguracoesPage() {
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
           .upsert({
-            id: registroExistente.id,
-            estilo_id: estilo.id,
+                        estilo_id: estilo.id,
             produtora_id: produtoraId,
             ativo: !atualAtivo,
           }, { onConflict: 'produtora_id,estilo_id' })
@@ -449,7 +448,7 @@ export default function ConfiguracoesPage() {
             estilo_id: estilo.id,
             produtora_id: produtoraId,
             ativo: true,
-          }, { onConflict: 'produtora_id,estilo_id' })
+          }, { onConflict: 'id' })
           .select()
           .single();
 
@@ -526,7 +525,7 @@ export default function ConfiguracoesPage() {
 
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .upsert(dadosUpsert, { onConflict: 'produtora_id,estilo_id' })
+          .upsert(dadosUpsert, { onConflict: 'id' })
           .select();
 
         if (error) throw error;
