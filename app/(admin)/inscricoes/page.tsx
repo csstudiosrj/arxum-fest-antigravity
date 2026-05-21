@@ -49,7 +49,7 @@ interface Grupo {
 interface Participante {
   id: string;
   nome: string;
-  documento: string | null; // CPF apenas, 11 dígitos
+  documento: string | null;
   data_nascimento: string;
   termo_assinado: boolean;
   email_contato: string | null;
@@ -104,15 +104,16 @@ function Dica({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Modal cadastrar GRUPO (com CPF/CNPJ)
+// Modal cadastrar GRUPO (com reutilização)
 interface ModalCadastrarGrupoProps {
   termo: Terminologia;
   grupo?: Grupo | null;
+  eventoId: string; // evento atual para inscrever o grupo
   onClose: () => void;
   onSaved: () => void;
 }
 
-function ModalCadastrarGrupo({ termo, grupo, onClose, onSaved }: ModalCadastrarGrupoProps) {
+function ModalCadastrarGrupo({ termo, grupo, eventoId, onClose, onSaved }: ModalCadastrarGrupoProps) {
   const [nome, setNome] = useState(grupo?.nome ?? "");
   const [responsavel, setResponsavel] = useState(grupo?.responsavel ?? "");
   const [telefone, setTelefone] = useState(grupo?.telefone ?? "");
@@ -150,47 +151,101 @@ function ModalCadastrarGrupo({ termo, grupo, onClose, onSaved }: ModalCadastrarG
 
     setSalvando(true);
 
-    const dadosGrupo = {
-      nome: nome.trim(),
-      responsavel: responsavel.trim() || null,
-      telefone: telefone.trim() || null,
-      email: email.trim(),
-      tipo_documento: tipoDocumento,
-      documento: docLimpo,
-    };
-
-    if (grupo) {
-      const { error } = await supabase
+    // 1. Verificar se já existe grupo com este e-mail ou documento
+    let grupoExistente: Grupo | null = null;
+    if (email.trim()) {
+      const { data, error } = await supabase
         .from("grupos")
-        .update(dadosGrupo)
-        .eq("id", grupo.id);
-      if (error) {
-        setErro(error.message);
+        .select("*")
+        .eq("email", email.trim())
+        .maybeSingle();
+      if (!error && data) grupoExistente = data;
+    }
+    if (!grupoExistente && docLimpo) {
+      const { data, error } = await supabase
+        .from("grupos")
+        .select("*")
+        .eq("documento", docLimpo)
+        .maybeSingle();
+      if (!error && data) grupoExistente = data;
+    }
+
+    let grupoId: string;
+
+    if (grupoExistente) {
+      // Grupo já existe: apenas atualizar dados (se necessário)
+      grupoId = grupoExistente.id;
+      const { error: updateErr } = await supabase
+        .from("grupos")
+        .update({
+          nome: nome.trim(),
+          responsavel: responsavel.trim() || null,
+          telefone: telefone.trim() || null,
+          tipo_documento: tipoDocumento,
+          documento: docLimpo,
+        })
+        .eq("id", grupoId);
+      if (updateErr) {
+        setErro(updateErr.message);
         setSalvando(false);
         return;
       }
-      onSaved();
-      onClose();
-      setSalvando(false);
-      return;
+    } else {
+      // Criar novo grupo
+      const { data: novo, error: insertErr } = await supabase
+        .from("grupos")
+        .insert({
+          nome: nome.trim(),
+          responsavel: responsavel.trim() || null,
+          telefone: telefone.trim() || null,
+          email: email.trim(),
+          tipo_documento: tipoDocumento,
+          documento: docLimpo,
+        })
+        .select()
+        .single();
+      if (insertErr) {
+        setErro(insertErr.message);
+        setSalvando(false);
+        return;
+      }
+      grupoId = novo.id;
+
+      // Enviar convite apenas se for novo grupo
+      await fetch("/api/convite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          nome: responsavel.trim() || nome.trim(),
+          role: "org_admin",
+          grupo_id: grupoId,
+        }),
+      }).catch(() => {});
     }
 
-    const { error: grupoErr } = await supabase.from("grupos").insert(dadosGrupo);
-    if (grupoErr) {
-      setErro(grupoErr.message);
-      setSalvando(false);
-      return;
-    }
+    // 2. Verificar se o grupo já está inscrito neste evento
+    const { data: inscricaoExistente } = await supabase
+      .from("inscricoes_grupo_evento")
+      .select("*")
+      .eq("grupo_id", grupoId)
+      .eq("evento_id", eventoId)
+      .maybeSingle();
 
-    await fetch("/api/convite", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: email.trim(),
-        nome: responsavel.trim() || nome.trim(),
-        role: "org_admin",
-      }),
-    }).catch(() => {});
+    if (!inscricaoExistente) {
+      const { error: inscErr } = await supabase
+        .from("inscricoes_grupo_evento")
+        .insert({
+          grupo_id: grupoId,
+          evento_id: eventoId,
+          status: "pendente",
+        });
+      if (inscErr) {
+        setErro(inscErr.message);
+        setSalvando(false);
+        return;
+      }
+    }
 
     onSaved();
     onClose();
@@ -210,14 +265,11 @@ function ModalCadastrarGrupo({ termo, grupo, onClose, onSaved }: ModalCadastrarG
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-white"><X size={18} /></button>
         </div>
         <div className="p-6 space-y-4">
-          {/* Nome do Grupo */}
           <div>
             <label className="block text-xs text-gray-400 mb-1">Nome do {termo.grupo.toLowerCase()} *</label>
             <input type="text" value={nome} onChange={(e) => setNome(e.target.value)}
               className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white" />
           </div>
-
-          {/* Tipo de Documento do Grupo */}
           <div>
             <label className="block text-xs text-gray-400 mb-1">Tipo de documento *</label>
             <div className="flex gap-4">
@@ -233,8 +285,6 @@ function ModalCadastrarGrupo({ termo, grupo, onClose, onSaved }: ModalCadastrarG
               </label>
             </div>
           </div>
-
-          {/* Documento */}
           <div>
             <label className="block text-xs text-gray-400 mb-1">{tipoDocumento === "cpf" ? "CPF *" : "CNPJ *"}</label>
             <input type="text"
@@ -243,7 +293,6 @@ function ModalCadastrarGrupo({ termo, grupo, onClose, onSaved }: ModalCadastrarG
               placeholder={tipoDocumento === "cpf" ? "000.000.000-00" : "00.000.000/0000-00"}
               className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white" />
           </div>
-
           <div>
             <label className="block text-xs text-gray-400 mb-1">Nome do responsável</label>
             <input type="text" value={responsavel} onChange={(e) => setResponsavel(e.target.value)}
@@ -274,7 +323,7 @@ function ModalCadastrarGrupo({ termo, grupo, onClose, onSaved }: ModalCadastrarG
   );
 }
 
-// Modal cadastrar PARTICIPANTE (apenas CPF, obrigatório)
+// Modal cadastrar PARTICIPANTE (apenas CPF, obrigatório) - SEM MUDANÇAS
 interface ModalCadastrarParticipanteProps {
   termo: Terminologia;
   grupoId: string;
@@ -683,7 +732,7 @@ export default function InscricoesPage() {
 
   return (
     <>
-      {modalGrupo && <ModalCadastrarGrupo termo={termo} grupo={editarGrupo} onClose={() => { setModalGrupo(false); setEditarGrupo(null); }} onSaved={() => { setEditarGrupo(null); carregar(); }} />}
+      {modalGrupo && <ModalCadastrarGrupo termo={termo} grupo={editarGrupo} eventoId={eventoAtualId} onClose={() => { setModalGrupo(false); setEditarGrupo(null); }} onSaved={() => { setEditarGrupo(null); carregar(); }} />}
       {modalParticipante && <ModalCadastrarParticipante termo={termo} grupoId={modalParticipante.groupId} grupoNome={modalParticipante.groupName} eventoId={eventoAtualId} onClose={() => setModalParticipante(null)} onSaved={() => { carregar(); mostrarToast(`${termo.participante} cadastrado com sucesso!`); }} />}
       <div className="max-w-5xl mx-auto space-y-6 p-6">
         <div className="flex justify-between items-start">
