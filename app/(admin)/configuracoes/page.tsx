@@ -223,7 +223,10 @@ function LoadingSkeleton() {
 }
 
 export default function ConfiguracoesPage() {
-  const supabase = createClient();
+  // FIX 1: createClient() movido para useRef para evitar recriação a cada render
+  // e consequente loop no useEffect que depende de `supabase`.
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
   const [abaAtiva, setAbaAtiva] = useState<AbaId>("perfil");
   const [loading, setLoading] = useState(true);
@@ -248,8 +251,6 @@ export default function ConfiguracoesPage() {
   const [novoEstilo, setNovoEstilo] = useState({ nome: "", descricao: "" });
   const [criandoEstilo, setCriandoEstilo] = useState(false);
 
-  const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const addToast = useCallback((tipo: Toast["tipo"], mensagem: string) => {
     const id = ++toastId;
     setToasts((p) => [...p, { id, tipo, mensagem }]);
@@ -262,20 +263,26 @@ export default function ConfiguracoesPage() {
     setToasts((p) => p.filter((t) => t.id !== id));
   }, []);
 
-  async function carregarEstilosDoPerfil(perfilId: string) {
-    try {
-      const { data, error } = await supabase
-        .from("estilos")
-        .select("*")
-        .eq("perfil_id", perfilId)
-        .order("ordem");
+  // FIX 2: carregarEstilosDoPerfil agora está em useCallback para ser
+  // referenciado de forma estável no useEffect e em outros handlers,
+  // evitando warnings de exhaustive-deps e re-execuções desnecessárias.
+  const carregarEstilosDoPerfil = useCallback(
+    async (perfilId: string) => {
+      try {
+        const { data, error } = await supabase
+          .from("estilos")
+          .select("*")
+          .eq("perfil_id", perfilId)
+          .order("ordem");
 
-      if (error) throw error;
-      setEstilos(data ?? []);
-    } catch {
-      addToast("erro", "Erro ao carregar estilos do perfil.");
-    }
-  }
+        if (error) throw error;
+        setEstilos(data ?? []);
+      } catch {
+        addToast("erro", "Erro ao carregar estilos do perfil.");
+      }
+    },
+    [supabase, addToast]
+  );
 
   useEffect(() => {
     async function carregar() {
@@ -364,8 +371,10 @@ export default function ConfiguracoesPage() {
       }
     }
 
-    carregar();
-  }, [supabase, addToast]);
+    void carregar();
+    // supabase vem do ref e é estável; carregarEstilosDoPerfil e addToast
+    // são memoizados com useCallback — sem risco de loop.
+  }, [supabase, addToast, carregarEstilosDoPerfil]);
 
   function selecionarPerfil(perfil: PerfilFestival) {
     if (formConfig.perfil_id === perfil.id) return;
@@ -410,7 +419,12 @@ export default function ConfiguracoesPage() {
   }
 
   // ============================================================
-  // toggleEstilo — usa o id do registro existente para UPDATE limpo
+  // toggleEstilo
+  // FIX 3: o branch de INSERT (registro inexistente) usava
+  // onConflict: 'id', mas não enviava nenhum `id`, tornando o
+  // conflito inoperante e abrindo espaço para duplicatas.
+  // Ambos os branches agora usam onConflict: 'produtora_id,estilo_id',
+  // que reflete a unique constraint real da tabela.
   // ============================================================
   async function toggleEstilo(estilo: Estilo) {
     if (!produtoraId) return;
@@ -421,39 +435,29 @@ export default function ConfiguracoesPage() {
     const atualAtivo = !!(registroExistente && registroExistente.ativo);
 
     try {
-      if (registroExistente) {
-        // Registro já existe: faz UPDATE por id (sem risco de 409)
-        const { data, error } = await supabase
-          .from("tenant_estilos_ativos")
-          .upsert({
-                        estilo_id: estilo.id,
-            produtora_id: produtoraId,
-            ativo: !atualAtivo,
-          }, { onConflict: 'produtora_id,estilo_id' })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        if (data) {
-          setEstilosAtivos((p) =>
-            p.map((e) => (e.id === registroExistente.id ? data : e))
-          );
-        }
-      } else {
-        // Registro não existe: INSERT via upsert sem id
-        const { data, error } = await supabase
-          .from("tenant_estilos_ativos")
-          .upsert({
+      const { data, error } = await supabase
+        .from("tenant_estilos_ativos")
+        .upsert(
+          {
+            ...(registroExistente ? { id: registroExistente.id } : {}),
             estilo_id: estilo.id,
             produtora_id: produtoraId,
-            ativo: true,
-          }, { onConflict: 'id' })
-          .select()
-          .single();
+            ativo: !atualAtivo,
+          },
+          { onConflict: "produtora_id,estilo_id" }
+        )
+        .select()
+        .single();
 
-        if (error) throw error;
-        if (data) setEstilosAtivos((p) => [...p, data]);
+      if (error) throw error;
+
+      if (data) {
+        setEstilosAtivos((prev) => {
+          if (registroExistente) {
+            return prev.map((e) => (e.id === registroExistente.id ? data : e));
+          }
+          return [...prev, data];
+        });
       }
     } catch {
       addToast(
@@ -464,7 +468,11 @@ export default function ConfiguracoesPage() {
   }
 
   // ============================================================
-  // toggleTodos — passa id nos registros existentes para evitar 409
+  // toggleTodos
+  // FIX 4: o branch de desativação usava onConflict: 'id', que
+  // funciona apenas quando todos os registros já possuem `id`.
+  // Unificado para onConflict: 'produtora_id,estilo_id' em ambos
+  // os branches, garantindo consistência com a constraint da tabela.
   // ============================================================
   async function toggleTodos(ativar: boolean) {
     if (!produtoraId) return;
@@ -489,7 +497,7 @@ export default function ConfiguracoesPage() {
 
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .upsert(dadosUpsert, { onConflict: 'produtora_id,estilo_id' })
+          .upsert(dadosUpsert, { onConflict: "produtora_id,estilo_id" })
           .select();
 
         if (error) throw error;
@@ -506,7 +514,6 @@ export default function ConfiguracoesPage() {
 
         addToast("sucesso", `${faltando.length} estilos ativados!`);
       } else {
-        // Desativar todos: usa upsert com id (quando existir) e ativo: false
         const registrosParaDesativar = estilosAtivos.filter((a) =>
           estilos.find((e) => e.id === a.estilo_id)
         );
@@ -525,7 +532,7 @@ export default function ConfiguracoesPage() {
 
         const { data, error } = await supabase
           .from("tenant_estilos_ativos")
-          .upsert(dadosUpsert, { onConflict: 'id' })
+          .upsert(dadosUpsert, { onConflict: "produtora_id,estilo_id" })
           .select();
 
         if (error) throw error;
@@ -580,7 +587,7 @@ export default function ConfiguracoesPage() {
       setEstilos((p) => [...p, estiloData]);
 
       // Novo estilo: nunca terá registro em tenant_estilos_ativos ainda,
-      // então faz INSERT direto (sem id) — sem risco de 409.
+      // então faz INSERT direto (sem id) com onConflict correto.
       const { data: ativoData, error: ativoError } = await supabase
         .from("tenant_estilos_ativos")
         .insert({
@@ -708,18 +715,18 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  // FIX 5: previewTimeoutRef removido — o callback era `() => {}` (vazio),
+  // portanto o debounce não tinha efeito algum. A função agora atualiza
+  // o formConfig diretamente, que já é reativo e alimenta o preview em
+  // tempo real sem necessidade de timeout.
   function handleTerminologiaChange(campo: keyof TenantConfig, valor: string) {
     setFormConfig((p) => ({ ...p, [campo]: valor }));
-
-    if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
-    previewTimeoutRef.current = setTimeout(() => {}, 300);
   }
 
   if (loading) return <LoadingSkeleton />;
 
   const perfilAtivo = perfis.find((p) => p.id === formConfig.perfil_id);
 
-  // FIX: checa a propriedade .ativo do registro (corrige o bug "0 de N estilos ativos")
   const totalAtivos = estilosAtivos.filter(
     (a) => estilos.find((e) => e.id === a.estilo_id) && a.ativo
   ).length;
@@ -1025,7 +1032,6 @@ export default function ConfiguracoesPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                       {estilos.map((estilo) => {
-                        // FIX: checa explicitamente a propriedade .ativo do registro
                         const ativo = !!estilosAtivos.find(
                           (a) => a.estilo_id === estilo.id && a.ativo
                         );
