@@ -450,7 +450,7 @@ function ModalParticipante({
         if (data) {
           const partes = data.nome.split(" ");
           const mascarado = partes
-            .map((parte) => {
+            .map((parte: string) => {
               if (parte.length <= 1) return parte;
               return parte[0] + "*".repeat(parte.length - 1);
             })
