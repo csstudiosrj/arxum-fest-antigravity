@@ -87,105 +87,9 @@ function formatarData(data: string) {
 }
 
 // ============================================================
-// LÓGICA DINÂMICA DE FUNÇÕES BASEADA NO termo_participante
+// REFATORAÇÃO #3 — obterOpcoesFuncao e presetMap REMOVIDOS.
+// opcoesFuncao agora vem do banco via tenant_estilos_ativos.
 // ============================================================
-function obterOpcoesFuncao(termoParticipante: string | null): string[] {
-  const termo = (termoParticipante || "").toLowerCase().trim();
-
-  const presetMap: Record<string, string[]> = {
-    bailarino: [
-      "Bailarino(a)",
-      "Coreógrafo(a)",
-      "Diretor(a)",
-      "Ensaiador(a)",
-      "Produtor(a)",
-      "Outro",
-    ],
-    ator: [
-      "Ator/Atriz",
-      "Diretor(a)",
-      "Dramaturgo(a)",
-      "Cenógrafo(a)",
-      "Figurinista",
-      "Iluminador(a)",
-      "Sonoplasta",
-      "Outro",
-    ],
-    atriz: [
-      "Ator/Atriz",
-      "Diretor(a)",
-      "Dramaturgo(a)",
-      "Cenógrafo(a)",
-      "Figurinista",
-      "Iluminador(a)",
-      "Sonoplasta",
-      "Outro",
-    ],
-    musico: [
-      "Músico(a)",
-      "Cantor(a)",
-      "Regente",
-      "Compositor(a)",
-      "Produtor Musical",
-      "Outro",
-    ],
-    artista: [
-      "Artista",
-      "Acrobata",
-      "Palhaço/Clown",
-      "Malabarista",
-      "Diretor(a)",
-      "Produtor(a)",
-      "Outro",
-    ],
-    "talento estudantil": [
-      "Aluno(a)",
-      "Professor(a)/Orientador(a)",
-      "Diretor(a)",
-      "Coreógrafo(a)",
-      "Outro",
-    ],
-    "talentos estudantis": [
-      "Aluno(a)",
-      "Professor(a)/Orientador(a)",
-      "Diretor(a)",
-      "Coreógrafo(a)",
-      "Outro",
-    ],
-    circo: [
-      "Artista",
-      "Acrobata",
-      "Palhaço/Clown",
-      "Malabarista",
-      "Diretor(a)",
-      "Produtor(a)",
-      "Outro",
-    ],
-    multidisciplinar: [
-      "Artista",
-      "Acrobata",
-      "Palhaço/Clown",
-      "Malabarista",
-      "Diretor(a)",
-      "Produtor(a)",
-      "Outro",
-    ],
-  };
-
-  for (const [key, options] of Object.entries(presetMap)) {
-    if (termo.includes(key)) {
-      return options;
-    }
-  }
-
-  if (termoParticipante && termoParticipante.trim() !== "") {
-    const termoCapitalizado =
-      termoParticipante.charAt(0).toUpperCase() + termoParticipante.slice(1);
-    return [termoCapitalizado, "Direção", "Produção", "Técnico(a)", "Outro"];
-  }
-
-  return ["Participante", "Direção", "Produção", "Técnico(a)", "Outro"];
-}
 
 // ============================================================
 // MODAL DE CONFIRMAÇÃO CUSTOMIZADO
@@ -469,7 +373,7 @@ function ModalGrupo({
 }
 
 // ============================================================
-// MODAL CADASTRAR/EDITAR PARTICIPANTE (com função dinâmica)
+// MODAL CADASTRAR/EDITAR PARTICIPANTE
 // ============================================================
 interface ModalParticipanteProps {
   open: boolean;
@@ -503,6 +407,11 @@ function ModalParticipante({
   const [funcao, setFuncao] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [sucesso, setSucesso] = useState("");
+
+  // Match Global com máscara de privacidade (LGPD)
+  const [matchGlobal, setMatchGlobal] = useState(false);
+  const [nomeMascarado, setNomeMascarado] = useState("");
 
   useEffect(() => {
     if (participante) {
@@ -522,12 +431,54 @@ function ModalParticipante({
       setTermoAssinado(false);
       setFuncao(opcoesFuncao[0] || "Outro");
     }
+    setMatchGlobal(false);
+    setNomeMascarado("");
+    setSucesso("");
   }, [participante, open, opcoesFuncao]);
+
+  // Verificar se o CPF completo já existe na base global (apenas novo cadastro)
+  useEffect(() => {
+    const verificarMatch = async () => {
+      const cpfLimpo = cpf.replace(/\D/g, "");
+      if (cpfLimpo.length === 11 && !participante) {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("participantes")
+          .select("nome")
+          .eq("documento", cpfLimpo)
+          .maybeSingle();
+        if (data) {
+          const partes = data.nome.split(" ");
+          const mascarado = partes
+            .map((parte) => {
+              if (parte.length <= 1) return parte;
+              return parte[0] + "*".repeat(parte.length - 1);
+            })
+            .join(" ");
+          setNomeMascarado(mascarado);
+          setMatchGlobal(true);
+        } else {
+          setMatchGlobal(false);
+          setNomeMascarado("");
+        }
+      } else {
+        setMatchGlobal(false);
+        setNomeMascarado("");
+      }
+    };
+    verificarMatch();
+  }, [cpf, participante]);
 
   if (!open) return null;
 
   async function salvar() {
     setErro("");
+    setSucesso("");
+
+    // REFATORAÇÃO #4 — Se é match global, o botão está desabilitado e não deve
+    // chegar aqui. Mas por segurança, bloqueamos qualquer ação de escrita.
+    if (matchGlobal) return;
+
     const cpfLimpo = cpf.replace(/\D/g, "");
     if (!nome.trim()) return setErro("Nome completo é obrigatório.");
     if (cpfLimpo.length !== 11) return setErro("CPF deve ter 11 dígitos.");
@@ -538,7 +489,7 @@ function ModalParticipante({
     const supabase = createClient();
 
     if (participante) {
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         nome_artistico: nomeArtistico.trim() || null,
         email_contato: emailContato.trim(),
         termo_assinado: termoAssinado,
@@ -590,6 +541,28 @@ function ModalParticipante({
           </button>
         </div>
         <div className="p-6 space-y-4">
+
+          {/* REFATORAÇÃO #4 — Alerta de match global LGPD com instrução de fluxo correto */}
+          {matchGlobal && (
+            <div className="bg-amber-900/20 border border-amber-500/40 rounded-lg p-4 text-sm text-amber-200 space-y-2">
+              <p className="font-semibold flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0" />
+                Participante já cadastrado na base global
+              </p>
+              <p>
+                O CPF informado pertence a{" "}
+                <strong className="text-white">{nomeMascarado}</strong>. Por
+                privacidade (LGPD), os dados completos não são exibidos.
+              </p>
+              <p className="text-amber-300 leading-relaxed">
+                Este participante já possui cadastro global. Para adicioná-lo
+                ao seu festival, <strong>feche este modal</strong>, clique em{" "}
+                <strong>Detalhes do grupo</strong> desejado e use a opção{" "}
+                <strong>Vincular</strong> para enviar um convite por e-mail.
+              </p>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs text-gray-400 mb-1">
               Nome completo *
@@ -598,19 +571,21 @@ function ModalParticipante({
               type="text"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              disabled={!!participante && !isSuperAdmin}
+              // REFATORAÇÃO #4 — bloquear todos os inputs quando matchGlobal
+              disabled={!!(participante && !isSuperAdmin) || matchGlobal}
               className={`w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white ${
-                !!participante && !isSuperAdmin
+                (participante && !isSuperAdmin) || matchGlobal
                   ? "opacity-60 cursor-not-allowed"
                   : ""
               }`}
             />
-            {!!participante && !isSuperAdmin && (
+            {participante && !isSuperAdmin && (
               <p className="text-xs text-amber-400 mt-1">
                 Apenas o administrador do sistema pode editar o nome completo.
               </p>
             )}
           </div>
+
           <div>
             <label className="block text-xs text-gray-400 mb-1">
               Nome artístico (opcional)
@@ -619,29 +594,34 @@ function ModalParticipante({
               type="text"
               value={nomeArtistico}
               onChange={(e) => setNomeArtistico(e.target.value)}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
+              disabled={matchGlobal}
+              className={`w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white ${
+                matchGlobal ? "opacity-60 cursor-not-allowed" : ""
+              }`}
             />
           </div>
+
           <div>
             <label className="block text-xs text-gray-400 mb-1">CPF *</label>
             <input
               type="text"
               value={mascaraCPF(cpf)}
               onChange={(e) => setCpf(e.target.value)}
-              disabled={!!participante && !isSuperAdmin}
+              disabled={!!(participante && !isSuperAdmin)}
               className={`w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white ${
-                !!participante && !isSuperAdmin
+                participante && !isSuperAdmin
                   ? "opacity-60 cursor-not-allowed"
                   : ""
               }`}
               maxLength={14}
             />
-            {!!participante && !isSuperAdmin && (
+            {participante && !isSuperAdmin && (
               <p className="text-xs text-amber-400 mt-1">
                 Apenas o administrador do sistema pode editar o CPF.
               </p>
             )}
           </div>
+
           <div>
             <label className="block text-xs text-gray-400 mb-1">
               Data de nascimento *
@@ -650,14 +630,15 @@ function ModalParticipante({
               type="date"
               value={dataNascimento}
               onChange={(e) => setDataNascimento(e.target.value)}
-              disabled={!!participante && !isSuperAdmin}
+              disabled={!!(participante && !isSuperAdmin) || matchGlobal}
               className={`w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white ${
-                !!participante && !isSuperAdmin
+                (participante && !isSuperAdmin) || matchGlobal
                   ? "opacity-60 cursor-not-allowed"
                   : ""
               }`}
             />
           </div>
+
           <div>
             <label className="block text-xs text-gray-400 mb-1">
               E-mail de contato *
@@ -666,15 +647,22 @@ function ModalParticipante({
               type="email"
               value={emailContato}
               onChange={(e) => setEmailContato(e.target.value)}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
+              disabled={matchGlobal}
+              className={`w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white ${
+                matchGlobal ? "opacity-60 cursor-not-allowed" : ""
+              }`}
             />
           </div>
+
           <div>
             <label className="block text-xs text-gray-400 mb-1">Função *</label>
             <select
               value={funcao}
               onChange={(e) => setFuncao(e.target.value)}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white"
+              disabled={matchGlobal}
+              className={`w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white ${
+                matchGlobal ? "opacity-60 cursor-not-allowed" : ""
+              }`}
             >
               {opcoesFuncao.map((opt) => (
                 <option key={opt} value={opt}>
@@ -687,31 +675,42 @@ function ModalParticipante({
               <span className="text-axon-gold">{termoParticipante || "padrão"}</span>
             </p>
           </div>
+
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
               id="termo"
               checked={termoAssinado}
               onChange={(e) => setTermoAssinado(e.target.checked)}
+              disabled={matchGlobal}
               className="w-4 h-4"
             />
             <label htmlFor="termo" className="text-sm text-gray-300">
               Termo de consentimento assinado
             </label>
           </div>
+
           {erro && <p className="text-xs text-red-400">{erro}</p>}
+          {sucesso && <p className="text-xs text-emerald-400">{sucesso}</p>}
         </div>
+
         <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
           <button
             onClick={onClose}
             className="flex-1 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white"
           >
-            Cancelar
+            {matchGlobal ? "Fechar e ir para Grupos" : "Cancelar"}
           </button>
+          {/* REFATORAÇÃO #4 — Botão desabilitado no cenário de match global */}
           <button
             onClick={salvar}
-            disabled={salvando}
-            className="flex-1 py-2 rounded-lg bg-axon-gold text-black font-bold flex items-center justify-center gap-2"
+            disabled={salvando || matchGlobal}
+            title={
+              matchGlobal
+                ? "Use o fluxo de Vincular no drawer do grupo para convidar este participante."
+                : undefined
+            }
+            className="flex-1 py-2 rounded-lg bg-axon-gold text-black font-bold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {salvando && <Loader2 size={16} className="animate-spin" />}
             {participante ? "Salvar" : "Cadastrar"}
@@ -1147,19 +1146,20 @@ function DrawerGrupo({
     setCarregando(true);
     const supabase = createClient();
 
-    // Buscar vínculos ativos
+    // REFATORAÇÃO #2 — Removido o filtro .eq("status", "ativo") que causava Erro 400.
+    // A tabela grupo_participante não possui essa coluna. Filtra apenas por grupo_id.
     const { data: vinculos, error } = await supabase
       .from("grupo_participante")
       .select("id, participante_id, funcao, confirmado")
-      .eq("grupo_id", grupo.id)
-      .eq("status", "ativo");
+      .eq("grupo_id", grupo.id);
+
     if (!error && vinculos) {
       const participantesIds = vinculos.map((v) => v.participante_id);
       const { data: parts } = await supabase
         .from("participantes")
         .select("*")
         .in("id", participantesIds);
-      // Buscar bloqueios desta produtora
+
       const { data: bloqueados } = await supabase
         .from("participantes_bloqueados")
         .select("participante_id")
@@ -1199,19 +1199,18 @@ function DrawerGrupo({
   async function confirmarAcao() {
     const supabase = createClient();
     if (confirmModal.type === "remover" && confirmModal.participanteId) {
-      // Remove o vínculo (deleta da tabela grupo_participante)
-      const vinculo = participantes.find(p => p.id === confirmModal.participanteId)?.vinculoId;
+      const vinculo = participantes.find(
+        (p) => p.id === confirmModal.participanteId
+      )?.vinculoId;
       if (vinculo) {
         await supabase.from("grupo_participante").delete().eq("id", vinculo);
       }
     } else if (confirmModal.type === "bloquear" && confirmModal.participanteId) {
-      // Insere na blacklist
       await supabase.from("participantes_bloqueados").insert({
         participante_id: confirmModal.participanteId,
         produtora_id: produtoraId,
       });
     } else if (confirmModal.type === "desbloquear" && confirmModal.participanteId) {
-      // Remove da blacklist
       await supabase
         .from("participantes_bloqueados")
         .delete()
@@ -1394,18 +1393,23 @@ export default function InscricoesPage() {
   const [userRole, setUserRole] = useState<string>("admin");
   const [produtoraId, setProdutoraId] = useState<string>("");
   const [termoParticipante, setTermoParticipante] = useState<string | null>(null);
+  // REFATORAÇÃO #3 — opcoesFuncao agora vem do banco (tenant_estilos_ativos + estilos)
   const [opcoesFuncao, setOpcoesFuncao] = useState<string[]>([]);
+
+  const FALLBACK_OPCOES_FUNCAO = ["Participante", "Direção", "Produção", "Outro"];
 
   const mostrarToast = (msg: string, tipo: "ok" | "erro" = "ok") => {
     setToast({ msg, tipo });
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Buscar dados do usuário e configuração de terminologia
+  // REFATORAÇÃO #3 — useEffect principal com busca dinâmica de estilos ativos
   useEffect(() => {
     const fetchUserData = async () => {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
         const { data } = await supabase
           .from("usuarios")
@@ -1421,12 +1425,24 @@ export default function InscricoesPage() {
               .select("termo_participante")
               .eq("produtora_id", data.produtora_id)
               .single();
-            const termo = config?.termo_participante || null;
-            setTermoParticipante(termo);
-            setOpcoesFuncao(obterOpcoesFuncao(termo));
+            setTermoParticipante(config?.termo_participante || null);
+
+            // Busca os estilos ativos desta produtora com join na tabela estilos
+            const { data: estilosAtivos } = await supabase
+              .from("tenant_estilos_ativos")
+              .select("estilos:estilo_id (nome)")
+              .eq("produtora_id", data.produtora_id)
+              .eq("ativo", true);
+
+            const nomes: string[] =
+              estilosAtivos
+                ?.map((e: any) => e.estilos?.nome as string)
+                .filter(Boolean) ?? [];
+
+            setOpcoesFuncao(nomes.length > 0 ? nomes : FALLBACK_OPCOES_FUNCAO);
           } else {
             setTermoParticipante(null);
-            setOpcoesFuncao(obterOpcoesFuncao(null));
+            setOpcoesFuncao(FALLBACK_OPCOES_FUNCAO);
           }
         }
       }
@@ -1434,29 +1450,90 @@ export default function InscricoesPage() {
     fetchUserData();
   }, []);
 
+  // REFATORAÇÃO #1 — carregarDados com query de participantes segura (isolamento por produtora)
   const carregarDados = useCallback(async () => {
     if (!produtoraId) return;
     setCarregando(true);
     const supabase = createClient();
 
-    let gruposQuery = supabase.from("grupos").select("*").order("nome");
+    // Grupos: segue a lógica existente (próprios + inscritos nos seus eventos)
+    let gruposQuery;
+
     if (userRole !== "super_admin" && produtoraId) {
-      gruposQuery = supabase
-        .from("grupos")
+      const { data: eventos } = await supabase
+        .from("eventos")
+        .select("id")
+        .eq("produtora_id", produtoraId);
+      const eventoIds = eventos?.map((e) => e.id) || [];
+
+      let gruposInscritosIds: string[] = [];
+      if (eventoIds.length > 0) {
+        const { data: inscricoes } = await supabase
+          .from("inscricoes_grupo_evento")
+          .select("grupo_id")
+          .in("evento_id", eventoIds);
+        gruposInscritosIds = inscricoes?.map((i) => i.grupo_id) || [];
+      }
+
+      if (gruposInscritosIds.length > 0) {
+        gruposQuery = supabase
+          .from("grupos")
+          .select("*")
+          .or(
+            `origem_produtora_id.eq.${produtoraId},id.in.(${gruposInscritosIds.join(",")})`
+          )
+          .order("nome");
+      } else {
+        gruposQuery = supabase
+          .from("grupos")
+          .select("*")
+          .eq("origem_produtora_id", produtoraId)
+          .order("nome");
+      }
+    } else {
+      gruposQuery = supabase.from("grupos").select("*").order("nome");
+    }
+
+    // REFATORAÇÃO #1 — Query de participantes isolada por produtora:
+    // Traz apenas participantes que esta produtora criou OU que estão nos seus grupos.
+    const gruposData = await gruposQuery;
+    const gruposDaProdutora: string[] = gruposData.data?.map((g) => g.id) ?? [];
+
+    let participantesIdsVinculados: string[] = [];
+    if (gruposDaProdutora.length > 0) {
+      const { data: vincGrupos } = await supabase
+        .from("grupo_participante")
+        .select("participante_id")
+        .in("grupo_id", gruposDaProdutora);
+      participantesIdsVinculados =
+        vincGrupos?.map((v) => v.participante_id) ?? [];
+    }
+
+    let participantesQuery;
+    if (participantesIdsVinculados.length > 0) {
+      // Participantes próprios OU vinculados a grupos desta produtora
+      participantesQuery = supabase
+        .from("participantes")
         .select("*")
         .or(
-          `origem_produtora_id.eq.${produtoraId},id.in.(select grupo_id from inscricoes_grupo_evento where evento_id in (select id from eventos where produtora_id = '${produtoraId}'))`
+          `origem_produtora_id.eq.${produtoraId},id.in.(${participantesIdsVinculados.join(",")})`
         )
+        .order("nome");
+    } else {
+      // Sem grupos inscritos: mostra apenas os próprios
+      participantesQuery = supabase
+        .from("participantes")
+        .select("*")
+        .eq("origem_produtora_id", produtoraId)
         .order("nome");
     }
 
-    const [gruposRes, participantesRes, vinculosRes] = await Promise.all([
-      gruposQuery,
-      supabase.from("participantes").select("*").order("nome"),
+    const [participantesRes, vinculosRes] = await Promise.all([
+      participantesQuery,
       supabase.from("grupo_participante").select("grupo_id"),
     ]);
 
-    if (gruposRes.data) setGrupos(gruposRes.data);
+    if (gruposData.data) setGrupos(gruposData.data);
     if (participantesRes.data) setParticipantes(participantesRes.data);
     if (vinculosRes.data) {
       const counts: Record<string, number> = {};
@@ -1489,8 +1566,11 @@ export default function InscricoesPage() {
       mostrarToast("Apenas o Super Admin pode excluir grupos.", "erro");
       return;
     }
-    // Usar confirm nativo para superadmin (opcional: poderia usar modal)
-    if (!confirm("Excluir grupo permanentemente? Isso também remove todos os vínculos e históricos."))
+    if (
+      !confirm(
+        "Excluir grupo permanentemente? Isso também remove todos os vínculos e históricos."
+      )
+    )
       return;
     const supabase = createClient();
     const { error } = await supabase.from("grupos").delete().eq("id", id);
@@ -1506,7 +1586,9 @@ export default function InscricoesPage() {
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         <div className="flex justify-between items-center flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-white">Base de Grupos & Participantes</h1>
+            <h1 className="text-2xl font-semibold text-white">
+              Base de Grupos & Participantes
+            </h1>
             <p className="text-sm text-gray-500">
               Gerencie grupos e participantes. Vínculos precisam de confirmação por e-mail.
             </p>
@@ -1576,7 +1658,9 @@ export default function InscricoesPage() {
               <Loader2 className="animate-spin text-axon-gold" size={32} />
             </div>
           ) : gruposFiltrados.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">Nenhum grupo encontrado.</div>
+            <div className="text-center py-12 text-gray-500">
+              Nenhum grupo encontrado.
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {gruposFiltrados.map((g) => (
@@ -1633,7 +1717,9 @@ export default function InscricoesPage() {
               <Loader2 className="animate-spin text-axon-gold" size={32} />
             </div>
           ) : participantesFiltrados.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">Nenhum participante encontrado.</div>
+            <div className="text-center py-12 text-gray-500">
+              Nenhum participante encontrado.
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1664,7 +1750,10 @@ export default function InscricoesPage() {
                       </td>
                       <td className="py-3 text-gray-300">{p.email_contato}</td>
                       <td className="py-3">
-                        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                        <div
+                          className="flex gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <button
                             onClick={() => {
                               setEditandoParticipante(p);
