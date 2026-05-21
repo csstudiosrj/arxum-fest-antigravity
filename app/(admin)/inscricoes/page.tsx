@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Search,
@@ -15,15 +15,17 @@ import {
   Info,
   UserPlus,
   MailCheck,
-  Link2,
-  Unlink,
-  ChevronDown,
-  ChevronRight,
+  UserMinus,
+  ShieldAlert,
   Calendar,
   Briefcase,
   Phone,
   Mail,
   FileText,
+  Music,
+  User,
+  Lock,
+  Unlock,
 } from "lucide-react";
 
 // ============================================================
@@ -38,17 +40,20 @@ interface Grupo {
   documento: string | null;
   tipo_documento: "cpf" | "cnpj" | null;
   created_at: string;
+  origem_produtora_id: string | null; // quem criou o grupo
 }
 
 interface Participante {
   id: string;
   nome: string;
+  nome_artistico: string | null;
   documento: string | null;
   data_nascimento: string;
   email_contato: string | null;
   termo_assinado: boolean;
   credencial: string;
   created_at: string;
+  origem_produtora_id: string | null; // quem trouxe esse participante para a base
 }
 
 interface Vinculo {
@@ -59,13 +64,16 @@ interface Vinculo {
   confirmado: boolean;
   token_confirmacao: string | null;
   data_vinculo: string;
+  bloqueado_por_produtora?: string; // produtora_id que bloqueou
 }
 
 interface ParticipacaoEvento {
-  evento_id: string;
-  evento_nome: string;
-  evento_data: string;
-  status: string;
+  grupo_nome: string;
+  evento_nome?: string;
+  evento_data?: string;
+  funcao: string;
+  confirmado: boolean;
+  data_vinculo: string;
 }
 
 // ============================================================
@@ -107,7 +115,7 @@ const CREDENCIAIS = [
   { value: "outro", label: "Outro" },
 ];
 
-const FUNCOES_VINCULO = CREDENCIAIS; // mesma lista para função no grupo
+const FUNCOES_VINCULO = CREDENCIAIS;
 
 function formatarData(data: string) {
   if (!data) return "";
@@ -121,16 +129,56 @@ function formatarCredencial(credencial: string) {
 }
 
 // ============================================================
-// MODAL CADASTRAR/EDITAR GRUPO
+// MODAL DE CONFIRMAÇÃO CUSTOMIZADO
+// ============================================================
+interface ConfirmModalProps {
+  open: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading?: boolean;
+}
+
+function ConfirmModal({ open, title, message, onConfirm, onCancel, loading }: ConfirmModalProps) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onCancel}>
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="text-center">
+          <div className="w-14 h-14 rounded-full bg-axon-gold/10 border border-axon-gold/30 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle size={22} className="text-axon-gold" />
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
+          <p className="text-sm text-gray-400 mb-6">{message}</p>
+          <div className="flex gap-3">
+            <button onClick={onCancel} className="flex-1 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white transition-colors">
+              Cancelar
+            </button>
+            <button onClick={onConfirm} disabled={loading} className="flex-1 py-2 rounded-lg bg-axon-gold text-black font-bold hover:bg-axon-gold/80 disabled:opacity-50 flex items-center justify-center gap-2">
+              {loading && <Loader2 size={16} className="animate-spin" />}
+              Confirmar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// MODAL CADASTRAR/EDITAR GRUPO (com registro de origem)
 // ============================================================
 interface ModalGrupoProps {
   open: boolean;
   grupo?: Grupo | null;
   onClose: () => void;
   onSaved: () => void;
+  produtoraId: string; // origem do cadastro
 }
 
-function ModalGrupo({ open, grupo, onClose, onSaved }: ModalGrupoProps) {
+function ModalGrupo({ open, grupo, onClose, onSaved, produtoraId }: ModalGrupoProps) {
   const [nome, setNome] = useState("");
   const [responsavel, setResponsavel] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -186,6 +234,7 @@ function ModalGrupo({ open, grupo, onClose, onSaved }: ModalGrupoProps) {
       if (error) setErro(error.message);
       else onSaved();
     } else {
+      // Ao criar um novo grupo, registramos a origem (produtora que o cadastrou)
       const { error } = await supabase.from("grupos").insert({
         nome: nome.trim(),
         responsavel: responsavel.trim() || null,
@@ -193,6 +242,7 @@ function ModalGrupo({ open, grupo, onClose, onSaved }: ModalGrupoProps) {
         email: email.trim(),
         tipo_documento: tipoDocumento,
         documento: docLimpo,
+        origem_produtora_id: produtoraId,
       });
       if (error) setErro(error.message);
       else onSaved();
@@ -206,8 +256,8 @@ function ModalGrupo({ open, grupo, onClose, onSaved }: ModalGrupoProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={onClose}>
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-axon-border">
           <h2 className="text-lg font-semibold text-white">{grupo ? "Editar" : "Novo"} Grupo</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20} /></button>
@@ -255,17 +305,22 @@ function ModalGrupo({ open, grupo, onClose, onSaved }: ModalGrupoProps) {
 }
 
 // ============================================================
-// MODAL CADASTRAR/EDITAR PARTICIPANTE
+// MODAL CADASTRAR/EDITAR PARTICIPANTE (com registro de origem e restrição de edição)
 // ============================================================
 interface ModalParticipanteProps {
   open: boolean;
   participante?: Participante | null;
   onClose: () => void;
   onSaved: () => void;
+  userRole: string;
+  produtoraId: string;
 }
 
-function ModalParticipante({ open, participante, onClose, onSaved }: ModalParticipanteProps) {
+function ModalParticipante({ open, participante, onClose, onSaved, userRole, produtoraId }: ModalParticipanteProps) {
+  const isSuperAdmin = userRole === "super_admin";
+
   const [nome, setNome] = useState("");
+  const [nomeArtistico, setNomeArtistico] = useState("");
   const [cpf, setCpf] = useState("");
   const [dataNascimento, setDataNascimento] = useState("");
   const [emailContato, setEmailContato] = useState("");
@@ -277,6 +332,7 @@ function ModalParticipante({ open, participante, onClose, onSaved }: ModalPartic
   useEffect(() => {
     if (participante) {
       setNome(participante.nome);
+      setNomeArtistico(participante.nome_artistico || "");
       setCpf(participante.documento || "");
       setDataNascimento(participante.data_nascimento || "");
       setEmailContato(participante.email_contato || "");
@@ -284,6 +340,7 @@ function ModalParticipante({ open, participante, onClose, onSaved }: ModalPartic
       setCredencial(participante.credencial || "outro");
     } else {
       setNome("");
+      setNomeArtistico("");
       setCpf("");
       setDataNascimento("");
       setEmailContato("");
@@ -297,7 +354,7 @@ function ModalParticipante({ open, participante, onClose, onSaved }: ModalPartic
   async function salvar() {
     setErro("");
     const cpfLimpo = cpf.replace(/\D/g, "");
-    if (!nome.trim()) return setErro("Nome é obrigatório.");
+    if (!nome.trim()) return setErro("Nome completo é obrigatório.");
     if (cpfLimpo.length !== 11) return setErro("CPF deve ter 11 dígitos.");
     if (!emailContato.trim()) return setErro("E-mail de contato é obrigatório.");
     if (!credencial) return setErro("Selecione a credencial profissional.");
@@ -305,27 +362,35 @@ function ModalParticipante({ open, participante, onClose, onSaved }: ModalPartic
     const supabase = createClient();
 
     if (participante) {
+      // Produtor comum só pode editar nome artístico, e-mail, termo e credencial
+      const updateData: any = {
+        nome_artistico: nomeArtistico.trim() || null,
+        email_contato: emailContato.trim(),
+        termo_assinado: termoAssinado,
+        credencial: credencial,
+      };
+      if (isSuperAdmin) {
+        updateData.nome = nome.trim();
+        updateData.documento = cpfLimpo;
+        updateData.data_nascimento = dataNascimento || null;
+      }
       const { error } = await supabase
         .from("participantes")
-        .update({
-          nome: nome.trim(),
-          documento: cpfLimpo,
-          data_nascimento: dataNascimento || null,
-          email_contato: emailContato.trim(),
-          termo_assinado: termoAssinado,
-          credencial: credencial,
-        })
+        .update(updateData)
         .eq("id", participante.id);
       if (error) setErro(error.message);
       else onSaved();
     } else {
+      // Novo participante: registra a origem (produtora que o cadastrou)
       const { error } = await supabase.from("participantes").insert({
         nome: nome.trim(),
+        nome_artistico: nomeArtistico.trim() || null,
         documento: cpfLimpo,
         data_nascimento: dataNascimento || null,
         email_contato: emailContato.trim(),
         termo_assinado: termoAssinado,
         credencial: credencial,
+        origem_produtora_id: produtoraId,
       });
       if (error) setErro(error.message);
       else onSaved();
@@ -334,8 +399,8 @@ function ModalParticipante({ open, participante, onClose, onSaved }: ModalPartic
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-8">
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-8" onClick={onClose}>
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-axon-border">
           <h2 className="text-lg font-semibold text-white">{participante ? "Editar" : "Novo"} Participante</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20} /></button>
@@ -343,15 +408,21 @@ function ModalParticipante({ open, participante, onClose, onSaved }: ModalPartic
         <div className="p-6 space-y-4">
           <div>
             <label className="block text-xs text-gray-400 mb-1">Nome completo *</label>
-            <input type="text" value={nome} onChange={e => setNome(e.target.value)} className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white" />
+            <input type="text" value={nome} onChange={e => setNome(e.target.value)} disabled={!!participante && !isSuperAdmin} className={`w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white ${!!participante && !isSuperAdmin ? "opacity-60 cursor-not-allowed" : ""}`} />
+            {!!participante && !isSuperAdmin && <p className="text-xs text-amber-400 mt-1">Apenas o administrador do sistema pode editar o nome completo.</p>}
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Nome artístico (opcional)</label>
+            <input type="text" value={nomeArtistico} onChange={e => setNomeArtistico(e.target.value)} className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white" />
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">CPF *</label>
-            <input type="text" value={mascaraCPF(cpf)} onChange={e => setCpf(e.target.value)} maxLength={14} className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white" />
+            <input type="text" value={mascaraCPF(cpf)} onChange={e => setCpf(e.target.value)} disabled={!!participante && !isSuperAdmin} className={`w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white ${!!participante && !isSuperAdmin ? "opacity-60 cursor-not-allowed" : ""}`} maxLength={14} />
+            {!!participante && !isSuperAdmin && <p className="text-xs text-amber-400 mt-1">Apenas o administrador do sistema pode editar o CPF.</p>}
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Data de nascimento *</label>
-            <input type="date" value={dataNascimento} onChange={e => setDataNascimento(e.target.value)} className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white" />
+            <input type="date" value={dataNascimento} onChange={e => setDataNascimento(e.target.value)} disabled={!!participante && !isSuperAdmin} className={`w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white ${!!participante && !isSuperAdmin ? "opacity-60 cursor-not-allowed" : ""}`} />
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">E-mail de contato *</label>
@@ -410,6 +481,8 @@ function ModalVincular({ open, grupoId, grupoNome, onClose, onVinculado }: Modal
       setErro("");
     }
   }, [open]);
+
+  if (!open) return null;
 
   async function buscar() {
     const termo = busca.trim();
@@ -478,11 +551,9 @@ function ModalVincular({ open, grupoId, grupoNome, onClose, onVinculado }: Modal
     onClose();
   }
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={onClose}>
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-axon-border">
           <h2 className="text-lg font-semibold text-white">Vincular Participante</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20} /></button>
@@ -492,7 +563,7 @@ function ModalVincular({ open, grupoId, grupoNome, onClose, onVinculado }: Modal
             <label className="block text-xs text-gray-400 mb-1">Buscar participante (CPF ou nome)</label>
             <div className="flex gap-2">
               <input type="text" value={busca} onChange={e => setBusca(e.target.value)} className="flex-1 bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white" />
-              <button onClick={buscar} disabled={buscando} className="px-3 py-2 rounded-lg border border-axon-border text-axon-gold">Buscar</button>
+              <button onClick={buscar} disabled={buscando} className="px-3 py-2 rounded-lg border border-axon-border text-axon-gold hover:bg-axon-gold/10">Buscar</button>
             </div>
             {buscando && <Loader2 size={16} className="animate-spin mt-2" />}
             {resultados.length > 0 && (
@@ -517,7 +588,7 @@ function ModalVincular({ open, grupoId, grupoNome, onClose, onVinculado }: Modal
           {erro && <p className="text-xs text-red-400">{erro}</p>}
         </div>
         <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-axon-border text-gray-400">Cancelar</button>
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white">Cancelar</button>
           <button onClick={vincular} disabled={salvando || !selecionado} className="flex-1 py-2 rounded-lg bg-axon-gold text-black font-bold flex items-center justify-center gap-2">
             {salvando && <Loader2 size={16} className="animate-spin" />}
             Vincular
@@ -529,33 +600,169 @@ function ModalVincular({ open, grupoId, grupoNome, onClose, onVinculado }: Modal
 }
 
 // ============================================================
-// DRAWER DE DETALHES DO GRUPO
+// DRAWER LATERAL DE DETALHES DO PARTICIPANTE (com histórico e status de email)
+// ============================================================
+interface DrawerParticipanteProps {
+  open: boolean;
+  participante: Participante | null;
+  onClose: () => void;
+}
+
+function DrawerParticipante({ open, participante, onClose }: DrawerParticipanteProps) {
+  const [vinculos, setVinculos] = useState<{ grupo_nome: string; funcao: string; confirmado: boolean; data_vinculo: string }[]>([]);
+  const [carregando, setCarregando] = useState(false);
+
+  useEffect(() => {
+    if (!open || !participante) return;
+    const carregarDados = async () => {
+      setCarregando(true);
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("grupo_participante")
+        .select(`
+          funcao,
+          confirmado,
+          data_vinculo,
+          grupos:grupo_id (nome)
+        `)
+        .eq("participante_id", participante.id);
+      if (!error && data) {
+        const formatted = data.map((v: any) => ({
+          grupo_nome: v.grupos?.nome || "Grupo desconhecido",
+          funcao: v.funcao,
+          confirmado: v.confirmado,
+          data_vinculo: v.data_vinculo,
+        }));
+        setVinculos(formatted);
+      }
+      setCarregando(false);
+    };
+    carregarDados();
+  }, [open, participante]);
+
+  if (!open || !participante) return null;
+
+  const statusConfirmacao = () => {
+    // Verifica se existe algum vínculo confirmado? Na verdade o status é por vínculo.
+    // Mas o drawer mostra o status geral? Vamos pegar o primeiro vínculo ativo para exibir badge.
+    const vinculoAtivo = vinculos.find(v => v.confirmado === true);
+    if (vinculoAtivo) return { label: "Confirmado", color: "text-emerald-400", icon: <CheckCircle2 size={14} /> };
+    const pendente = vinculos.some(v => v.confirmado === false);
+    if (pendente) return { label: "Pendente", color: "text-amber-400", icon: <MailCheck size={14} /> };
+    return { label: "Sem vínculo ativo", color: "text-gray-500", icon: null };
+  };
+  const status = statusConfirmacao();
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black/50" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-axon-panel border-l border-axon-border shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-300">
+        <div className="flex justify-between items-center p-6 border-b border-axon-border">
+          <h2 className="text-xl font-semibold text-white">Detalhes do Participante</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Music size={18} className="text-axon-gold" />
+                <span className="text-sm text-gray-400">Nome artístico</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                {status.icon}
+                <span className={status.color}>{status.label}</span>
+              </div>
+            </div>
+            <p className="text-white text-lg font-medium">{participante.nome_artistico || "—"}</p>
+
+            <div className="flex items-center gap-2 mt-2">
+              <User size={18} className="text-axon-gold" />
+              <span className="text-sm text-gray-400">Nome completo</span>
+            </div>
+            <p className="text-white">{participante.nome}</p>
+
+            <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-axon-border">
+              <div>
+                <p className="text-xs text-gray-400">CPF</p>
+                <p className="text-sm text-white">{mascaraCPF(participante.documento || "")}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Data de nascimento</p>
+                <p className="text-sm text-white">{formatarData(participante.data_nascimento)}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-gray-400">E-mail de contato</p>
+                <p className="text-sm text-white">{participante.email_contato}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-gray-400">Credencial profissional</p>
+                <p className="text-sm text-white">{formatarCredencial(participante.credencial)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-axon-border">
+            <h3 className="text-sm font-semibold text-axon-gold mb-3">Histórico de vínculos</h3>
+            {carregando ? (
+              <div className="flex justify-center py-4"><Loader2 className="animate-spin text-axon-gold" size={20} /></div>
+            ) : vinculos.length === 0 ? (
+              <p className="text-gray-500 text-sm">Nenhum vínculo encontrado.</p>
+            ) : (
+              <div className="space-y-3">
+                {vinculos.map((v, idx) => (
+                  <div key={idx} className="bg-axon-bg border border-axon-border rounded-lg p-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm font-medium text-white">{v.grupo_nome}</p>
+                        <p className="text-xs text-gray-400 mt-1">Função: {formatarCredencial(v.funcao)}</p>
+                        <p className="text-xs text-gray-500">Vinculado em: {formatarData(v.data_vinculo)}</p>
+                      </div>
+                      {v.confirmado ? (
+                        <span className="text-xs text-emerald-400 flex items-center gap-1"><CheckCircle2 size={12} /> Confirmado</span>
+                      ) : (
+                        <span className="text-xs text-amber-400 flex items-center gap-1"><MailCheck size={12} /> Pendente</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ============================================================
+// DRAWER LATERAL DE DETALHES DO GRUPO (com botões de bloquear/remover participante)
 // ============================================================
 interface DrawerGrupoProps {
   open: boolean;
   grupo: Grupo | null;
   onClose: () => void;
   onRefresh: () => void;
+  produtoraId: string;
 }
 
-function DrawerGrupo({ open, grupo, onClose, onRefresh }: DrawerGrupoProps) {
-  const [participantes, setParticipantes] = useState<Array<Participante & { funcao: string; confirmado: boolean; vinculoId: string }>>([]);
-  const [historico, setHistorico] = useState<ParticipacaoEvento[]>([]);
+function DrawerGrupo({ open, grupo, onClose, onRefresh, produtoraId }: DrawerGrupoProps) {
+  const [participantes, setParticipantes] = useState<Array<Participante & { funcao: string; confirmado: boolean; vinculoId: string; bloqueado: boolean }>>([]);
   const [carregando, setCarregando] = useState(false);
   const [modalVincular, setModalVincular] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{ open: boolean; type: "remover" | "bloquear"; vinculoId?: string; participanteNome?: string }>({ open: false, type: "remover" });
 
   const carregarDados = useCallback(async () => {
     if (!grupo) return;
     setCarregando(true);
     const supabase = createClient();
 
-    // Buscar participantes vinculados com função e status
-    const { data: vinculos, error: vErr } = await supabase
+    // Buscar vínculos ativos e verificar bloqueio
+    const { data: vinculos, error } = await supabase
       .from("grupo_participante")
-      .select("id, participante_id, funcao, confirmado, token_confirmacao")
+      .select("id, participante_id, funcao, confirmado, bloqueado_por_produtora")
       .eq("grupo_id", grupo.id)
       .eq("status", "ativo");
-    if (!vErr && vinculos) {
+    if (!error && vinculos) {
       const participantesIds = vinculos.map(v => v.participante_id);
       const { data: parts } = await supabase.from("participantes").select("*").in("id", participantesIds);
       if (parts) {
@@ -564,40 +771,34 @@ function DrawerGrupo({ open, grupo, onClose, onRefresh }: DrawerGrupoProps) {
           funcao: v.funcao,
           confirmado: v.confirmado,
           vinculoId: v.id,
+          bloqueado: v.bloqueado_por_produtora === produtoraId,
         }));
         setParticipantes(combined);
       }
     }
-
-    // Buscar histórico de participações em eventos (via inscricoes_grupo_evento)
-    const { data: inscricoes } = await supabase
-      .from("inscricoes_grupo_evento")
-      .select("evento_id, status, created_at")
-      .eq("grupo_id", grupo.id);
-    if (inscricoes && inscricoes.length > 0) {
-      const eventosIds = inscricoes.map(i => i.evento_id);
-      const { data: eventos } = await supabase.from("eventos").select("id, nome, data_inicio").in("id", eventosIds);
-      if (eventos) {
-        const hist = inscricoes.map(i => ({
-          evento_id: i.evento_id,
-          evento_nome: eventos.find(e => e.id === i.evento_id)?.nome || "Evento",
-          evento_data: eventos.find(e => e.id === i.evento_id)?.data_inicio || "",
-          status: i.status,
-        }));
-        setHistorico(hist);
-      }
-    }
     setCarregando(false);
-  }, [grupo]);
+  }, [grupo, produtoraId]);
 
   useEffect(() => {
     if (open && grupo) carregarDados();
   }, [open, grupo, carregarDados]);
 
-  async function removerVinculo(vinculoId: string) {
-    if (!confirm("Remover este participante do grupo?")) return;
+  async function removerVinculo(vinculoId: string, participanteNome: string) {
+    setConfirmModal({ open: true, type: "remover", vinculoId, participanteNome });
+  }
+
+  async function bloquearParticipante(vinculoId: string, participanteNome: string) {
+    setConfirmModal({ open: true, type: "bloquear", vinculoId, participanteNome });
+  }
+
+  async function confirmarAcao() {
     const supabase = createClient();
-    await supabase.from("grupo_participante").delete().eq("id", vinculoId);
+    if (confirmModal.type === "remover" && confirmModal.vinculoId) {
+      await supabase.from("grupo_participante").delete().eq("id", confirmModal.vinculoId);
+    } else if (confirmModal.type === "bloquear" && confirmModal.vinculoId) {
+      await supabase.from("grupo_participante").update({ bloqueado_por_produtora: produtoraId }).eq("id", confirmModal.vinculoId);
+    }
+    setConfirmModal({ open: false, type: "remover" });
     onRefresh();
     carregarDados();
   }
@@ -613,7 +814,6 @@ function DrawerGrupo({ open, grupo, onClose, onRefresh }: DrawerGrupoProps) {
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24} /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Detalhes do grupo */}
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-axon-gold">Informações</h3>
             <div className="grid grid-cols-2 gap-2 text-sm">
@@ -624,7 +824,6 @@ function DrawerGrupo({ open, grupo, onClose, onRefresh }: DrawerGrupoProps) {
             </div>
           </div>
 
-          {/* Participantes vinculados */}
           <div>
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-sm font-semibold text-axon-gold">Participantes vinculados</h3>
@@ -633,38 +832,24 @@ function DrawerGrupo({ open, grupo, onClose, onRefresh }: DrawerGrupoProps) {
             {carregando ? <Loader2 className="animate-spin" /> : participantes.length === 0 ? <p className="text-gray-500 text-sm">Nenhum participante vinculado.</p> : (
               <div className="space-y-2">
                 {participantes.map(p => (
-                  <div key={p.id} className="bg-axon-bg border border-axon-border rounded-lg p-3 flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-medium text-white">{p.nome}</p>
-                      <div className="flex gap-3 text-xs text-gray-400 mt-1">
-                        <span>{formatarCredencial(p.credencial)}</span>
-                        <span>•</span>
-                        <span>Função: {formatarCredencial(p.funcao)}</span>
-                        <span>•</span>
-                        {p.confirmado ? <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={10} /> Confirmado</span> : <span className="text-amber-400 flex items-center gap-1"><MailCheck size={10} /> Pendente</span>}
+                  <div key={p.id} className="bg-axon-bg border border-axon-border rounded-lg p-3">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-sm font-medium text-white">{p.nome}</p>
+                        <div className="flex gap-3 text-xs text-gray-400 mt-1">
+                          <span>{formatarCredencial(p.credencial)}</span>
+                          <span>•</span>
+                          <span>Função: {formatarCredencial(p.funcao)}</span>
+                          <span>•</span>
+                          {p.confirmado ? <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={10} /> Confirmado</span> : <span className="text-amber-400 flex items-center gap-1"><MailCheck size={10} /> Pendente</span>}
+                          {p.bloqueado && <span className="text-red-400 flex items-center gap-1"><Lock size={10} /> Bloqueado</span>}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => removerVinculo(p.vinculoId, p.nome)} className="text-gray-400 hover:text-red-400" title="Remover do festival"><UserMinus size={16} /></button>
+                        <button onClick={() => bloquearParticipante(p.vinculoId, p.nome)} className="text-gray-400 hover:text-axon-gold" title="Bloquear neste festival"><ShieldAlert size={16} /></button>
                       </div>
                     </div>
-                    <button onClick={() => removerVinculo(p.vinculoId)} className="text-gray-400 hover:text-red-400"><Trash2 size={16} /></button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Histórico de participações */}
-          <div>
-            <h3 className="text-sm font-semibold text-axon-gold mb-3">Histórico de participações</h3>
-            {historico.length === 0 ? <p className="text-gray-500 text-sm">Nenhuma participação em eventos ainda.</p> : (
-              <div className="space-y-2">
-                {historico.map((h, idx) => (
-                  <div key={idx} className="bg-axon-bg border border-axon-border rounded-lg p-3 flex justify-between items-center">
-                    <div>
-                      <p className="text-sm text-white">{h.evento_nome}</p>
-                      <p className="text-xs text-gray-500">{formatarData(h.evento_data)}</p>
-                    </div>
-                    <span className={`text-xs px-2 py-1 rounded-full ${h.status === "confirmado" ? "bg-emerald-500/10 text-emerald-400" : h.status === "pendente" ? "bg-axon-gold/10 text-axon-gold" : "bg-red-500/10 text-red-400"}`}>
-                      {h.status === "confirmado" ? "Confirmado" : h.status === "pendente" ? "Pendente" : "Cancelado"}
-                    </span>
                   </div>
                 ))}
               </div>
@@ -672,7 +857,19 @@ function DrawerGrupo({ open, grupo, onClose, onRefresh }: DrawerGrupoProps) {
           </div>
         </div>
       </div>
+
       <ModalVincular open={modalVincular} grupoId={grupo.id} grupoNome={grupo.nome} onClose={() => setModalVincular(false)} onVinculado={() => { carregarDados(); onRefresh(); }} />
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.type === "remover" ? "Remover participante" : "Bloquear participante"}
+        message={
+          confirmModal.type === "remover"
+            ? `Deseja remover ${confirmModal.participanteNome} deste grupo? O vínculo será apagado, mas o participante continuará na base global.`
+            : `Ao bloquear ${confirmModal.participanteNome}, ele não poderá ser inscrito em nenhuma obra/grupo deste festival. Desbloquear só pelo Super Admin.`
+        }
+        onConfirm={confirmarAcao}
+        onCancel={() => setConfirmModal({ open: false, type: "remover" })}
+      />
     </>
   );
 }
@@ -692,18 +889,47 @@ export default function InscricoesPage() {
   const [editandoGrupo, setEditandoGrupo] = useState<Grupo | null>(null);
   const [editandoParticipante, setEditandoParticipante] = useState<Participante | null>(null);
   const [drawerGrupo, setDrawerGrupo] = useState<Grupo | null>(null);
+  const [drawerParticipante, setDrawerParticipante] = useState<Participante | null>(null);
   const [toast, setToast] = useState<{ msg: string; tipo: "ok" | "erro" } | null>(null);
+  const [userRole, setUserRole] = useState<string>("admin");
+  const [produtoraId, setProdutoraId] = useState<string>("");
 
   const mostrarToast = (msg: string, tipo: "ok" | "erro" = "ok") => {
     setToast({ msg, tipo });
     setTimeout(() => setToast(null), 3500);
   };
 
+  // Buscar role do usuário logado e sua produtora_id
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase.from("usuarios").select("role, produtora_id").eq("id", user.id).single();
+        if (data) {
+          setUserRole(data.role);
+          setProdutoraId(data.produtora_id || "");
+        }
+      }
+    };
+    fetchUserData();
+  }, []);
+
   const carregarDados = useCallback(async () => {
     setCarregando(true);
     const supabase = createClient();
+    // Buscar grupos que o produtor pode ver: só os que ele mesmo criou OU que estão vinculados aos seus eventos (para evitar pesca)
+    // Implementação: se produtor comum, filtrar grupos onde origem_produtora_id = produtoraId OU EXISTS em inscricoes_grupo_evento com evento da produtora
+    let gruposQuery = supabase.from("grupos").select("*").order("nome");
+    if (userRole !== "super_admin" && produtoraId) {
+      gruposQuery = supabase
+        .from("grupos")
+        .select("*")
+        .or(`origem_produtora_id.eq.${produtoraId},id.in.(select grupo_id from inscricoes_grupo_evento where evento_id in (select id from eventos where produtora_id = '${produtoraId}'))`)
+        .order("nome");
+    }
     const [gruposRes, participantesRes, vinculosRes] = await Promise.all([
-      supabase.from("grupos").select("*").order("nome"),
+      gruposQuery,
       supabase.from("participantes").select("*").order("nome"),
       supabase.from("grupo_participante").select("grupo_id"),
     ]);
@@ -715,37 +941,33 @@ export default function InscricoesPage() {
       setVinculosMap(counts);
     }
     setCarregando(false);
-  }, []);
+  }, [userRole, produtoraId]);
 
-  useEffect(() => { carregarDados(); }, []);
+  useEffect(() => { if (produtoraId) carregarDados(); }, [carregarDados, produtoraId]);
 
   const gruposFiltrados = grupos.filter(g => g.nome.toLowerCase().includes(busca.toLowerCase()) || (g.responsavel || "").toLowerCase().includes(busca.toLowerCase()));
-  const participantesFiltrados = participantes.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()) || (p.documento || "").includes(busca.replace(/\D/g, "")));
+  const participantesFiltrados = participantes.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()) || (p.nome_artistico || "").toLowerCase().includes(busca.toLowerCase()) || (p.documento || "").includes(busca.replace(/\D/g, "")));
 
   async function excluirGrupo(id: string) {
-    if (!confirm("Excluir grupo? Isso removerá todos os vínculos e históricos.")) return;
+    // Somente super admin pode excluir grupo globalmente
+    if (userRole !== "super_admin") {
+      mostrarToast("Apenas o Super Admin pode excluir grupos.", "erro");
+      return;
+    }
+    if (!window.confirm("Excluir grupo permanentemente? Isso também remove todos os vínculos e históricos.")) return;
     const supabase = createClient();
     const { error } = await supabase.from("grupos").delete().eq("id", id);
     if (error) mostrarToast(error.message, "erro");
     else { mostrarToast("Grupo excluído."); carregarDados(); }
   }
 
-  async function excluirParticipante(id: string) {
-    if (!confirm("Excluir participante? Isso removerá vínculos com grupos.")) return;
-    const supabase = createClient();
-    const { error } = await supabase.from("participantes").delete().eq("id", id);
-    if (error) mostrarToast(error.message, "erro");
-    else { mostrarToast("Participante excluído."); carregarDados(); }
-  }
-
   return (
     <>
       <div className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* Cabeçalho */}
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-white">Base de Grupos & Participantes</h1>
-            <p className="text-sm text-gray-500">Cadastre grupos e participantes globalmente, gerencie vínculos e histórico.</p>
+            <p className="text-sm text-gray-500">Gerencie grupos e participantes. Vínculos precisam de confirmação por e-mail para validar inscrições.</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => { setEditandoGrupo(null); setModalGrupoOpen(true); }} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-axon-gold text-black font-bold"><Plus size={16} /> Novo Grupo</button>
@@ -753,19 +975,16 @@ export default function InscricoesPage() {
           </div>
         </div>
 
-        {/* Busca global */}
         <div className="relative max-w-md">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, responsável ou CPF/CNPJ..." className="w-full bg-axon-panel border border-axon-border rounded-lg pl-10 pr-3 py-2 text-sm text-white" />
+          <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, nome artístico, responsável ou CPF/CNPJ..." className="w-full bg-axon-panel border border-axon-border rounded-lg pl-10 pr-3 py-2 text-sm text-white" />
         </div>
 
-        {/* Abas */}
         <div className="flex border-b border-axon-border">
           <button onClick={() => setAba("grupos")} className={`px-4 py-2 text-sm font-medium ${aba === "grupos" ? "border-b-2 border-axon-gold text-axon-gold" : "text-gray-400"}`}>Grupos ({grupos.length})</button>
           <button onClick={() => setAba("participantes")} className={`px-4 py-2 text-sm font-medium ${aba === "participantes" ? "border-b-2 border-axon-gold text-axon-gold" : "text-gray-400"}`}>Participantes ({participantes.length})</button>
         </div>
 
-        {/* Conteúdo Aba Grupos */}
         {aba === "grupos" && (
           carregando ? <div className="flex justify-center py-12"><Loader2 className="animate-spin text-axon-gold" size={32} /></div> :
           gruposFiltrados.length === 0 ? <div className="text-center py-12 text-gray-500">Nenhum grupo encontrado.</div> :
@@ -777,7 +996,9 @@ export default function InscricoesPage() {
                     <h3 className="font-semibold text-white">{g.nome}</h3>
                     <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                       <button onClick={() => { setEditandoGrupo(g); setModalGrupoOpen(true); }} className="p-1 text-gray-400 hover:text-axon-gold"><Pencil size={14} /></button>
-                      <button onClick={() => excluirGrupo(g.id)} className="p-1 text-gray-400 hover:text-red-400"><Trash2 size={14} /></button>
+                      {userRole === "super_admin" && (
+                        <button onClick={() => excluirGrupo(g.id)} className="p-1 text-gray-400 hover:text-red-400"><Trash2 size={14} /></button>
+                      )}
                     </div>
                   </div>
                   {g.responsavel && <p className="text-xs text-gray-500 mt-1">{g.responsavel}</p>}
@@ -794,7 +1015,6 @@ export default function InscricoesPage() {
           </div>
         )}
 
-        {/* Conteúdo Aba Participantes */}
         {aba === "participantes" && (
           carregando ? <div className="flex justify-center py-12"><Loader2 className="animate-spin text-axon-gold" size={32} /></div> :
           participantesFiltrados.length === 0 ? <div className="text-center py-12 text-gray-500">Nenhum participante encontrado.</div> :
@@ -802,26 +1022,25 @@ export default function InscricoesPage() {
             <table className="w-full text-sm">
               <thead className="border-b border-axon-border">
                 <tr className="text-left text-gray-400">
-                  <th className="pb-2">Nome</th>
+                  <th className="pb-2">Nome artístico</th>
+                  <th className="pb-2">Nome completo</th>
                   <th className="pb-2">Credencial</th>
                   <th className="pb-2">CPF</th>
                   <th className="pb-2">E-mail</th>
-                  <th className="pb-2">Cadastro</th>
                   <th className="pb-2"></th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {participantesFiltrados.map(p => (
-                  <tr key={p.id} className="border-b border-axon-border/50 hover:bg-white/5">
-                    <td className="py-3 font-medium text-white">{p.nome}</td>
+                  <tr key={p.id} className="border-b border-axon-border/50 hover:bg-white/5 cursor-pointer" onClick={() => setDrawerParticipante(p)}>
+                    <td className="py-3 font-medium text-axon-gold">{p.nome_artistico || "—"}</td>
+                    <td className="py-3 text-gray-300 text-xs">{p.nome}</td>
                     <td className="py-3 text-gray-300">{formatarCredencial(p.credencial)}</td>
                     <td className="py-3 text-gray-300">{mascaraCPF(p.documento || "")}</td>
                     <td className="py-3 text-gray-300">{p.email_contato}</td>
-                    <td className="py-3 text-gray-500 text-xs">{formatarData(p.created_at)}</td>
                     <td className="py-3">
-                      <div className="flex gap-2">
+                      <div className="flex gap-2" onClick={e => e.stopPropagation()}>
                         <button onClick={() => { setEditandoParticipante(p); setModalParticipanteOpen(true); }} className="text-gray-400 hover:text-axon-gold"><Pencil size={14} /></button>
-                        <button onClick={() => excluirParticipante(p.id)} className="text-gray-400 hover:text-red-400"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -832,10 +1051,11 @@ export default function InscricoesPage() {
         )}
       </div>
 
-      {/* Modais */}
-      <ModalGrupo open={modalGrupoOpen} grupo={editandoGrupo} onClose={() => { setModalGrupoOpen(false); setEditandoGrupo(null); }} onSaved={() => { carregarDados(); mostrarToast("Grupo salvo."); setModalGrupoOpen(false); }} />
-      <ModalParticipante open={modalParticipanteOpen} participante={editandoParticipante} onClose={() => { setModalParticipanteOpen(false); setEditandoParticipante(null); }} onSaved={() => { carregarDados(); mostrarToast("Participante salvo."); setModalParticipanteOpen(false); }} />
-      <DrawerGrupo open={!!drawerGrupo} grupo={drawerGrupo} onClose={() => setDrawerGrupo(null)} onRefresh={carregarDados} />
+      <ModalGrupo open={modalGrupoOpen} grupo={editandoGrupo} onClose={() => { setModalGrupoOpen(false); setEditandoGrupo(null); }} onSaved={() => { carregarDados(); mostrarToast("Grupo salvo."); setModalGrupoOpen(false); }} produtoraId={produtoraId} />
+      <ModalParticipante open={modalParticipanteOpen} participante={editandoParticipante} onClose={() => { setModalParticipanteOpen(false); setEditandoParticipante(null); }} onSaved={() => { carregarDados(); mostrarToast("Participante salvo."); setModalParticipanteOpen(false); }} userRole={userRole} produtoraId={produtoraId} />
+      <DrawerGrupo open={!!drawerGrupo} grupo={drawerGrupo} onClose={() => setDrawerGrupo(null)} onRefresh={carregarDados} produtoraId={produtoraId} />
+      <DrawerParticipante open={!!drawerParticipante} participante={drawerParticipante} onClose={() => setDrawerParticipante(null)} />
+
       {toast && <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold ${toast.tipo === "ok" ? "bg-axon-gold text-black" : "bg-red-500 text-white"}`}><CheckCircle2 size={16} />{toast.msg}</div>}
     </>
   );
