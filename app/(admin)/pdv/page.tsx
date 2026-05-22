@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 
 type TipoProduto = "cantina" | "bilheteria";
+type AbaPdv = "produtos" | "vendas" | "configuracoes";
 
 type CategoriaCantina = "Bebidas" | "Salgados" | "Doces" | "Lanches" | "Outros";
 type CategoriaBilheteria = "Ingressos" | "Pacotes" | "VIP" | "Outros";
@@ -49,7 +50,7 @@ interface PdvProduto {
   produtora_id: string;
   evento_id: string | null;
   created_at: string;
-  vinculo_evento_id?: string | null;
+  vinculo_id?: string | null;
 }
 
 interface PdvVenda {
@@ -73,6 +74,20 @@ interface ConfigPdv {
   pin_admin: string | null;
 }
 
+interface EventoProdutoRelacionado {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  preco: number;
+  estoque: number | null;
+  tipo: "ingresso" | "consumo";
+  categoria: string | null;
+  ativo: boolean;
+  produtora_id: string;
+  evento_id: string | null;
+  created_at: string;
+}
+
 interface EventoProdutoRow {
   id: string;
   evento_id: string;
@@ -80,19 +95,7 @@ interface EventoProdutoRow {
   preco_evento: number | null;
   estoque_evento: number | null;
   ativo_evento: boolean | null;
-  pdv_produtos: {
-    id: string;
-    nome: string;
-    descricao: string | null;
-    preco: number;
-    estoque: number | null;
-    tipo: TipoProduto;
-    categoria: string | null;
-    ativo: boolean;
-    produtora_id: string;
-    evento_id: string | null;
-    created_at: string;
-  } | null;
+  pdv_produtos: EventoProdutoRelacionado | EventoProdutoRelacionado[] | null;
 }
 
 const CATEGORIAS_CANTINA: CategoriaCantina[] = ["Bebidas", "Salgados", "Doces", "Lanches", "Outros"];
@@ -124,6 +127,12 @@ function formatarPrecoBRLInput(valor: string): string {
 function parsePrecoInputToNumber(valor: string): number {
   const apenasDigitos = valor.replace(/\D/g, "");
   return Number(apenasDigitos) / 100;
+}
+
+function mapTipoProduto(tipo: "ingresso" | "consumo" | TipoProduto): TipoProduto {
+  if (tipo === "ingresso") return "bilheteria";
+  if (tipo === "consumo") return "cantina";
+  return tipo;
 }
 
 interface ToastState {
@@ -336,11 +345,11 @@ function ModalProduto({
           ativo_evento: ativo,
         };
 
-        if (produto.vinculo_evento_id) {
+        if (produto.vinculo_id) {
           const { error: updateVinculoError } = await supabase
             .from("evento_produtos")
             .update(payloadEvento)
-            .eq("id", produto.vinculo_evento_id);
+            .eq("id", produto.vinculo_id);
 
           if (updateVinculoError) {
             setErro(updateVinculoError.message);
@@ -373,13 +382,28 @@ function ModalProduto({
               return;
             }
           } else {
-            const { error: insertVinculoError } = await supabase.from("evento_produtos").insert(payloadEvento);
+            const { data: novoVinculo, error: insertVinculoError } = await supabase
+              .from("evento_produtos")
+              .insert(payloadEvento)
+              .select("id")
+              .single();
 
             if (insertVinculoError) {
               setErro(insertVinculoError.message);
               setSalvando(false);
               return;
             }
+
+            const produtoAtualizado: PdvProduto = {
+              ...produto,
+              ...payloadGlobal,
+              evento_id: eventoId,
+              vinculo_id: novoVinculo?.id ?? null,
+            };
+
+            onSaved(produtoAtualizado);
+            setSalvando(false);
+            return;
           }
         }
 
@@ -387,6 +411,7 @@ function ModalProduto({
           ...produto,
           ...payloadGlobal,
           evento_id: eventoId,
+          vinculo_id: produto.vinculo_id ?? null,
         };
 
         onSaved(produtoAtualizado);
@@ -395,6 +420,7 @@ function ModalProduto({
           ...produto,
           ...payloadGlobal,
           evento_id: null,
+          vinculo_id: null,
         };
 
         onSaved(produtoAtualizado);
@@ -436,7 +462,7 @@ function ModalProduto({
       const produtoComVinculo: PdvProduto = {
         ...(novoProduto as PdvProduto),
         evento_id: eventoId,
-        vinculo_evento_id: novoVinculo?.id ?? null,
+        vinculo_id: novoVinculo?.id ?? null,
       };
 
       onSaved(produtoComVinculo);
@@ -444,6 +470,7 @@ function ModalProduto({
       const produtoGlobal: PdvProduto = {
         ...(novoProduto as PdvProduto),
         evento_id: null,
+        vinculo_id: null,
       };
 
       onSaved(produtoGlobal);
@@ -752,7 +779,7 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {produtosFiltrados.map((p) => (
             <div
-              key={p.id}
+              key={`${p.id}-${p.vinculo_id ?? "global"}`}
               className={`bg-axon-panel border rounded-xl p-4 flex flex-col gap-2 transition-colors ${
                 p.ativo ? "border-axon-border hover:border-gray-600" : "border-axon-border/40 opacity-60"
               }`}
@@ -1163,11 +1190,11 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
   );
 }
 
-export default function PdvPage() {
+function PdvPageInner() {
   const searchParams = useSearchParams();
   const eventoId = searchParams.get("eventoId");
 
-  const [aba, setAba] = useState<"produtos" | "vendas" | "configuracoes">("produtos");
+  const [aba, setAba] = useState<AbaPdv>("produtos");
   const [produtos, setProdutos] = useState<PdvProduto[]>([]);
   const [carregandoProdutos, setCarregandoProdutos] = useState(true);
   const [produtoraId, setProdutoraId] = useState("");
@@ -1269,24 +1296,29 @@ export default function PdvPage() {
       return;
     }
 
-    const rows = (data ?? []) as EventoProdutoRow[];
+    const rows = (data ?? []) as unknown as EventoProdutoRow[];
 
     const produtosMapeados: PdvProduto[] = rows
-      .filter((row) => row.pdv_produtos && row.pdv_produtos.produtora_id === produtoraId)
-      .map((row) => ({
-        id: row.pdv_produtos!.id,
-        nome: row.pdv_produtos!.nome,
-        descricao: row.pdv_produtos!.descricao,
-        preco: row.preco_evento ?? row.pdv_produtos!.preco,
-        estoque: row.estoque_evento ?? row.pdv_produtos!.estoque,
-        tipo: row.pdv_produtos!.tipo,
-        categoria: row.pdv_produtos!.categoria,
-        ativo: row.ativo_evento ?? row.pdv_produtos!.ativo,
-        produtora_id: row.pdv_produtos!.produtora_id,
-        evento_id: row.evento_id,
-        created_at: row.pdv_produtos!.created_at,
-        vinculo_evento_id: row.id,
-      }))
+      .map((row) => {
+        const pdvProd = Array.isArray(row.pdv_produtos) ? row.pdv_produtos[0] : row.pdv_produtos;
+        if (!pdvProd || pdvProd.produtora_id !== produtoraId) return null;
+
+        return {
+          id: pdvProd.id,
+          nome: pdvProd.nome,
+          descricao: pdvProd.descricao,
+          preco: row.preco_evento ?? pdvProd.preco,
+          estoque: row.estoque_evento ?? pdvProd.estoque,
+          tipo: mapTipoProduto(pdvProd.tipo),
+          categoria: pdvProd.categoria,
+          ativo: row.ativo_evento ?? pdvProd.ativo,
+          produtora_id: pdvProd.produtora_id,
+          evento_id: row.evento_id,
+          created_at: pdvProd.created_at,
+          vinculo_id: row.id,
+        } satisfies PdvProduto;
+      })
+      .filter((p): p is PdvProduto => p !== null)
       .sort((a, b) => a.nome.localeCompare(b.nome));
 
     setProdutos(produtosMapeados);
@@ -1391,7 +1423,7 @@ export default function PdvPage() {
     const supabase = createClient();
 
     if (eventoId) {
-      const alvoVinculoId = excluindoProduto.vinculo_evento_id;
+      const alvoVinculoId = excluindoProduto.vinculo_id;
 
       if (alvoVinculoId) {
         const { error } = await supabase.from("evento_produtos").delete().eq("id", alvoVinculoId);
@@ -1415,7 +1447,7 @@ export default function PdvPage() {
         }
       }
 
-      setProdutos((prev) => prev.filter((p) => p.id !== excluindoProduto.id));
+      setProdutos((prev) => prev.filter((p) => !(p.id === excluindoProduto.id && p.vinculo_id === excluindoProduto.vinculo_id)));
       mostrarToast("Produto desvinculado do evento.", "ok");
     } else {
       const { error } = await supabase.from("pdv_produtos").delete().eq("id", excluindoProduto.id);
@@ -1438,7 +1470,10 @@ export default function PdvPage() {
   const handleProdutoSalvo = useCallback(
     (produto: PdvProduto) => {
       setProdutos((prev) => {
-        const idx = prev.findIndex((p) => p.id === produto.id);
+        const idx = prev.findIndex((p) => {
+          if (eventoId) return p.id === produto.id && (p.vinculo_id ?? null) === (produto.vinculo_id ?? null);
+          return p.id === produto.id;
+        });
 
         if (idx >= 0) {
           const novo = [...prev];
@@ -1453,13 +1488,13 @@ export default function PdvPage() {
       setModalProdutoOpen(false);
       setEditandoProduto(null);
     },
-    [editandoProduto, mostrarToast]
+    [editandoProduto, eventoId, mostrarToast]
   );
 
-  const ABAS = [
-    { key: "produtos" as const, label: "Produtos", icon: Package },
-    { key: "vendas" as const, label: "Vendas", icon: BarChart3 },
-    { key: "configuracoes" as const, label: "Configurações", icon: Settings },
+  const ABAS: { key: AbaPdv; label: string; icon: typeof Package }[] = [
+    { key: "produtos", label: "Produtos", icon: Package },
+    { key: "vendas", label: "Vendas", icon: BarChart3 },
+    { key: "configuracoes", label: "Configurações", icon: Settings },
   ];
 
   const toastColors: Record<ToastState["tipo"], string> = {
@@ -1570,5 +1605,19 @@ export default function PdvPage() {
         </div>
       )}
     </>
+  );
+}
+
+export default function PdvPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="animate-spin text-axon-gold" size={28} />
+        </div>
+      }
+    >
+      <PdvPageInner />
+    </Suspense>
   );
 }
