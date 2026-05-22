@@ -1,340 +1,397 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import {
-  Plus, Pencil, Trash2, Save, X, Package,
-  ReceiptText, Settings, ToggleLeft, ToggleRight,
-  TrendingUp, Banknote, QrCode, CreditCard,
-  AlertCircle, CheckCircle, ChevronDown, Info,
-  Utensils, Ticket, HelpCircle,
-} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  Search,
+  Plus,
+  X,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Pencil,
+  Trash2,
+  ShoppingBag,
+  Tag,
+  Package,
+  BarChart3,
+  Settings,
+  QrCode,
+  Lock,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  TrendingUp,
+  DollarSign,
+  ClipboardList,
+  Upload,
+  Coffee,
+  Ticket,
+  LayoutGrid,
+} from "lucide-react";
 
-// ============================================================
-// TIPOS
-// ============================================================
-interface Produto {
+type TipoProduto = "cantina" | "bilheteria";
+
+type CategoriaCantina = "Bebidas" | "Salgados" | "Doces" | "Lanches" | "Outros";
+type CategoriaBilheteria = "Ingressos" | "Pacotes" | "VIP" | "Outros";
+type Categoria = CategoriaCantina | CategoriaBilheteria | "Todos";
+
+interface PdvProduto {
   id: string;
   nome: string;
+  descricao: string | null;
   preco: number;
-  categoria: string;
-  tipo: "cantina" | "bilheteria";
   estoque: number | null;
+  tipo: TipoProduto;
+  categoria: string | null;
   ativo: boolean;
-  ordem: number;
-  evento_id?: string | null;
-}
-
-interface Venda {
-  id: string;
-  total: number;
-  forma_pagamento: string;
-  sincronizado: boolean;
+  evento_id: string | null;
   created_at: string;
-  itens: { nome: string; preco: number; quantidade: number }[];
-  operador_id: string | null;
-  evento_id?: string | null;
 }
 
-interface PdvConfig {
+interface PdvVenda {
   id: string;
-  pin_vendedor: string;
-  chave_pix: string | null;
-  nome_recebedor: string | null;
-  cidade_recebedor: string | null;
-  evento_id?: string | null;
+  produto_id: string;
+  produto_nome: string;
+  quantidade: number;
+  preco_unitario: number;
+  total: number;
+  forma_pagamento: "pix" | "dinheiro" | "cartao";
+  created_at: string;
+  operador_nome: string | null;
 }
 
-// ============================================================
-// CONSTANTES
-// ============================================================
-const CATEGORIAS_CANTINA = ["Bebidas", "Salgados", "Doces", "Lanches", "Outros"];
-const CATEGORIAS_BILHETERIA = ["Ingressos", "Pacotes", "VIP", "Outros"];
-
-// ============================================================
-// UTILITÁRIOS
-// ============================================================
-function moeda(v: number) {
-  return `R$ ${v.toFixed(2).replace(".", ",")}`;
+interface ConfigPdv {
+  id?: string;
+  produtora_id: string;
+  pix_chave: string | null;
+  pix_nome: string | null;
+  pix_cidade: string | null;
+  pin_admin: string | null;
 }
 
-function iconeForma(forma: string) {
-  if (forma === "pix") return <QrCode size={14} className="text-emerald-400" />;
-  if (forma === "cartao") return <CreditCard size={14} className="text-blue-400" />;
-  return <Banknote size={14} className="text-yellow-400" />;
+const CATEGORIAS_CANTINA: CategoriaCantina[] = ["Bebidas", "Salgados", "Doces", "Lanches", "Outros"];
+const CATEGORIAS_BILHETERIA: CategoriaBilheteria[] = ["Ingressos", "Pacotes", "VIP", "Outros"];
+
+function formatarMoeda(valor: number): string {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 }
 
-// ============================================================
-// COMPONENTES AUXILIARES
-// ============================================================
-function Dica({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-2.5 bg-axon-gold/5 border border-axon-gold/15 rounded-xl px-4 py-3">
-      <Info size={14} className="text-axon-gold shrink-0 mt-0.5" />
-      <p className="text-xs text-gray-400 leading-relaxed">{children}</p>
-    </div>
-  );
-}
-
-function Toast({ msg, visivel, erro }: { msg: string; visivel: boolean; erro?: boolean }) {
-  return (
-    <div
-      className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full font-bold text-sm flex items-center gap-2 shadow-lg z-50 transition-all duration-300 ${
-        visivel ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-      } ${erro ? "bg-red-500 text-white" : "bg-emerald-500 text-black"}`}
-    >
-      {erro ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
-      {msg}
-    </div>
-  );
-}
-
-// ============================================================
-// MODAL DE PRODUTO — com correção de categoria customizada
-// ============================================================
-function ModalProduto({
-  produto,
-  onSalvar,
-  onFechar,
-  salvando,
-}: {
-  produto: Partial<Produto> | null;
-  onSalvar: (p: Partial<Produto>) => void;
-  onFechar: () => void;
-  salvando: boolean;
-}) {
-  // Detecção de categoria customizada — deve preceder os estados
-  const categoriasPadrao =
-    produto?.tipo === "bilheteria" ? CATEGORIAS_BILHETERIA : CATEGORIAS_CANTINA;
-
-  const ehCategoriaCustomizada =
-    !!produto?.categoria && !categoriasPadrao.includes(produto.categoria);
-
-  // Lazy initializer: se a categoria salva não é padrão, força select para "Outros"
-  const [form, setForm] = useState<Partial<Produto>>(() => {
-    if (produto) {
-      return {
-        ...produto,
-        categoria: ehCategoriaCustomizada ? "Outros" : produto.categoria,
-      };
-    }
-    return { tipo: "cantina", ativo: true, ordem: 0 };
+function formatarDataHora(data: string): string {
+  return new Date(data).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   });
+}
 
-  // Pré-popula com o valor real da categoria customizada na edição
-  const [categoriaCustom, setCategoriaCustom] = useState<string>(() =>
-    ehCategoriaCustomizada ? (produto?.categoria ?? "") : ""
+interface ToastState {
+  msg: string;
+  tipo: "ok" | "erro" | "aviso";
+}
+
+interface ConfirmModalProps {
+  open: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading?: boolean;
+  destructive?: boolean;
+}
+
+function ConfirmModal({ open, title, message, onConfirm, onCancel, loading, destructive }: ConfirmModalProps) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onCancel}>
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="text-center">
+          <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${destructive ? "bg-red-500/10 border border-red-500/30" : "bg-axon-gold/10 border border-axon-gold/30"}`}>
+            <AlertCircle size={22} className={destructive ? "text-red-400" : "text-axon-gold"} />
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
+          <p className="text-sm text-gray-400 mb-6">{message}</p>
+          <div className="flex gap-3">
+            <button onClick={onCancel} className="flex-1 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white transition-colors">
+              Cancelar
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={loading}
+              className={`flex-1 py-2 rounded-lg font-bold disabled:opacity-50 flex items-center justify-center gap-2 ${destructive ? "bg-red-500 text-white hover:bg-red-600" : "bg-axon-gold text-black hover:bg-axon-gold/80"}`}
+            >
+              {loading && <Loader2 size={16} className="animate-spin" />}
+              Confirmar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
+}
 
-  const categorias =
-    form.tipo === "bilheteria" ? CATEGORIAS_BILHETERIA : CATEGORIAS_CANTINA;
+interface ModalProdutoProps {
+  open: boolean;
+  produto?: PdvProduto | null;
+  eventoId: string | null;
+  tipoInicial?: TipoProduto;
+  categoriaInicial?: string;
+  onClose: () => void;
+  onSaved: (produto: PdvProduto) => void;
+}
 
-  const categoriaEhOutros = form.categoria === "Outros";
+function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, onClose, onSaved }: ModalProdutoProps) {
+  const isEdicao = !!produto;
+  const [nome, setNome] = useState(() => produto?.nome ?? "");
+  const [descricao, setDescricao] = useState(() => produto?.descricao ?? "");
+  const [preco, setPreco] = useState(() => (produto ? String(produto.preco.toFixed(2)) : ""));
+  const [estoque, setEstoque] = useState(() => (produto?.estoque != null ? String(produto.estoque) : ""));
+  const [tipo, setTipo] = useState<TipoProduto>(() => produto?.tipo ?? tipoInicial ?? "cantina");
+  const [categoriaSelect, setCategoriaSelect] = useState<string>(() => {
+    const cat = produto?.categoria ?? categoriaInicial ?? "";
+    const listaCantina: string[] = CATEGORIAS_CANTINA;
+    const listaBilheteria: string[] = CATEGORIAS_BILHETERIA;
+    const tipoAtual = produto?.tipo ?? tipoInicial ?? "cantina";
+    const lista = tipoAtual === "cantina" ? listaCantina : listaBilheteria;
+    return lista.includes(cat) ? cat : "Outros";
+  });
+  const [categoriaCustom, setCategoriaCustom] = useState<string>(() => {
+    const cat = produto?.categoria ?? categoriaInicial ?? "";
+    const listaCantina: string[] = CATEGORIAS_CANTINA;
+    const listaBilheteria: string[] = CATEGORIAS_BILHETERIA;
+    const tipoAtual = produto?.tipo ?? tipoInicial ?? "cantina";
+    const lista = tipoAtual === "cantina" ? listaCantina : listaBilheteria;
+    return !lista.includes(cat) && cat !== "" ? cat : "";
+  });
+  const [ativo, setAtivo] = useState(() => produto?.ativo ?? true);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
 
-  const valido =
-    form.nome?.trim() &&
-    form.preco &&
-    form.tipo &&
-    (categoriaEhOutros ? categoriaCustom.trim().length > 0 : !!form.categoria);
+  useEffect(() => {
+    if (!open) return;
 
-  function handleSalvar() {
-    const payload: Partial<Produto> = {
-      ...form,
-      categoria: categoriaEhOutros ? categoriaCustom.trim() : form.categoria,
+    if (produto) {
+      setNome(produto.nome);
+      setDescricao(produto.descricao ?? "");
+      setPreco(produto.preco.toFixed(2));
+      setEstoque(produto.estoque != null ? String(produto.estoque) : "");
+      setTipo(produto.tipo);
+      const listaCantina: string[] = CATEGORIAS_CANTINA;
+      const listaBilheteria: string[] = CATEGORIAS_BILHETERIA;
+      const lista = produto.tipo === "cantina" ? listaCantina : listaBilheteria;
+      if (lista.includes(produto.categoria ?? "")) {
+        setCategoriaSelect(produto.categoria ?? "Outros");
+        setCategoriaCustom("");
+      } else {
+        setCategoriaSelect("Outros");
+        setCategoriaCustom(produto.categoria ?? "");
+      }
+      setAtivo(produto.ativo);
+    } else {
+      setNome("");
+      setDescricao("");
+      setPreco("");
+      setEstoque("");
+      setTipo(tipoInicial ?? "cantina");
+      const cat = categoriaInicial ?? "";
+      const listaCantina: string[] = CATEGORIAS_CANTINA;
+      const listaBilheteria: string[] = CATEGORIAS_BILHETERIA;
+      const lista = (tipoInicial ?? "cantina") === "cantina" ? listaCantina : listaBilheteria;
+      if (lista.includes(cat)) {
+        setCategoriaSelect(cat);
+        setCategoriaCustom("");
+      } else {
+        setCategoriaSelect("Outros");
+        setCategoriaCustom("");
+      }
+      setAtivo(true);
+    }
+
+    setErro("");
+  }, [open, produto, tipoInicial, categoriaInicial]);
+
+  const handleTipoChange = (novoTipo: TipoProduto) => {
+    setTipo(novoTipo);
+    setCategoriaSelect("Outros");
+    setCategoriaCustom("");
+  };
+
+  const categoriaFinal = categoriaSelect === "Outros" && categoriaCustom.trim() ? categoriaCustom.trim() : categoriaSelect;
+  const categoriasList = tipo === "cantina" ? CATEGORIAS_CANTINA : CATEGORIAS_BILHETERIA;
+
+  async function handleSalvar() {
+    setErro("");
+    if (!nome.trim()) return setErro("Nome é obrigatório.");
+    const precoNum = parseFloat(preco.replace(",", "."));
+    if (isNaN(precoNum) || precoNum < 0) return setErro("Preço inválido.");
+    const estoqueNum = estoque.trim() !== "" ? parseInt(estoque, 10) : null;
+
+    setSalvando(true);
+    const supabase = createClient();
+
+    const payload = {
+      nome: nome.trim(),
+      descricao: descricao.trim() || null,
+      preco: precoNum,
+      estoque: estoqueNum,
+      tipo,
+      categoria: categoriaFinal || null,
+      ativo,
+      evento_id: eventoId ?? null,
     };
-    onSalvar(payload);
+
+    if (isEdicao && produto) {
+      const { data, error } = await supabase.from("pdv_produtos").update(payload).eq("id", produto.id).select().single();
+      if (error) {
+        setErro(error.message);
+        setSalvando(false);
+        return;
+      }
+      onSaved(data as PdvProduto);
+    } else {
+      const { data, error } = await supabase.from("pdv_produtos").insert(payload).select().single();
+      if (error) {
+        setErro(error.message);
+        setSalvando(false);
+        return;
+      }
+      onSaved(data as PdvProduto);
+    }
+
+    setSalvando(false);
   }
 
+  if (!open) return null;
+
   return (
-    <div
-      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-      onClick={onFechar}
-    >
-      <div
-        className="bg-axon-panel border border-axon-border rounded-2xl p-6 w-full max-w-md space-y-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white">
-            {produto?.id ? "Editar Produto" : "Novo Produto"}
-          </h2>
-          <button
-            onClick={onFechar}
-            className="text-gray-500 hover:text-white transition-colors"
-          >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-8" onClick={onClose}>
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-axon-border">
+          <h2 className="text-lg font-semibold text-white">{isEdicao ? "Editar Produto" : "Novo Produto"}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
             <X size={20} />
           </button>
         </div>
 
-        <div className="space-y-4">
-          {/* Seção */}
-          <div className="space-y-1.5">
-            <label className="text-xs text-gray-400 uppercase tracking-wider">
-              Seção
-            </label>
-            <div className="flex bg-axon-bg border border-axon-border rounded-lg p-1">
-              {(["cantina", "bilheteria"] as const).map((t) => (
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Nome *</label>
+            <input
+              type="text"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
+              placeholder="Ex: Coca-Cola 350ml"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Descrição</label>
+            <input
+              type="text"
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
+              placeholder="Opcional"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Preço (R$) *</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={preco}
+                onChange={(e) => setPreco(e.target.value)}
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
+                placeholder="0,00"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Estoque</label>
+              <input
+                type="number"
+                min="0"
+                value={estoque}
+                onChange={(e) => setEstoque(e.target.value)}
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
+                placeholder="Ilimitado"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Seção *</label>
+            <div className="flex gap-3">
+              {(["cantina", "bilheteria"] as TipoProduto[]).map((t) => (
                 <button
                   key={t}
-                  onClick={() =>
-                    setForm((f) => ({ ...f, tipo: t, categoria: undefined }))
-                  }
-                  className={`flex flex-1 items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
-                    form.tipo === t
-                      ? "bg-axon-panel text-white shadow"
-                      : "text-gray-500 hover:text-white"
+                  type="button"
+                  onClick={() => handleTipoChange(t)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    tipo === t ? "bg-axon-gold text-black border-axon-gold" : "border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
                   }`}
                 >
-                  {t === "cantina" ? (
-                    <Utensils size={14} className="shrink-0" />
-                  ) : (
-                    <Ticket size={14} className="shrink-0" />
-                  )}
-                  {t === "cantina" ? "Cantina" : "Bilheteria"}
+                  {t === "cantina" ? "🍔 Cantina" : "🎟 Bilheteria"}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Nome */}
-          <div className="space-y-1.5">
-            <label className="text-xs text-gray-400 uppercase tracking-wider">
-              Nome do Produto
-            </label>
-            <input
-              value={form.nome ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
-              placeholder="Ex: Água Mineral 500ml"
-            />
-          </div>
-
-          {/* Preço e Categoria */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs text-gray-400 uppercase tracking-wider">
-                Preço (R$)
-              </label>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Categoria</label>
+            <select
+              value={categoriaSelect}
+              onChange={(e) => setCategoriaSelect(e.target.value)}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold/50"
+            >
+              {categoriasList.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            {categoriaSelect === "Outros" && (
               <input
-                type="number"
-                min="0"
-                step="0.50"
-                value={form.preco ?? ""}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, preco: parseFloat(e.target.value) }))
-                }
-                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
-                placeholder="0,00"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-gray-400 uppercase tracking-wider">
-                Categoria
-              </label>
-              <select
-                value={form.categoria ?? ""}
-                onChange={(e) => {
-                  setForm((f) => ({ ...f, categoria: e.target.value }));
-                  // Limpa o campo custom ao trocar para opção padrão
-                  if (e.target.value !== "Outros") setCategoriaCustom("");
-                }}
-                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
-              >
-                <option value="">Selecione</option>
-                {categorias.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Campo dinâmico — visível apenas quando "Outros" está selecionado */}
-          {categoriaEhOutros && (
-            <div className="space-y-1.5">
-              <label className="text-xs text-gray-400 uppercase tracking-wider">
-                Qual categoria?
-              </label>
-              <input
-                autoFocus
+                type="text"
                 value={categoriaCustom}
                 onChange={(e) => setCategoriaCustom(e.target.value)}
-                className="w-full bg-axon-bg border border-emerald-500/40 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
-                placeholder="Ex: Artesanato, Acessórios, Sorvetes..."
+                placeholder="Nome da categoria personalizada (opcional)"
+                className="mt-2 w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
               />
-            </div>
-          )}
-
-          {/* Estoque */}
-          <div className="space-y-1.5">
-            <label className="text-xs text-gray-400 uppercase tracking-wider">
-              Estoque{" "}
-              <span className="text-gray-600 normal-case font-normal">
-                (vazio = ilimitado)
-              </span>
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={form.estoque ?? ""}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  estoque:
-                    e.target.value === "" ? null : parseInt(e.target.value),
-                }))
-              }
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
-              placeholder="Ilimitado"
-            />
+            )}
           </div>
 
-          {/* Ordem de exibição */}
-          <div className="space-y-1.5">
-            <label className="text-xs text-gray-400 uppercase tracking-wider">
-              Ordem de exibição
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={form.ordem ?? 0}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  ordem: parseInt(e.target.value) || 0,
-                }))
-              }
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
-            />
-            <div className="flex items-start gap-2 mt-1.5 bg-white/3 border border-white/8 rounded-lg px-3 py-2.5">
-              <HelpCircle size={13} className="text-gray-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-gray-500 leading-relaxed">
-                <span className="text-gray-400 font-medium">Dica:</span> Define
-                a posição do item na tela rápida do caixa do vendedor. Números
-                menores aparecem primeiro — ex: coloque ordem{" "}
-                <span className="text-emerald-400 font-semibold">1</span> na{" "}
-                <em>Água Mineral</em> para mantê-la no topo da tela do caixa.
-              </p>
-            </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setAtivo(!ativo)}
+              className={`relative w-10 h-6 rounded-full transition-colors ${ativo ? "bg-axon-gold" : "bg-axon-border"}`}
+            >
+              <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${ativo ? "translate-x-5" : "translate-x-1"}`} />
+            </button>
+            <span className="text-sm text-gray-300">Produto {ativo ? "ativo" : "inativo"}</span>
           </div>
+
+          {erro && <p className="text-xs text-red-400">{erro}</p>}
         </div>
 
-        <div className="flex gap-3 pt-1">
-          <button
-            onClick={onFechar}
-            className="flex-1 py-2.5 rounded-lg border border-axon-border text-gray-400 hover:text-white text-sm font-medium transition-all duration-200"
-          >
+        <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white transition-colors">
             Cancelar
           </button>
           <button
             onClick={handleSalvar}
-            disabled={salvando || !valido}
-            className="flex-1 py-2.5 rounded-lg bg-emerald-500 text-black font-bold text-sm hover:bg-emerald-400 active:scale-95 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            disabled={salvando}
+            className="flex-1 py-2 rounded-lg bg-axon-gold text-black font-bold flex items-center justify-center gap-2 hover:bg-axon-gold/80 disabled:opacity-50"
           >
-            <Save size={15} />
-            {salvando ? "Salvando..." : "Salvar"}
+            {salvando && <Loader2 size={16} className="animate-spin" />}
+            {isEdicao ? "Salvar" : "Cadastrar"}
           </button>
         </div>
       </div>
@@ -342,652 +399,781 @@ function ModalProduto({
   );
 }
 
-// ============================================================
-// ABA PRODUTOS
-// ============================================================
-function AbaProdutos({
-  produtos,
-  onNovo,
-  onEditar,
-  onToggle,
-  onExcluir,
-}: {
-  produtos: Produto[];
-  onNovo: () => void;
-  onEditar: (p: Produto) => void;
-  onToggle: (p: Produto) => void;
-  onExcluir: (id: string) => void;
-}) {
-  const [filtroTipo, setFiltroTipo] = useState<"todos" | "cantina" | "bilheteria">("todos");
-  const filtrados = produtos.filter((p) =>
-    filtroTipo === "todos" ? true : p.tipo === filtroTipo
-  );
-  const cantina = produtos.filter((p) => p.tipo === "cantina");
-  const bilheteria = produtos.filter((p) => p.tipo === "bilheteria");
+interface AbaProdutosProps {
+  produtos: PdvProduto[];
+  eventoId: string | null;
+  importando: boolean;
+  onImportar: () => void;
+  onNovoProduto: (tipo?: TipoProduto, categoria?: string) => void;
+  onEditar: (p: PdvProduto) => void;
+  onExcluir: (p: PdvProduto) => void;
+}
+
+function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto, onEditar, onExcluir }: AbaProdutosProps) {
+  const [tipoAtivo, setTipoAtivo] = useState<TipoProduto>("cantina");
+  const [categoriaAtiva, setCategoriaAtiva] = useState<string>("Todos");
+  const [busca, setBusca] = useState("");
+
+  const categoriasList: string[] = tipoAtivo === "cantina" ? ["Todos", ...CATEGORIAS_CANTINA] : ["Todos", ...CATEGORIAS_BILHETERIA];
+
+  const handleTipoChange = (tipo: TipoProduto) => {
+    setTipoAtivo(tipo);
+    setCategoriaAtiva("Todos");
+  };
+
+  const produtosFiltrados = produtos.filter((p) => {
+    if (p.tipo !== tipoAtivo) return false;
+    if (categoriaAtiva !== "Todos") {
+      const catProduto = p.categoria ?? "Outros";
+      const listaConhecida: string[] = tipoAtivo === "cantina" ? CATEGORIAS_CANTINA : CATEGORIAS_BILHETERIA;
+      const catNormalizada = listaConhecida.includes(catProduto) ? catProduto : "Outros";
+      if (catNormalizada !== categoriaAtiva) return false;
+    }
+    if (busca.trim()) {
+      return p.nome.toLowerCase().includes(busca.toLowerCase());
+    }
+    return true;
+  });
+
+  const produtosPorTipo = produtos.filter((p) => p.tipo === tipoAtivo);
+
+  if (eventoId && produtos.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 px-6">
+        <div className="w-20 h-20 rounded-2xl bg-axon-gold/10 border border-axon-gold/20 flex items-center justify-center mb-6">
+          <ShoppingBag size={36} className="text-axon-gold/60" />
+        </div>
+        <h3 className="text-xl font-semibold text-white mb-2">Nenhum produto cadastrado</h3>
+        <p className="text-gray-500 text-sm text-center max-w-md mb-8">
+          Este evento ainda não possui produtos. Você pode importar o cardápio padrão como ponto de partida ou criar seus produtos do zero.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
+          <button
+            onClick={onImportar}
+            disabled={importando}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-axon-gold text-black font-bold hover:bg-axon-gold/80 disabled:opacity-60 transition-colors"
+          >
+            {importando ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
+            Importar Cardápio Padrão
+          </button>
+          <button
+            onClick={() => onNovoProduto()}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-axon-border text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
+          >
+            <Plus size={18} />
+            Cadastrar do Zero
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-5">
-      <Dica>
-        Produtos cadastrados aqui aparecem na tela do caixa (
-        <strong>/pdv/caixa</strong>). Use a{" "}
-        <strong>Ordem de exibição</strong> para controlar a sequência — número
-        menor aparece primeiro. Desative produtos temporariamente sem precisar
-        excluí-los.
-      </Dica>
-
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex bg-axon-bg border border-axon-border rounded-lg p-1">
-          {(["todos", "cantina", "bilheteria"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setFiltroTipo(t)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
-                filtroTipo === t
-                  ? "bg-axon-panel text-white shadow"
-                  : "text-gray-500 hover:text-white"
-              }`}
-            >
-              {t === "cantina" && <Utensils size={12} className="shrink-0" />}
-              {t === "bilheteria" && <Ticket size={12} className="shrink-0" />}
-              {t === "todos"
-                ? `Todos (${produtos.length})`
-                : t === "cantina"
-                ? `Cantina (${cantina.length})`
-                : `Bilheteria (${bilheteria.length})`}
-            </button>
-          ))}
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar produto..."
+            className="w-full bg-axon-panel border border-axon-border rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/40"
+          />
         </div>
         <button
-          onClick={onNovo}
-          className="flex items-center gap-2 bg-emerald-500 text-black px-4 py-2 rounded-lg font-bold text-sm hover:bg-emerald-400 active:scale-95 transition-all duration-200"
+          onClick={() => onNovoProduto(tipoAtivo, categoriaAtiva !== "Todos" ? categoriaAtiva : undefined)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 transition-colors"
         >
-          <Plus size={16} /> Novo Produto
+          <Plus size={15} /> Novo Produto
         </button>
       </div>
 
-      {filtrados.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 border border-dashed border-axon-border rounded-xl text-gray-600 gap-3">
-          <Package size={40} className="opacity-20 text-axon-gold" />
-          <p className="font-medium text-gray-300">Nenhum produto cadastrado</p>
+      <div className="flex border-b border-axon-border">
+        {[
+          { key: "cantina" as TipoProduto, label: "🍔 Cantina", icon: Coffee },
+          { key: "bilheteria" as TipoProduto, label: "🎟 Bilheteria", icon: Ticket },
+        ].map(({ key, label }) => (
           <button
-            onClick={onNovo}
-            className="text-emerald-400 text-sm hover:text-white border border-emerald-500/30 hover:border-emerald-500 px-4 py-2 rounded-lg transition-all duration-200"
+            key={key}
+            onClick={() => handleTipoChange(key)}
+            className={`px-5 py-2.5 text-sm font-medium transition-colors ${tipoAtivo === key ? "border-b-2 border-axon-gold text-axon-gold" : "text-gray-400 hover:text-white"}`}
           >
-            Cadastrar primeiro produto →
+            {label} ({produtos.filter((p) => p.tipo === key).length})
           </button>
+        ))}
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        {categoriasList.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setCategoriaAtiva(cat)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${categoriaAtiva === cat ? "bg-axon-gold text-black" : "bg-axon-panel border border-axon-border text-gray-400 hover:text-white hover:border-gray-500"}`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {produtosFiltrados.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-14 h-14 rounded-full bg-axon-panel border border-axon-border flex items-center justify-center mb-4">
+            <Package size={24} className="text-gray-600" />
+          </div>
+          {produtosPorTipo.length === 0 ? (
+            <>
+              <p className="text-gray-400 font-medium">Nenhum produto nesta seção</p>
+              <p className="text-gray-600 text-sm mt-1 mb-4">Adicione produtos à seção {tipoAtivo}.</p>
+              <button
+                onClick={() => onNovoProduto(tipoAtivo)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-axon-gold/10 border border-axon-gold/30 text-axon-gold text-sm hover:bg-axon-gold/20 transition-colors"
+              >
+                <Plus size={14} /> Adicionar produto
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-400 font-medium">Nenhum produto em \"{categoriaAtiva}\"</p>
+              <p className="text-gray-600 text-sm mt-1 mb-4">Cadastre um produto já nesta categoria.</p>
+              <button
+                onClick={() => onNovoProduto(tipoAtivo, categoriaAtiva !== "Todos" ? categoriaAtiva : undefined)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-axon-gold/10 border border-axon-gold/30 text-axon-gold text-sm hover:bg-axon-gold/20 transition-colors"
+              >
+                <Plus size={14} /> Adicionar em {categoriaAtiva}
+              </button>
+            </>
+          )}
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtrados
-            .sort((a, b) => a.ordem - b.ordem)
-            .map((p) => (
-              <div
-                key={p.id}
-                className={`flex items-center justify-between bg-axon-bg border rounded-xl px-4 py-3 transition-colors hover:border-gray-600 ${
-                  p.ativo ? "border-axon-border" : "border-axon-border opacity-50"
-                }`}
-              >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {produtosFiltrados.map((p) => (
+            <div
+              key={p.id}
+              className={`bg-axon-panel border rounded-xl p-4 flex flex-col gap-2 transition-colors ${p.ativo ? "border-axon-border hover:border-gray-600" : "border-axon-border/40 opacity-60"}`}
+            >
+              <div className="flex justify-between items-start gap-2">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-white truncate">
-                      {p.nome}
-                    </p>
-                    <span className="text-xs text-gray-600 bg-axon-panel px-2 py-0.5 rounded-full shrink-0">
-                      {p.categoria}
-                    </span>
-                    <span className="shrink-0">
-                      {p.tipo === "cantina" ? (
-                        <Utensils size={13} className="text-gray-500" />
-                      ) : (
-                        <Ticket size={13} className="text-gray-500" />
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <p className="text-emerald-400 font-bold text-sm">
-                      {moeda(p.preco)}
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      Estoque: {p.estoque === null ? "Ilimitado" : p.estoque}
-                    </p>
-                    <p className="text-xs text-gray-600">Posição: {p.ordem}</p>
-                  </div>
+                  <h4 className="text-sm font-semibold text-white truncate">{p.nome}</h4>
+                  {p.descricao && <p className="text-xs text-gray-500 mt-0.5 truncate">{p.descricao}</p>}
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => onToggle(p)}
-                    title={p.ativo ? "Desativar" : "Ativar"}
-                    className={`p-1.5 rounded-lg transition-all duration-200 ${
-                      p.ativo
-                        ? "text-emerald-400 hover:bg-emerald-500/10"
-                        : "text-gray-600 hover:text-emerald-400"
-                    }`}
-                  >
-                    {p.ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                <div className="flex gap-1 shrink-0">
+                  <button onClick={() => onEditar(p)} className="p-1 text-gray-500 hover:text-axon-gold transition-colors">
+                    <Pencil size={13} />
                   </button>
-                  <button
-                    onClick={() => onEditar(p)}
-                    className="p-1.5 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-200"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => onExcluir(p.id)}
-                    className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200"
-                  >
-                    <Trash2 size={15} />
+                  <button onClick={() => onExcluir(p)} className="p-1 text-gray-500 hover:text-red-400 transition-colors">
+                    <Trash2 size={13} />
                   </button>
                 </div>
               </div>
-            ))}
+
+              <div className="flex items-center justify-between mt-auto pt-2 border-t border-axon-border/50">
+                <span className="text-base font-bold text-axon-gold">{formatarMoeda(p.preco)}</span>
+                <div className="flex items-center gap-2">
+                  {p.categoria && (
+                    <span className="text-xs bg-white/5 border border-white/10 text-gray-400 px-2 py-0.5 rounded-full">{p.categoria}</span>
+                  )}
+                  {p.estoque !== null && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${p.estoque > 0 ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>
+                      {p.estoque === 0 ? "Esgotado" : `${p.estoque} un`}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// ============================================================
-// ABA VENDAS
-// ============================================================
-function AbaVendas({ vendas }: { vendas: Venda[] }) {
-  const total = vendas.reduce((a, v) => a + v.total, 0);
-  const porForma = {
-    pix: vendas
-      .filter((v) => v.forma_pagamento === "pix")
-      .reduce((a, v) => a + v.total, 0),
-    cartao: vendas
-      .filter((v) => v.forma_pagamento === "cartao")
-      .reduce((a, v) => a + v.total, 0),
-    dinheiro: vendas
-      .filter((v) => v.forma_pagamento === "dinheiro")
-      .reduce((a, v) => a + v.total, 0),
+interface AbaVendasProps {
+  eventoId: string | null;
+  produtoraId: string;
+}
+
+function AbaVendas({ eventoId, produtoraId }: AbaVendasProps) {
+  const [vendas, setVendas] = useState<PdvVenda[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [filtroForma, setFiltroForma] = useState<string>("todos");
+  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
+
+  const carregarVendas = useCallback(async () => {
+    setCarregando(true);
+    const supabase = createClient();
+    let query = supabase.from("pdv_vendas").select("*").order("created_at", { ascending: false }).limit(200);
+
+    if (eventoId) {
+      query = query.eq("evento_id", eventoId);
+    } else {
+      query = query.eq("produtora_id", produtoraId);
+    }
+
+    const { data } = await query;
+    setVendas(data ?? []);
+    setCarregando(false);
+  }, [eventoId, produtoraId]);
+
+  useEffect(() => {
+    if (!eventoId && !produtoraId) return;
+
+    carregarVendas();
+    const supabase = createClient();
+    const filterString = eventoId ? `evento_id=eq.${eventoId}` : `produtora_id=eq.${produtoraId}`;
+    const channel = supabase
+      .channel(`pdv_vendas_realtime:${filterString}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "pdv_vendas",
+          filter: filterString,
+        },
+        () => {
+          carregarVendas();
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [carregarVendas, eventoId, produtoraId]);
+
+  const vendasFiltradas = filtroForma === "todos" ? vendas : vendas.filter((v) => v.forma_pagamento === filtroForma);
+  const totalGeral = vendasFiltradas.reduce((acc, v) => acc + v.total, 0);
+  const totalPix = vendas.filter((v) => v.forma_pagamento === "pix").reduce((acc, v) => acc + v.total, 0);
+  const totalDinheiro = vendas.filter((v) => v.forma_pagamento === "dinheiro").reduce((acc, v) => acc + v.total, 0);
+  const totalCartao = vendas.filter((v) => v.forma_pagamento === "cartao").reduce((acc, v) => acc + v.total, 0);
+
+  const badgeForma = (forma: string) => {
+    const map: Record<string, string> = {
+      pix: "bg-emerald-900/30 text-emerald-400",
+      dinheiro: "bg-amber-900/30 text-amber-400",
+      cartao: "bg-blue-900/30 text-blue-400",
+    };
+    return map[forma] ?? "bg-gray-800 text-gray-400";
   };
-  const [expandido, setExpandido] = useState<string | null>(null);
 
   return (
     <div className="space-y-5">
-      <Dica>
-        Vendas registradas pelo caixa aparecem aqui em tempo real. O painel
-        atualiza automaticamente quando uma nova venda é concluída.
-      </Dica>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: "Total Geral", valor: moeda(total), cor: "text-emerald-400", icon: <TrendingUp size={16} /> },
-          { label: "PIX", valor: moeda(porForma.pix), cor: "text-emerald-400", icon: <QrCode size={16} /> },
-          { label: "Cartão", valor: moeda(porForma.cartao), cor: "text-blue-400", icon: <CreditCard size={16} /> },
-          { label: "Dinheiro", valor: moeda(porForma.dinheiro), cor: "text-yellow-400", icon: <Banknote size={16} /> },
-        ].map(({ label, valor, cor, icon }) => (
-          <div key={label} className="bg-axon-bg border border-axon-border rounded-xl p-4">
-            <div className={`flex items-center gap-1.5 ${cor} mb-2`}>
-              {icon}
-              <span className="text-xs">{label}</span>
+          { label: "Total Geral", valor: totalGeral, cor: "text-axon-gold", icon: TrendingUp },
+          { label: "PIX", valor: totalPix, cor: "text-emerald-400", icon: QrCode },
+          { label: "Dinheiro", valor: totalDinheiro, cor: "text-amber-400", icon: DollarSign },
+          { label: "Cartão", valor: totalCartao, cor: "text-blue-400", icon: Tag },
+        ].map(({ label, valor, cor, icon: Icon }) => (
+          <div key={label} className="bg-axon-panel border border-axon-border rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Icon size={14} className="text-gray-500" />
+              <span className="text-xs text-gray-500">{label}</span>
             </div>
-            <p className={`text-xl font-bold ${cor}`}>{valor}</p>
+            <p className={`text-xl font-bold ${cor} tabular-nums`}>{formatarMoeda(valor)}</p>
           </div>
         ))}
       </div>
 
-      {vendas.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 border border-dashed border-axon-border rounded-xl text-gray-600 gap-3">
-          <ReceiptText size={40} className="opacity-20 text-axon-gold" />
-          <p className="font-medium text-gray-300">Nenhuma venda registrada</p>
-          <p className="text-sm text-gray-500">
-            As vendas do caixa aparecerão aqui em tempo real.
-          </p>
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex gap-2">
+          {["todos", "pix", "dinheiro", "cartao"].map((f) => (
+            <button
+              key={f}
+              onClick={() => setFiltroForma(f)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${filtroForma === f ? "bg-axon-gold text-black" : "bg-axon-panel border border-axon-border text-gray-400 hover:text-white"}`}
+            >
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
+        <button onClick={carregarVendas} className="ml-auto text-gray-500 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-colors">
+          <RefreshCw size={14} />
+        </button>
+      </div>
+
+      {carregando ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="animate-spin text-axon-gold" size={28} />
+        </div>
+      ) : vendasFiltradas.length === 0 ? (
+        <div className="text-center py-16">
+          <ClipboardList size={36} className="text-gray-700 mx-auto mb-3" />
+          <p className="text-gray-500">Nenhuma venda registrada.</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {[...vendas]
-            .sort(
-              (a, b) =>
-                new Date(b.created_at).getTime() -
-                new Date(a.created_at).getTime()
-            )
-            .map((v) => (
-              <div
-                key={v.id}
-                className="bg-axon-bg border border-axon-border rounded-xl overflow-hidden hover:border-gray-600 transition-colors"
-              >
-                <button
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
-                  onClick={() => setExpandido(expandido === v.id ? null : v.id)}
-                >
-                  <div className="flex items-center gap-3">
-                    {iconeForma(v.forma_pagamento)}
-                    <div className="text-left">
-                      <p className="text-sm font-medium text-white">
-                        {moeda(v.total)}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(v.created_at).toLocaleString("pt-BR")}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {!v.sincronizado && (
-                      <span className="text-xs text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20">
-                        Pendente sync
-                      </span>
-                    )}
-                    <ChevronDown
-                      size={16}
-                      className={`text-gray-500 transition-transform ${
-                        expandido === v.id ? "rotate-180" : ""
-                      }`}
-                    />
-                  </div>
-                </button>
-                {expandido === v.id && (
-                  <div className="px-4 pb-4 border-t border-axon-border pt-3 space-y-1.5">
-                    {v.itens.map((item, i) => (
-                      <div key={i} className="flex justify-between text-sm text-gray-400">
-                        <span>{item.quantidade}× {item.nome}</span>
-                        <span>{moeda(item.preco * item.quantidade)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+        <div className="overflow-x-auto rounded-xl border border-axon-border">
+          <table className="w-full text-sm">
+            <thead className="bg-axon-panel border-b border-axon-border">
+              <tr className="text-left text-gray-500 text-xs">
+                <th className="px-4 py-3 font-medium">Data/Hora</th>
+                <th className="px-4 py-3 font-medium">Produto</th>
+                <th className="px-4 py-3 font-medium text-center">Qtd</th>
+                <th className="px-4 py-3 font-medium text-right">Unit.</th>
+                <th className="px-4 py-3 font-medium text-right">Total</th>
+                <th className="px-4 py-3 font-medium">Pagamento</th>
+                <th className="px-4 py-3 font-medium">Operador</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vendasFiltradas.map((v, i) => (
+                <tr key={v.id} className={`border-b border-axon-border/40 hover:bg-white/[0.02] ${i % 2 === 0 ? "" : "bg-white/[0.01]"}`}>
+                  <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">{formatarDataHora(v.created_at)}</td>
+                  <td className="px-4 py-2.5 text-white font-medium">{v.produto_nome}</td>
+                  <td className="px-4 py-2.5 text-center text-gray-300 tabular-nums">{v.quantidade}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{formatarMoeda(v.preco_unitario)}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-axon-gold tabular-nums">{formatarMoeda(v.total)}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${badgeForma(v.forma_pagamento)}`}>{v.forma_pagamento.toUpperCase()}</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-500 text-xs">{v.operador_nome ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t border-axon-border bg-axon-panel/50">
+              <tr>
+                <td colSpan={4} className="px-4 py-3 text-xs text-gray-500 font-medium">{vendasFiltradas.length} venda(s)</td>
+                <td className="px-4 py-3 text-right font-bold text-axon-gold tabular-nums">{formatarMoeda(totalGeral)}</td>
+                <td colSpan={2} />
+              </tr>
+            </tfoot>
+          </table>
         </div>
       )}
     </div>
   );
 }
 
-// ============================================================
-// ABA CONFIGURAÇÕES
-// ============================================================
-function AbaConfig({
-  config,
-  onSalvar,
-  salvando,
-}: {
-  config: PdvConfig | null;
-  onSalvar: (c: Partial<PdvConfig>) => void;
-  salvando: boolean;
-}) {
-  const [form, setForm] = useState<Partial<PdvConfig>>(config ?? {});
+interface AbaConfiguracoesProps {
+  produtoraId: string;
+}
+
+function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
+  const [config, setConfig] = useState<ConfigPdv>({
+    produtora_id: produtoraId,
+    pix_chave: "",
+    pix_nome: "",
+    pix_cidade: "",
+    pin_admin: "",
+  });
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [mostrarPin, setMostrarPin] = useState(false);
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [erro, setErro] = useState("");
+  const [sucesso, setSucesso] = useState("");
+
   useEffect(() => {
-    if (config) setForm(config);
-  }, [config]);
+    const carregar = async () => {
+      setCarregando(true);
+      const supabase = createClient();
+      const { data } = await supabase.from("pdv_config").select("*").eq("produtora_id", produtoraId).maybeSingle();
+      if (data) setConfig(data as ConfigPdv);
+      setCarregando(false);
+    };
+    if (produtoraId) carregar();
+  }, [produtoraId]);
+
+  async function salvar() {
+    setErro("");
+    setSucesso("");
+    if (config.pin_admin && config.pin_admin !== pinConfirm && pinConfirm !== "") {
+      return setErro("Os PINs não coincidem.");
+    }
+    setSalvando(true);
+    const supabase = createClient();
+
+    const payload = {
+      produtora_id: produtoraId,
+      pix_chave: config.pix_chave || null,
+      pix_nome: config.pix_nome || null,
+      pix_cidade: config.pix_cidade || null,
+      pin_admin: config.pin_admin || null,
+    };
+
+    if (config.id) {
+      const { error } = await supabase.from("pdv_config").update(payload).eq("id", config.id);
+      if (error) setErro(error.message);
+      else setSucesso("Configurações salvas.");
+    } else {
+      const { data, error } = await supabase.from("pdv_config").insert(payload).select().single();
+      if (error) setErro(error.message);
+      else {
+        setConfig(data as ConfigPdv);
+        setSucesso("Configurações salvas.");
+      }
+    }
+
+    setSalvando(false);
+  }
+
+  if (carregando) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="animate-spin text-axon-gold" size={24} />
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-lg space-y-6">
-      <Dica>
-        O PIN é usado pelos vendedores para acessar o caixa. A chave PIX gera
-        QR Codes automaticamente na hora da venda — sem intermediário, o
-        dinheiro vai direto para sua conta.
-      </Dica>
-
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-white">Acesso dos Vendedores</h3>
-        <div className="space-y-1.5">
-          <label className="text-xs text-gray-400 uppercase tracking-wider">
-            PIN de 4 dígitos
-          </label>
-          <input
-            type="password"
-            maxLength={4}
-            value={form.pin_vendedor ?? ""}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                pin_vendedor: e.target.value.replace(/\D/g, "").slice(0, 4),
-              }))
-            }
-            className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 tracking-widest text-center text-2xl font-bold transition-colors"
-            placeholder="••••"
-          />
-          <p className="text-xs text-gray-600">
-            Somente números. O vendedor usa este PIN para acessar o caixa.
-          </p>
+    <div className="max-w-xl space-y-8">
+      <div className="bg-axon-panel border border-axon-border rounded-xl p-5">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 rounded-lg bg-emerald-900/30 border border-emerald-500/20 flex items-center justify-center">
+            <QrCode size={16} className="text-emerald-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white">Configuração PIX</h3>
+            <p className="text-xs text-gray-500">Dados para geração do QR Code</p>
+          </div>
         </div>
-      </div>
-
-      <div className="h-px bg-axon-border" />
-
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-white">Configuração PIX</h3>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <label className="text-xs text-gray-400 uppercase tracking-wider">
-              Chave PIX
-            </label>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Chave PIX</label>
             <input
-              value={form.chave_pix ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, chave_pix: e.target.value }))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+              type="text"
+              value={config.pix_chave ?? ""}
+              onChange={(e) => setConfig({ ...config, pix_chave: e.target.value })}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
               placeholder="CPF, CNPJ, e-mail ou chave aleatória"
             />
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs text-gray-400 uppercase tracking-wider">
-              Nome do Recebedor
-            </label>
-            <input
-              value={form.nome_recebedor ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, nome_recebedor: e.target.value }))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
-              placeholder="Nome que aparece no app do pagador"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Nome do recebedor</label>
+              <input
+                type="text"
+                value={config.pix_nome ?? ""}
+                onChange={(e) => setConfig({ ...config, pix_nome: e.target.value })}
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
+                placeholder="Ex: Festival de Dança"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Cidade</label>
+              <input
+                type="text"
+                value={config.pix_cidade ?? ""}
+                onChange={(e) => setConfig({ ...config, pix_cidade: e.target.value })}
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
+                placeholder="Ex: Rio de Janeiro"
+              />
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs text-gray-400 uppercase tracking-wider">
-              Cidade
-            </label>
+        </div>
+      </div>
+
+      <div className="bg-axon-panel border border-axon-border rounded-xl p-5">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 rounded-lg bg-axon-gold/10 border border-axon-gold/20 flex items-center justify-center">
+            <Lock size={16} className="text-axon-gold" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white">PIN Administrativo</h3>
+            <p className="text-xs text-gray-500">Código de segurança para operações críticas</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">PIN (4–6 dígitos)</label>
+            <div className="relative">
+              <input
+                type={mostrarPin ? "text" : "password"}
+                value={config.pin_admin ?? ""}
+                onChange={(e) => setConfig({ ...config, pin_admin: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 pr-9 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
+                placeholder="••••"
+                maxLength={6}
+              />
+              <button
+                type="button"
+                onClick={() => setMostrarPin(!mostrarPin)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+              >
+                {mostrarPin ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Confirmar PIN</label>
             <input
-              value={form.cidade_recebedor ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, cidade_recebedor: e.target.value }))}
-              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
-              placeholder="Rio de Janeiro"
+              type={mostrarPin ? "text" : "password"}
+              value={pinConfirm}
+              onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
+              placeholder="••••"
+              maxLength={6}
             />
           </div>
         </div>
       </div>
 
+      {erro && <p className="text-sm text-red-400">{erro}</p>}
+      {sucesso && (
+        <div className="flex items-center gap-2 text-sm text-emerald-400">
+          <CheckCircle2 size={16} /> {sucesso}
+        </div>
+      )}
+
       <button
-        onClick={() => onSalvar(form)}
+        onClick={salvar}
         disabled={salvando}
-        className="flex items-center gap-2 bg-emerald-500 text-black px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-emerald-400 active:scale-95 transition-all duration-200 disabled:opacity-40"
+        className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-axon-gold text-black font-bold hover:bg-axon-gold/80 disabled:opacity-50 transition-colors"
       >
-        <Save size={15} />
-        {salvando ? "Salvando..." : "Salvar Configurações"}
+        {salvando && <Loader2 size={16} className="animate-spin" />}
+        Salvar Configurações
       </button>
     </div>
   );
 }
 
-// ============================================================
-// PÁGINA PRINCIPAL
-// ============================================================
-function AdminPdvPageInner() {
+export default function PdvPage() {
   const searchParams = useSearchParams();
-  const eventoId = searchParams.get("eventoId") ?? undefined;
+  const eventoId = searchParams.get("eventoId");
 
-  const [aba, setAba] = useState<"produtos" | "vendas" | "config">("produtos");
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [vendas, setVendas] = useState<Venda[]>([]);
-  const [config, setConfig] = useState<PdvConfig | null>(null);
-  const [modalProduto, setModalProduto] = useState<Partial<Produto> | null | false>(false);
-  const [salvando, setSalvando] = useState(false);
-  const [toast, setToast] = useState({ msg: "", visivel: false, erro: false });
-  const [confirmarExclusao, setConfirmarExclusao] = useState<string | null>(null);
+  const [aba, setAba] = useState<"produtos" | "vendas" | "configuracoes">("produtos");
+  const [produtos, setProdutos] = useState<PdvProduto[]>([]);
+  const [carregandoProdutos, setCarregandoProdutos] = useState(true);
+  const [produtoraId, setProdutoraId] = useState("");
+  const [importando, setImportando] = useState(false);
+  const [modalProdutoOpen, setModalProdutoOpen] = useState(false);
+  const [editandoProduto, setEditandoProduto] = useState<PdvProduto | null>(null);
+  const [tipoInicialModal, setTipoInicialModal] = useState<TipoProduto | undefined>(undefined);
+  const [categoriaInicialModal, setCategoriaInicialModal] = useState<string | undefined>(undefined);
+  const [excluindoProduto, setExcluindoProduto] = useState<PdvProduto | null>(null);
+  const [confirmExcluirOpen, setConfirmExcluirOpen] = useState(false);
+  const [deletando, setDeletando] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
-  const mostrarToast = (msg: string, erro = false) => {
-    setToast({ msg, visivel: true, erro });
-    setTimeout(() => setToast((t) => ({ ...t, visivel: false })), 2500);
-  };
+  const mostrarToast = useCallback((msg: string, tipo: ToastState["tipo"] = "ok") => {
+    setToast({ msg, tipo });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
 
   useEffect(() => {
-    async function carregar() {
+    const fetchUser = async () => {
       const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase.from("usuarios").select("produtora_id").eq("id", user.id).single();
+      if (data?.produtora_id) setProdutoraId(data.produtora_id);
+    };
+    fetchUser();
+  }, []);
 
-      const produtosQuery = supabase
-        .from("pdv_produtos")
-        .select("*")
-        .order("ordem");
-      const vendasQuery = supabase
-        .from("pdv_vendas")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(100);
-      const configBaseQuery = supabase.from("pdv_config").select("*");
+  const carregarProdutos = useCallback(async () => {
+    setCarregandoProdutos(true);
+    const supabase = createClient();
+    let query = supabase.from("pdv_produtos").select("*").order("nome");
 
-      if (eventoId) {
-        produtosQuery.eq("evento_id", eventoId);
-        vendasQuery.eq("evento_id", eventoId);
-        configBaseQuery.eq("evento_id", eventoId);
-      }
-
-      const configQuery = configBaseQuery.limit(1).maybeSingle();
-
-      const [{ data: prods }, { data: vends }, { data: cfg }] =
-        await Promise.all([produtosQuery, vendasQuery, configQuery]);
-
-      if (prods) setProdutos(prods as Produto[]);
-      if (vends) setVendas(vends as Venda[]);
-      if (cfg) setConfig(cfg as PdvConfig);
+    if (eventoId) {
+      query = query.eq("evento_id", eventoId);
+    } else {
+      query = query.is("evento_id", null);
     }
-    carregar();
+
+    const { data } = await query;
+    setProdutos(data ?? []);
+    setCarregandoProdutos(false);
   }, [eventoId]);
 
   useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase
-      .channel("pdv_vendas_realtime")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "pdv_vendas" },
-        (payload) => {
-          const novaVenda = payload.new as Venda;
-          if (eventoId && novaVenda.evento_id !== eventoId) return;
-          setVendas((prev) => [novaVenda, ...prev]);
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [eventoId]);
+    carregarProdutos();
+  }, [carregarProdutos]);
 
-  const salvarProduto = async (form: Partial<Produto>) => {
+  const importarCardapioPadrao = useCallback(async () => {
+    if (!eventoId) return;
+    setImportando(true);
     const supabase = createClient();
-    setSalvando(true);
 
-    if (form.id) {
-      const { id, ...payload } = form;
-      const { error } = await supabase
-        .from("pdv_produtos")
-        .update(payload)
-        .eq("id", id!);
-      if (!error) {
-        setProdutos((prev) =>
-          prev.map((p) => (p.id === form.id ? ({ ...p, ...form } as Produto) : p))
-        );
-        mostrarToast("Produto atualizado!");
-      } else {
-        mostrarToast("Erro ao atualizar.", true);
-      }
+    const { data: padroes, error } = await supabase.from("pdv_produtos").select("*").is("evento_id", null);
+
+    if (error || !padroes || padroes.length === 0) {
+      mostrarToast("Nenhum produto no cardápio padrão encontrado.", "aviso");
+      setImportando(false);
+      return;
+    }
+
+    const clones = padroes.map(({ id: _id, created_at: _ca, ...rest }) => ({
+      ...rest,
+      evento_id: eventoId,
+    }));
+
+    const { data: inseridos, error: insertError } = await supabase.from("pdv_produtos").insert(clones).select();
+
+    if (insertError) {
+      mostrarToast(insertError.message, "erro");
     } else {
-      const payload = eventoId ? { ...form, evento_id: eventoId } : form;
-      const { data, error } = await supabase
-        .from("pdv_produtos")
-        .insert(payload)
-        .select()
-        .single();
-      if (!error && data) {
-        setProdutos((prev) => [...prev, data as Produto]);
-        mostrarToast("Produto cadastrado!");
-      } else {
-        mostrarToast("Erro ao cadastrar.", true);
-      }
+      setProdutos(inseridos ?? []);
+      mostrarToast(`${inseridos?.length ?? 0} produto(s) importado(s) com sucesso.`, "ok");
     }
-    setSalvando(false);
-    setModalProduto(false);
-  };
+    setImportando(false);
+  }, [eventoId, mostrarToast]);
 
-  const toggleAtivo = async (p: Produto) => {
+  const handleNovoProduto = useCallback((tipo?: TipoProduto, categoria?: string) => {
+    setEditandoProduto(null);
+    setTipoInicialModal(tipo);
+    setCategoriaInicialModal(categoria);
+    setModalProdutoOpen(true);
+  }, []);
+
+  const handleEditarProduto = useCallback((p: PdvProduto) => {
+    setEditandoProduto(p);
+    setTipoInicialModal(undefined);
+    setCategoriaInicialModal(undefined);
+    setModalProdutoOpen(true);
+  }, []);
+
+  const handleExcluir = useCallback((p: PdvProduto) => {
+    setExcluindoProduto(p);
+    setConfirmExcluirOpen(true);
+  }, []);
+
+  const confirmarExclusao = async () => {
+    if (!excluindoProduto) return;
+    setDeletando(true);
     const supabase = createClient();
-    const { error } = await supabase
-      .from("pdv_produtos")
-      .update({ ativo: !p.ativo })
-      .eq("id", p.id);
-    if (!error) {
-      setProdutos((prev) =>
-        prev.map((x) => (x.id === p.id ? { ...x, ativo: !x.ativo } : x))
-      );
-      mostrarToast(p.ativo ? "Produto desativado." : "Produto ativado!");
-    }
-  };
-
-  const solicitarExclusao = (id: string) => setConfirmarExclusao(id);
-
-  const confirmarExcluir = async () => {
-    if (!confirmarExclusao) return;
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("pdv_produtos")
-      .delete()
-      .eq("id", confirmarExclusao);
-    if (!error) {
-      setProdutos((prev) => prev.filter((p) => p.id !== confirmarExclusao));
+    const { error } = await supabase.from("pdv_produtos").delete().eq("id", excluindoProduto.id);
+    if (error) {
+      mostrarToast(error.message, "erro");
+    } else {
+      setProdutos((prev) => prev.filter((p) => p.id !== excluindoProduto.id));
       mostrarToast("Produto excluído.");
-    } else {
-      mostrarToast("Erro ao excluir.", true);
     }
-    setConfirmarExclusao(null);
+    setDeletando(false);
+    setConfirmExcluirOpen(false);
+    setExcluindoProduto(null);
   };
 
-  const salvarConfig = async (form: Partial<PdvConfig>) => {
-    const supabase = createClient();
-    setSalvando(true);
+  const handleProdutoSalvo = useCallback(
+    (produto: PdvProduto) => {
+      setProdutos((prev) => {
+        const idx = prev.findIndex((p) => p.id === produto.id);
+        if (idx >= 0) {
+          const novo = [...prev];
+          novo[idx] = produto;
+          return novo;
+        }
+        return [...prev, produto];
+      });
+      mostrarToast(editandoProduto ? "Produto atualizado." : "Produto criado.");
+      setModalProdutoOpen(false);
+      setEditandoProduto(null);
+    },
+    [editandoProduto, mostrarToast]
+  );
 
-    if (config?.id) {
-      const { error } = await supabase
-        .from("pdv_config")
-        .update(form)
-        .eq("id", config.id);
-      if (!error) {
-        setConfig({ ...config, ...form } as PdvConfig);
-        mostrarToast("Configurações salvas!");
-      } else {
-        mostrarToast("Erro ao salvar.", true);
-      }
-    } else {
-      const payload = eventoId ? { ...form, evento_id: eventoId } : form;
-      const { data, error } = await supabase
-        .from("pdv_config")
-        .insert(payload)
-        .select()
-        .single();
-      if (!error && data) {
-        setConfig(data as PdvConfig);
-        mostrarToast("Configurações salvas!");
-      } else {
-        mostrarToast("Erro ao salvar.", true);
-      }
-    }
-    setSalvando(false);
+  const ABAS = [
+    { key: "produtos" as const, label: "Produtos", icon: Package },
+    { key: "vendas" as const, label: "Vendas", icon: BarChart3 },
+    { key: "configuracoes" as const, label: "Configurações", icon: Settings },
+  ];
+
+  const toastColors: Record<ToastState["tipo"], string> = {
+    ok: "bg-axon-gold text-black",
+    erro: "bg-red-500 text-white",
+    aviso: "bg-amber-500 text-black",
   };
 
   return (
     <>
-      <Toast {...toast} />
-
-      {modalProduto !== false && (
-        <ModalProduto
-          produto={modalProduto}
-          onSalvar={salvarProduto}
-          onFechar={() => setModalProduto(false)}
-          salvando={salvando}
-        />
-      )}
-
-      {confirmarExclusao && (
-        <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-          onClick={() => setConfirmarExclusao(null)}
-        >
-          <div
-            className="bg-axon-panel border border-red-500/30 rounded-2xl p-6 w-full max-w-sm space-y-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
-                <Trash2 size={18} className="text-red-400" />
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        <div className="flex justify-between items-start flex-wrap gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-9 h-9 rounded-lg bg-axon-gold/10 border border-axon-gold/20 flex items-center justify-center">
+                <ShoppingBag size={18} className="text-axon-gold" />
               </div>
-              <div>
-                <h3 className="text-white font-bold text-base">Excluir produto?</h3>
-                <p className="text-sm text-gray-400 mt-1">
-                  Esta ação não pode ser desfeita. O produto será removido permanentemente.
-                </p>
-              </div>
+              <h1 className="text-2xl font-semibold text-white">PDV Administrativo</h1>
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmarExclusao(null)}
-                className="flex-1 py-2.5 rounded-lg border border-axon-border text-gray-400 hover:text-white text-sm font-medium transition-all duration-200"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={confirmarExcluir}
-                className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-bold text-sm hover:bg-red-400 active:scale-95 transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                <Trash2 size={15} /> Excluir
-              </button>
-            </div>
+            <p className="text-sm text-gray-500 ml-12">{eventoId ? "Gestão de produtos e vendas do evento" : "Cardápio padrão — base para novos eventos"}</p>
           </div>
-        </div>
-      )}
-
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white">PDV — Gestão</h1>
-          <p className="text-gray-400 mt-1 text-sm">
-            Produtos, vendas e configurações do caixa
-            {eventoId ? " deste evento" : ""}.
-          </p>
+          {eventoId && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-axon-panel border border-axon-border text-xs text-gray-400">
+              <LayoutGrid size={12} />
+              <span className="font-mono">{eventoId.slice(0, 8)}…</span>
+            </div>
+          )}
         </div>
 
-        <div className="bg-axon-panel border border-axon-border rounded-2xl overflow-hidden">
-          <div className="flex border-b border-axon-border px-4 overflow-x-auto">
-            {[
-              { id: "produtos" as const, label: "Produtos", icon: Package },
-              { id: "vendas" as const, label: "Vendas", icon: ReceiptText },
-              { id: "config" as const, label: "Configurações", icon: Settings },
-            ].map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => setAba(id)}
-                className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-all duration-200 ${
-                  aba === id
-                    ? "border-emerald-500 text-emerald-400"
-                    : "border-transparent text-gray-400 hover:text-white hover:border-gray-600"
-                }`}
-              >
-                <Icon size={16} />
-                {label}
-                {id === "vendas" && vendas.length > 0 && (
-                  <span className="ml-1 bg-emerald-500/20 text-emerald-400 text-xs font-bold px-1.5 py-0.5 rounded-full">
-                    {vendas.length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+        <div className="flex border-b border-axon-border">
+          {ABAS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setAba(key)}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${aba === key ? "border-b-2 border-axon-gold text-axon-gold" : "text-gray-400 hover:text-white"}`}
+            >
+              <Icon size={15} />
+              {label}
+            </button>
+          ))}
+        </div>
 
-          <div className="p-6">
-            {aba === "produtos" && (
+        <div className="min-h-[400px]">
+          {aba === "produtos" &&
+            (carregandoProdutos ? (
+              <div className="flex justify-center py-16">
+                <Loader2 className="animate-spin text-axon-gold" size={28} />
+              </div>
+            ) : (
               <AbaProdutos
                 produtos={produtos}
-                onNovo={() => setModalProduto(null)}
-                onEditar={(p) => setModalProduto(p)}
-                onToggle={toggleAtivo}
-                onExcluir={solicitarExclusao}
+                eventoId={eventoId}
+                importando={importando}
+                onImportar={importarCardapioPadrao}
+                onNovoProduto={handleNovoProduto}
+                onEditar={handleEditarProduto}
+                onExcluir={handleExcluir}
               />
-            )}
-            {aba === "vendas" && <AbaVendas vendas={vendas} />}
-            {aba === "config" && (
-              <AbaConfig config={config} onSalvar={salvarConfig} salvando={salvando} />
-            )}
-          </div>
+            ))}
+
+          {aba === "vendas" && produtoraId && <AbaVendas eventoId={eventoId} produtoraId={produtoraId} />}
+          {aba === "configuracoes" && produtoraId && <AbaConfiguracoes produtoraId={produtoraId} />}
         </div>
       </div>
-    </>
-  );
-}
 
-export default function AdminPdvPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center h-64 text-gray-500 text-sm">
-          Carregando...
+      <ModalProduto
+        open={modalProdutoOpen}
+        produto={editandoProduto}
+        eventoId={eventoId}
+        tipoInicial={tipoInicialModal}
+        categoriaInicial={categoriaInicialModal}
+        onClose={() => {
+          setModalProdutoOpen(false);
+          setEditandoProduto(null);
+        }}
+        onSaved={handleProdutoSalvo}
+      />
+
+      <ConfirmModal
+        open={confirmExcluirOpen}
+        title="Excluir produto"
+        message={`Deseja excluir permanentemente "${excluindoProduto?.nome}"? Esta ação não pode ser desfeita.`}
+        onConfirm={confirmarExclusao}
+        onCancel={() => {
+          setConfirmExcluirOpen(false);
+          setExcluindoProduto(null);
+        }}
+        loading={deletando}
+        destructive
+      />
+
+      {toast && (
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold shadow-lg transition-all ${toastColors[toast.tipo]}`}>
+          {toast.tipo === "ok" && <CheckCircle2 size={16} />}
+          {toast.tipo === "erro" && <AlertCircle size={16} />}
+          {toast.tipo === "aviso" && <AlertCircle size={16} />}
+          {toast.msg}
         </div>
-      }
-    >
-      <AdminPdvPageInner />
-    </Suspense>
+      )}
+    </>
   );
 }
