@@ -88,6 +88,24 @@ function formatarDataHora(data: string): string {
   });
 }
 
+function formatarPrecoBRLInput(valor: string): string {
+  const apenasDigitos = valor.replace(/\D/g, "");
+  const numero = Number(apenasDigitos || "0");
+
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(numero / 100);
+}
+
+function formatarPrecoInicial(valor: number | null | undefined): string {
+  if (valor == null || Number.isNaN(valor)) return "";
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(valor);
+}
+
 interface ToastState {
   msg: string;
   tipo: "ok" | "erro" | "aviso";
@@ -148,7 +166,7 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
   const isEdicao = !!produto;
   const [nome, setNome] = useState(() => produto?.nome ?? "");
   const [descricao, setDescricao] = useState(() => produto?.descricao ?? "");
-  const [preco, setPreco] = useState(() => (produto ? String(produto.preco.toFixed(2)) : ""));
+  const [preco, setPreco] = useState(() => (produto ? formatarPrecoInicial(produto.preco) : ""));
   const [estoque, setEstoque] = useState(() => (produto?.estoque != null ? String(produto.estoque) : ""));
   const [tipo, setTipo] = useState<TipoProduto>(() => produto?.tipo ?? tipoInicial ?? "cantina");
   const [categoriaSelect, setCategoriaSelect] = useState<string>(() => {
@@ -177,7 +195,7 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
     if (produto) {
       setNome(produto.nome);
       setDescricao(produto.descricao ?? "");
-      setPreco(produto.preco.toFixed(2));
+      setPreco(formatarPrecoInicial(produto.preco));
       setEstoque(produto.estoque != null ? String(produto.estoque) : "");
       setTipo(produto.tipo);
       const listaCantina: string[] = CATEGORIAS_CANTINA;
@@ -225,9 +243,14 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
 
   async function handleSalvar() {
     setErro("");
+
     if (!nome.trim()) return setErro("Nome é obrigatório.");
-    const precoNum = parseFloat(preco.replace(",", "."));
+
+    const precoLimpo = preco.replace(/\./g, "").replace(",", ".");
+    const precoNum = parseFloat(precoLimpo);
+
     if (isNaN(precoNum) || precoNum < 0) return setErro("Preço inválido.");
+
     const estoqueNum = estoque.trim() !== "" ? parseInt(estoque, 10) : null;
 
     setSalvando(true);
@@ -246,19 +269,23 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
 
     if (isEdicao && produto) {
       const { data, error } = await supabase.from("pdv_produtos").update(payload).eq("id", produto.id).select().single();
+
       if (error) {
         setErro(error.message);
         setSalvando(false);
         return;
       }
+
       onSaved(data as PdvProduto);
     } else {
       const { data, error } = await supabase.from("pdv_produtos").insert(payload).select().single();
+
       if (error) {
         setErro(error.message);
         setSalvando(false);
         return;
       }
+
       onSaved(data as PdvProduto);
     }
 
@@ -305,13 +332,14 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
               <label className="block text-xs text-gray-400 mb-1">Preço (R$) *</label>
               <input
                 type="text"
-                inputMode="decimal"
+                inputMode="numeric"
                 value={preco}
-                onChange={(e) => setPreco(e.target.value)}
+                onChange={(e) => setPreco(formatarPrecoBRLInput(e.target.value))}
                 className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
                 placeholder="0,00"
               />
             </div>
+
             <div>
               <label className="block text-xs text-gray-400 mb-1">Estoque</label>
               <input
@@ -333,11 +361,12 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
                   key={t}
                   type="button"
                   onClick={() => handleTipoChange(t)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium border transition-colors ${
                     tipo === t ? "bg-axon-gold text-black border-axon-gold" : "border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
                   }`}
                 >
-                  {t === "cantina" ? "🍔 Cantina" : "🎟 Bilheteria"}
+                  {t === "cantina" ? <Coffee size={16} /> : <Ticket size={16} />}
+                  <span>{t === "cantina" ? "Cantina" : "Bilheteria"}</span>
                 </button>
               ))}
             </div>
@@ -356,12 +385,13 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
                 </option>
               ))}
             </select>
+
             {categoriaSelect === "Outros" && (
               <input
                 type="text"
                 value={categoriaCustom}
                 onChange={(e) => setCategoriaCustom(e.target.value)}
-                placeholder="Nome da categoria personalizada (opcional)"
+                placeholder="Nome da categoria personalizada opcional"
                 className="mt-2 w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
               />
             )}
@@ -423,15 +453,18 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
 
   const produtosFiltrados = produtos.filter((p) => {
     if (p.tipo !== tipoAtivo) return false;
+
     if (categoriaAtiva !== "Todos") {
       const catProduto = p.categoria ?? "Outros";
       const listaConhecida: string[] = tipoAtivo === "cantina" ? CATEGORIAS_CANTINA : CATEGORIAS_BILHETERIA;
       const catNormalizada = listaConhecida.includes(catProduto) ? catProduto : "Outros";
       if (catNormalizada !== categoriaAtiva) return false;
     }
+
     if (busca.trim()) {
       return p.nome.toLowerCase().includes(busca.toLowerCase());
     }
+
     return true;
   });
 
@@ -521,6 +554,7 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
           <div className="w-14 h-14 rounded-full bg-axon-panel border border-axon-border flex items-center justify-center mb-4">
             <Package size={24} className="text-gray-600" />
           </div>
+
           {produtosPorTipo.length === 0 ? (
             <>
               <p className="text-gray-400 font-medium">Nenhum produto nesta seção</p>
@@ -534,7 +568,7 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
             </>
           ) : (
             <>
-              <p className="text-gray-400 font-medium">Nenhum produto em \"{categoriaAtiva}\"</p>
+              <p className="text-gray-400 font-medium">Nenhum produto em "{categoriaAtiva}"</p>
               <p className="text-gray-600 text-sm mt-1 mb-4">Cadastre um produto já nesta categoria.</p>
               <button
                 onClick={() => onNovoProduto(tipoAtivo, categoriaAtiva !== "Todos" ? categoriaAtiva : undefined)}
@@ -570,9 +604,7 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
               <div className="flex items-center justify-between mt-auto pt-2 border-t border-axon-border/50">
                 <span className="text-base font-bold text-axon-gold">{formatarMoeda(p.preco)}</span>
                 <div className="flex items-center gap-2">
-                  {p.categoria && (
-                    <span className="text-xs bg-white/5 border border-white/10 text-gray-400 px-2 py-0.5 rounded-full">{p.categoria}</span>
-                  )}
+                  {p.categoria && <span className="text-xs bg-white/5 border border-white/10 text-gray-400 px-2 py-0.5 rounded-full">{p.categoria}</span>}
                   {p.estoque !== null && (
                     <span className={`text-xs px-2 py-0.5 rounded-full ${p.estoque > 0 ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>
                       {p.estoque === 0 ? "Esgotado" : `${p.estoque} un`}
@@ -621,6 +653,7 @@ function AbaVendas({ eventoId, produtoraId }: AbaVendasProps) {
     carregarVendas();
     const supabase = createClient();
     const filterString = eventoId ? `evento_id=eq.${eventoId}` : `produtora_id=eq.${produtoraId}`;
+
     const channel = supabase
       .channel(`pdv_vendas_realtime:${filterString}`)
       .on(
@@ -693,6 +726,7 @@ function AbaVendas({ eventoId, produtoraId }: AbaVendasProps) {
             </button>
           ))}
         </div>
+
         <button onClick={carregarVendas} className="ml-auto text-gray-500 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-colors">
           <RefreshCw size={14} />
         </button>
@@ -738,7 +772,9 @@ function AbaVendas({ eventoId, produtoraId }: AbaVendasProps) {
             </tbody>
             <tfoot className="border-t border-axon-border bg-axon-panel/50">
               <tr>
-                <td colSpan={4} className="px-4 py-3 text-xs text-gray-500 font-medium">{vendasFiltradas.length} venda(s)</td>
+                <td colSpan={4} className="px-4 py-3 text-xs text-gray-500 font-medium">
+                  {vendasFiltradas.length} venda(s)
+                </td>
                 <td className="px-4 py-3 text-right font-bold text-axon-gold tabular-nums">{formatarMoeda(totalGeral)}</td>
                 <td colSpan={2} />
               </tr>
@@ -783,9 +819,11 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
   async function salvar() {
     setErro("");
     setSucesso("");
+
     if (config.pin_admin && config.pin_admin !== pinConfirm && pinConfirm !== "") {
       return setErro("Os PINs não coincidem.");
     }
+
     setSalvando(true);
     const supabase = createClient();
 
@@ -799,12 +837,16 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
 
     if (config.id) {
       const { error } = await supabase.from("pdv_config").update(payload).eq("id", config.id);
-      if (error) setErro(error.message);
-      else setSucesso("Configurações salvas.");
+      if (error) {
+        setErro(error.message);
+      } else {
+        setSucesso("Configurações salvas.");
+      }
     } else {
       const { data, error } = await supabase.from("pdv_config").insert(payload).select().single();
-      if (error) setErro(error.message);
-      else {
+      if (error) {
+        setErro(error.message);
+      } else {
         setConfig(data as ConfigPdv);
         setSucesso("Configurações salvas.");
       }
@@ -833,6 +875,7 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
             <p className="text-xs text-gray-500">Dados para geração do QR Code</p>
           </div>
         </div>
+
         <div className="space-y-4">
           <div>
             <label className="block text-xs text-gray-400 mb-1">Chave PIX</label>
@@ -844,6 +887,7 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
               placeholder="CPF, CNPJ, e-mail ou chave aleatória"
             />
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-gray-400 mb-1">Nome do recebedor</label>
@@ -855,6 +899,7 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
                 placeholder="Ex: Festival de Dança"
               />
             </div>
+
             <div>
               <label className="block text-xs text-gray-400 mb-1">Cidade</label>
               <input
@@ -879,6 +924,7 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
             <p className="text-xs text-gray-500">Código de segurança para operações críticas</p>
           </div>
         </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs text-gray-400 mb-1">PIN (4–6 dígitos)</label>
@@ -900,6 +946,7 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
               </button>
             </div>
           </div>
+
           <div>
             <label className="block text-xs text-gray-400 mb-1">Confirmar PIN</label>
             <input
@@ -915,6 +962,7 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
       </div>
 
       {erro && <p className="text-sm text-red-400">{erro}</p>}
+
       {sucesso && (
         <div className="flex items-center gap-2 text-sm text-emerald-400">
           <CheckCircle2 size={16} /> {sucesso}
@@ -962,10 +1010,16 @@ export default function PdvPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       if (!user) return;
+
       const { data } = await supabase.from("usuarios").select("produtora_id").eq("id", user.id).single();
-      if (data?.produtora_id) setProdutoraId(data.produtora_id);
+
+      if (data?.produtora_id) {
+        setProdutoraId(data.produtora_id);
+      }
     };
+
     fetchUser();
   }, []);
 
@@ -991,6 +1045,7 @@ export default function PdvPage() {
 
   const importarCardapioPadrao = useCallback(async () => {
     if (!eventoId) return;
+
     setImportando(true);
     const supabase = createClient();
 
@@ -1015,6 +1070,7 @@ export default function PdvPage() {
       setProdutos(inseridos ?? []);
       mostrarToast(`${inseridos?.length ?? 0} produto(s) importado(s) com sucesso.`, "ok");
     }
+
     setImportando(false);
   }, [eventoId, mostrarToast]);
 
@@ -1039,15 +1095,18 @@ export default function PdvPage() {
 
   const confirmarExclusao = async () => {
     if (!excluindoProduto) return;
+
     setDeletando(true);
     const supabase = createClient();
     const { error } = await supabase.from("pdv_produtos").delete().eq("id", excluindoProduto.id);
+
     if (error) {
       mostrarToast(error.message, "erro");
     } else {
       setProdutos((prev) => prev.filter((p) => p.id !== excluindoProduto.id));
       mostrarToast("Produto excluído.");
     }
+
     setDeletando(false);
     setConfirmExcluirOpen(false);
     setExcluindoProduto(null);
@@ -1057,13 +1116,16 @@ export default function PdvPage() {
     (produto: PdvProduto) => {
       setProdutos((prev) => {
         const idx = prev.findIndex((p) => p.id === produto.id);
+
         if (idx >= 0) {
           const novo = [...prev];
           novo[idx] = produto;
           return novo;
         }
+
         return [...prev, produto];
       });
+
       mostrarToast(editandoProduto ? "Produto atualizado." : "Produto criado.");
       setModalProdutoOpen(false);
       setEditandoProduto(null);
@@ -1096,6 +1158,7 @@ export default function PdvPage() {
             </div>
             <p className="text-sm text-gray-500 ml-12">{eventoId ? "Gestão de produtos e vendas do evento" : "Cardápio padrão — base para novos eventos"}</p>
           </div>
+
           {eventoId && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-axon-panel border border-axon-border text-xs text-gray-400">
               <LayoutGrid size={12} />
