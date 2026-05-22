@@ -39,6 +39,7 @@ type Categoria = CategoriaCantina | CategoriaBilheteria | "Todos";
 
 interface PdvProduto {
   id: string;
+  vinculo_id: string | null;
   nome: string;
   descricao: string | null;
   preco: number;
@@ -46,8 +47,17 @@ interface PdvProduto {
   tipo: TipoProduto;
   categoria: string | null;
   ativo: boolean;
-  evento_id: string | null;
+  produtora_id: string;
   created_at: string;
+}
+
+interface EventoProduto {
+  id: string;
+  evento_id: string;
+  produto_id: string;
+  preco_evento: number | null;
+  estoque_evento: number | null;
+  ativo_evento: boolean;
 }
 
 interface PdvVenda {
@@ -106,6 +116,11 @@ function formatarPrecoInicial(valor: number | null | undefined): string {
   }).format(valor);
 }
 
+function parsePrecoInputToNumber(valor: string): number {
+  const normalizado = valor.replace(/\./g, "").replace(",", ".");
+  return parseFloat(normalizado);
+}
+
 interface ToastState {
   msg: string;
   tipo: "ok" | "erro" | "aviso";
@@ -156,14 +171,26 @@ interface ModalProdutoProps {
   open: boolean;
   produto?: PdvProduto | null;
   eventoId: string | null;
+  produtoraId: string;
   tipoInicial?: TipoProduto;
   categoriaInicial?: string;
   onClose: () => void;
   onSaved: (produto: PdvProduto) => void;
 }
 
-function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, onClose, onSaved }: ModalProdutoProps) {
+function ModalProduto({
+  open,
+  produto,
+  eventoId,
+  produtoraId,
+  tipoInicial,
+  categoriaInicial,
+  onClose,
+  onSaved,
+}: ModalProdutoProps) {
   const isEdicao = !!produto;
+  const isEvento = !!eventoId;
+
   const [nome, setNome] = useState(() => produto?.nome ?? "");
   const [descricao, setDescricao] = useState(() => produto?.descricao ?? "");
   const [preco, setPreco] = useState(() => (produto ? formatarPrecoInicial(produto.preco) : ""));
@@ -252,50 +279,131 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
 
     if (!nome.trim()) return setErro("Nome é obrigatório.");
 
-    const precoLimpo = preco.replace(/\./g, "").replace(",", ".");
-    const precoNum = parseFloat(precoLimpo);
-
-    if (isNaN(precoNum) || precoNum < 0) return setErro("Preço inválido.");
+    const precoNum = parsePrecoInputToNumber(preco);
+    if (Number.isNaN(precoNum) || precoNum < 0) return setErro("Preço inválido.");
 
     const estoqueNum = estoque.trim() !== "" ? parseInt(estoque, 10) : null;
+    if (estoque.trim() !== "" && Number.isNaN(estoqueNum as number)) return setErro("Estoque inválido.");
 
     setSalvando(true);
     const supabase = createClient();
 
-    const payload = {
-      nome: nome.trim(),
-      descricao: descricao.trim() || null,
-      preco: precoNum,
-      estoque: estoqueNum,
-      tipo,
-      categoria: categoriaFinal || null,
-      ativo,
-      evento_id: eventoId ?? null,
-    };
+    try {
+      if (isEdicao && produto) {
+        if (isEvento && produto.vinculo_id) {
+          const { error: updateEventoError } = await supabase
+            .from("evento_produtos")
+            .update({
+              preco_evento: precoNum,
+              estoque_evento: estoqueNum,
+              ativo_evento: ativo,
+            })
+            .eq("id", produto.vinculo_id);
 
-    if (isEdicao && produto) {
-      const { data, error } = await supabase.from("pdv_produtos").update(payload).eq("id", produto.id).select().single();
+          if (updateEventoError) {
+            setErro(updateEventoError.message);
+            setSalvando(false);
+            return;
+          }
 
-      if (error) {
-        setErro(error.message);
+          onSaved({
+            ...produto,
+            preco: precoNum,
+            estoque: estoqueNum,
+            ativo,
+          });
+
+          setSalvando(false);
+          return;
+        }
+
+        const payloadGlobal = {
+          nome: nome.trim(),
+          descricao: descricao.trim() || null,
+          preco: precoNum,
+          estoque: estoqueNum,
+          tipo,
+          categoria: categoriaFinal || null,
+          ativo,
+        };
+
+        const { data, error } = await supabase.from("pdv_produtos").update(payloadGlobal).eq("id", produto.id).select().single();
+
+        if (error) {
+          setErro(error.message);
+          setSalvando(false);
+          return;
+        }
+
+        onSaved({
+          ...(data as Omit<PdvProduto, "vinculo_id">),
+          vinculo_id: null,
+        });
+
         setSalvando(false);
         return;
       }
 
-      onSaved(data as PdvProduto);
-    } else {
-      const { data, error } = await supabase.from("pdv_produtos").insert(payload).select().single();
+      const payloadGlobal = {
+        nome: nome.trim(),
+        descricao: descricao.trim() || null,
+        preco: precoNum,
+        estoque: estoqueNum,
+        tipo,
+        categoria: categoriaFinal || null,
+        ativo,
+        produtora_id: produtoraId,
+      };
 
-      if (error) {
-        setErro(error.message);
+      const { data: novoProduto, error: createProdutoError } = await supabase.from("pdv_produtos").insert(payloadGlobal).select().single();
+
+      if (createProdutoError || !novoProduto) {
+        setErro(createProdutoError?.message ?? "Não foi possível criar o produto.");
         setSalvando(false);
         return;
       }
 
-      onSaved(data as PdvProduto);
+      if (isEvento && eventoId) {
+        const { data: novoVinculo, error: createVinculoError } = await supabase
+          .from("evento_produtos")
+          .insert({
+            evento_id: eventoId,
+            produto_id: novoProduto.id,
+            preco_evento: precoNum,
+            estoque_evento: estoqueNum,
+            ativo_evento: ativo,
+          })
+          .select()
+          .single();
+
+        if (createVinculoError || !novoVinculo) {
+          setErro(createVinculoError?.message ?? "Não foi possível vincular o produto ao evento.");
+          setSalvando(false);
+          return;
+        }
+
+        onSaved({
+          ...(novoProduto as Omit<PdvProduto, "vinculo_id">),
+          preco: novoVinculo.preco_evento ?? novoProduto.preco,
+          estoque: novoVinculo.estoque_evento ?? novoProduto.estoque,
+          ativo: novoVinculo.ativo_evento,
+          vinculo_id: novoVinculo.id,
+        });
+
+        setSalvando(false);
+        return;
+      }
+
+      onSaved({
+        ...(novoProduto as Omit<PdvProduto, "vinculo_id">),
+        vinculo_id: null,
+      });
+
+      setSalvando(false);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro inesperado ao salvar produto.");
+      setSalvando(false);
     }
-
-    setSalvando(false);
   }
 
   if (!open) return null;
@@ -319,6 +427,7 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
               onChange={(e) => setNome(e.target.value)}
               className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
               placeholder="Ex: Coca-Cola 350ml"
+              disabled={isEvento && isEdicao && !!produto?.vinculo_id}
             />
           </div>
 
@@ -330,6 +439,7 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
               onChange={(e) => setDescricao(e.target.value)}
               className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
               placeholder="Opcional"
+              disabled={isEvento && isEdicao && !!produto?.vinculo_id}
             />
           </div>
 
@@ -367,9 +477,10 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
                   key={t}
                   type="button"
                   onClick={() => handleTipoChange(t)}
+                  disabled={isEvento && isEdicao && !!produto?.vinculo_id}
                   className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium border transition-colors ${
                     tipo === t ? "bg-axon-gold text-black border-axon-gold" : "border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
-                  }`}
+                  } ${isEvento && isEdicao && !!produto?.vinculo_id ? "opacity-60 cursor-not-allowed" : ""}`}
                 >
                   {t === "cantina" ? <Coffee size={16} /> : <Ticket size={16} />}
                   <span>{t === "cantina" ? "Cantina" : "Bilheteria"}</span>
@@ -384,6 +495,7 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
               value={categoriaSelect}
               onChange={(e) => setCategoriaSelect(e.target.value)}
               className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold/50"
+              disabled={isEvento && isEdicao && !!produto?.vinculo_id}
             >
               {categoriasList.map((c) => (
                 <option key={c} value={c}>
@@ -399,6 +511,7 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
                 onChange={(e) => setCategoriaCustom(e.target.value)}
                 placeholder="Nome da categoria personalizada opcional"
                 className="mt-2 w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
+                disabled={isEvento && isEdicao && !!produto?.vinculo_id}
               />
             )}
           </div>
@@ -429,7 +542,7 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
           </button>
           <button
             onClick={handleSalvar}
-            disabled={salvando}
+            disabled={salvando || !produtoraId}
             className="flex-1 py-2 rounded-lg bg-axon-gold text-black font-bold flex items-center justify-center gap-2 hover:bg-axon-gold/80 disabled:opacity-50"
           >
             {salvando && <Loader2 size={16} className="animate-spin" />}
@@ -488,9 +601,9 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
         <div className="w-20 h-20 rounded-2xl bg-axon-gold/10 border border-axon-gold/20 flex items-center justify-center mb-6">
           <ShoppingBag size={36} className="text-axon-gold/60" />
         </div>
-        <h3 className="text-xl font-semibold text-white mb-2">Nenhum produto cadastrado</h3>
+        <h3 className="text-xl font-semibold text-white mb-2">Nenhum produto escalado</h3>
         <p className="text-gray-500 text-sm text-center max-w-md mb-8">
-          Este evento ainda não possui produtos. Você pode importar o cardápio padrão como ponto de partida ou criar seus produtos do zero.
+          Este evento ainda não possui produtos vinculados. Você pode importar o catálogo global da produtora ou cadastrar um novo produto.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
           <button
@@ -499,14 +612,14 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
             className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-axon-gold text-black font-bold hover:bg-axon-gold/80 disabled:opacity-60 transition-colors"
           >
             {importando ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
-            Importar Cardápio Padrão
+            Importar do Catálogo Global
           </button>
           <button
             onClick={() => onNovoProduto()}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-axon-border text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
           >
             <Plus size={18} />
-            Cadastrar do Zero
+            Cadastrar Novo Produto
           </button>
         </div>
       </div>
@@ -559,7 +672,9 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
           <button
             key={cat}
             onClick={() => setCategoriaAtiva(cat)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${categoriaAtiva === cat ? "bg-axon-gold text-black" : "bg-axon-panel border border-axon-border text-gray-400 hover:text-white hover:border-gray-500"}`}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              categoriaAtiva === cat ? "bg-axon-gold text-black" : "bg-axon-panel border border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
+            }`}
           >
             {cat}
           </button>
@@ -600,8 +715,10 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {produtosFiltrados.map((p) => (
             <div
-              key={p.id}
-              className={`bg-axon-panel border rounded-xl p-4 flex flex-col gap-2 transition-colors ${p.ativo ? "border-axon-border hover:border-gray-600" : "border-axon-border/40 opacity-60"}`}
+              key={`${p.id}-${p.vinculo_id ?? "global"}`}
+              className={`bg-axon-panel border rounded-xl p-4 flex flex-col gap-2 transition-colors ${
+                p.ativo ? "border-axon-border hover:border-gray-600" : "border-axon-border/40 opacity-60"
+              }`}
             >
               <div className="flex justify-between items-start gap-2">
                 <div className="flex-1 min-w-0">
@@ -1038,55 +1155,145 @@ export default function PdvPage() {
   }, []);
 
   const carregarProdutos = useCallback(async () => {
-    setCarregandoProdutos(true);
-    const supabase = createClient();
-    let query = supabase.from("pdv_produtos").select("*").order("nome");
-
-    if (eventoId) {
-      query = query.eq("evento_id", eventoId);
-    } else {
-      query = query.is("evento_id", null);
+    if (!produtoraId) {
+      setCarregandoProdutos(false);
+      return;
     }
 
-    const { data } = await query;
-    setProdutos(data ?? []);
-    setCarregandoProdutos(false);
-  }, [eventoId]);
+    setCarregandoProdutos(true);
+    const supabase = createClient();
+
+    try {
+      if (eventoId) {
+        const { data: vinculos, error: vinculosError } = await supabase
+          .from("evento_produtos")
+          .select("id, evento_id, produto_id, preco_evento, estoque_evento, ativo_evento")
+          .eq("evento_id", eventoId);
+
+        if (vinculosError) throw vinculosError;
+
+        const vinculosArray = (vinculos ?? []) as EventoProduto[];
+
+        if (vinculosArray.length === 0) {
+          setProdutos([]);
+          setCarregandoProdutos(false);
+          return;
+        }
+
+        const produtoIds = vinculosArray.map((v) => v.produto_id);
+
+        const { data: produtosGlobais, error: produtosError } = await supabase
+          .from("pdv_produtos")
+          .select("*")
+          .eq("produtora_id", produtoraId)
+          .in("id", produtoIds)
+          .order("nome");
+
+        if (produtosError) throw produtosError;
+
+        const produtosMap = new Map<string, any>((produtosGlobais ?? []).map((p) => [p.id, p]));
+        const produtosFinais: PdvProduto[] = [];
+
+        for (const vinculo of vinculosArray) {
+          const produtoGlobal = produtosMap.get(vinculo.produto_id);
+          if (!produtoGlobal) continue;
+
+          produtosFinais.push({
+            id: produtoGlobal.id,
+            vinculo_id: vinculo.id,
+            nome: produtoGlobal.nome,
+            descricao: produtoGlobal.descricao,
+            preco: vinculo.preco_evento ?? produtoGlobal.preco,
+            estoque: vinculo.estoque_evento ?? produtoGlobal.estoque,
+            tipo: produtoGlobal.tipo,
+            categoria: produtoGlobal.categoria,
+            ativo: vinculo.ativo_evento,
+            produtora_id: produtoGlobal.produtora_id,
+            created_at: produtoGlobal.created_at,
+          });
+        }
+
+        produtosFinais.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+        setProdutos(produtosFinais);
+        setCarregandoProdutos(false);
+        return;
+      }
+
+      const { data, error } = await supabase.from("pdv_produtos").select("*").eq("produtora_id", produtoraId).order("nome");
+
+      if (error) throw error;
+
+      const produtosGlobais: PdvProduto[] = (data ?? []).map((item: any) => ({
+        id: item.id,
+        vinculo_id: null,
+        nome: item.nome,
+        descricao: item.descricao,
+        preco: item.preco,
+        estoque: item.estoque,
+        tipo: item.tipo,
+        categoria: item.categoria,
+        ativo: item.ativo,
+        produtora_id: item.produtora_id,
+        created_at: item.created_at,
+      }));
+
+      setProdutos(produtosGlobais);
+      setCarregandoProdutos(false);
+    } catch (error) {
+      mostrarToast(error instanceof Error ? error.message : "Erro ao carregar produtos.", "erro");
+      setProdutos([]);
+      setCarregandoProdutos(false);
+    }
+  }, [eventoId, produtoraId, mostrarToast]);
 
   useEffect(() => {
     carregarProdutos();
   }, [carregarProdutos]);
 
-  const importarCardapioPadrao = useCallback(async () => {
-    if (!eventoId) return;
+  const importarCatalogoGlobal = useCallback(async () => {
+    if (!eventoId || !produtoraId) return;
 
     setImportando(true);
     const supabase = createClient();
 
-    const { data: padroes, error } = await supabase.from("pdv_produtos").select("*").is("evento_id", null);
+    try {
+      const [{ data: catalogo, error: catalogoError }, { data: vinculosExistentes, error: vinculosError }] = await Promise.all([
+        supabase.from("pdv_produtos").select("*").eq("produtora_id", produtoraId).order("nome"),
+        supabase.from("evento_produtos").select("produto_id").eq("evento_id", eventoId),
+      ]);
 
-    if (error || !padroes || padroes.length === 0) {
-      mostrarToast("Nenhum produto no cardápio padrão encontrado.", "aviso");
+      if (catalogoError) throw catalogoError;
+      if (vinculosError) throw vinculosError;
+
+      const idsExistentes = new Set((vinculosExistentes ?? []).map((v: any) => v.produto_id));
+      const faltantes = (catalogo ?? []).filter((produto: any) => !idsExistentes.has(produto.id));
+
+      if (faltantes.length === 0) {
+        mostrarToast("Todos os produtos do catálogo global já estão vinculados neste evento.", "aviso");
+        setImportando(false);
+        return;
+      }
+
+      const payload = faltantes.map((produto: any) => ({
+        evento_id: eventoId,
+        produto_id: produto.id,
+        preco_evento: produto.preco,
+        estoque_evento: produto.estoque,
+        ativo_evento: produto.ativo,
+      }));
+
+      const { error: insertError } = await supabase.from("evento_produtos").insert(payload);
+
+      if (insertError) throw insertError;
+
+      await carregarProdutos();
+      mostrarToast(`${faltantes.length} produto(s) importado(s) do catálogo global.`, "ok");
       setImportando(false);
-      return;
+    } catch (error) {
+      mostrarToast(error instanceof Error ? error.message : "Erro ao importar catálogo global.", "erro");
+      setImportando(false);
     }
-
-    const clones = padroes.map(({ id: _id, created_at: _ca, ...rest }) => ({
-      ...rest,
-      evento_id: eventoId,
-    }));
-
-    const { data: inseridos, error: insertError } = await supabase.from("pdv_produtos").insert(clones).select();
-
-    if (insertError) {
-      mostrarToast(insertError.message, "erro");
-    } else {
-      setProdutos(inseridos ?? []);
-      mostrarToast(`${inseridos?.length ?? 0} produto(s) importado(s) com sucesso.`, "ok");
-    }
-
-    setImportando(false);
-  }, [eventoId, mostrarToast]);
+  }, [eventoId, produtoraId, carregarProdutos, mostrarToast]);
 
   const handleNovoProduto = useCallback((tipo?: TipoProduto, categoria?: string) => {
     setEditandoProduto(null);
@@ -1112,13 +1319,23 @@ export default function PdvPage() {
 
     setDeletando(true);
     const supabase = createClient();
-    const { error } = await supabase.from("pdv_produtos").delete().eq("id", excluindoProduto.id);
 
-    if (error) {
-      mostrarToast(error.message, "erro");
-    } else {
-      setProdutos((prev) => prev.filter((p) => p.id !== excluindoProduto.id));
-      mostrarToast("Produto excluído.");
+    try {
+      if (eventoId && excluindoProduto.vinculo_id) {
+        const { error } = await supabase.from("evento_produtos").delete().eq("id", excluindoProduto.vinculo_id);
+        if (error) throw error;
+
+        setProdutos((prev) => prev.filter((p) => p.vinculo_id !== excluindoProduto.vinculo_id));
+        mostrarToast("Produto desvinculado do evento.", "ok");
+      } else {
+        const { error } = await supabase.from("pdv_produtos").delete().eq("id", excluindoProduto.id);
+        if (error) throw error;
+
+        setProdutos((prev) => prev.filter((p) => p.id !== excluindoProduto.id));
+        mostrarToast("Produto excluído do catálogo global.", "ok");
+      }
+    } catch (error) {
+      mostrarToast(error instanceof Error ? error.message : "Erro ao excluir produto.", "erro");
     }
 
     setDeletando(false);
@@ -1129,15 +1346,18 @@ export default function PdvPage() {
   const handleProdutoSalvo = useCallback(
     (produto: PdvProduto) => {
       setProdutos((prev) => {
-        const idx = prev.findIndex((p) => p.id === produto.id);
+        const idx = prev.findIndex((p) => (produto.vinculo_id ? p.vinculo_id === produto.vinculo_id : p.id === produto.id));
 
         if (idx >= 0) {
           const novo = [...prev];
           novo[idx] = produto;
+          novo.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
           return novo;
         }
 
-        return [...prev, produto];
+        const lista = [...prev, produto];
+        lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+        return lista;
       });
 
       mostrarToast(editandoProduto ? "Produto atualizado." : "Produto criado.");
@@ -1170,7 +1390,9 @@ export default function PdvPage() {
               </div>
               <h1 className="text-2xl font-semibold text-white">PDV Administrativo</h1>
             </div>
-            <p className="text-sm text-gray-500 ml-12">{eventoId ? "Gestão de produtos e vendas do evento" : "Cardápio padrão — base para novos eventos"}</p>
+            <p className="text-sm text-gray-500 ml-12">
+              {eventoId ? "Gestão de produtos e vendas do evento" : "Catálogo global de produtos da produtora"}
+            </p>
           </div>
 
           {eventoId && (
@@ -1186,7 +1408,9 @@ export default function PdvPage() {
             <button
               key={key}
               onClick={() => setAba(key)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${aba === key ? "border-b-2 border-axon-gold text-axon-gold" : "text-gray-400 hover:text-white"}`}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${
+                aba === key ? "border-b-2 border-axon-gold text-axon-gold" : "text-gray-400 hover:text-white"
+              }`}
             >
               <Icon size={15} />
               {label}
@@ -1205,7 +1429,7 @@ export default function PdvPage() {
                 produtos={produtos}
                 eventoId={eventoId}
                 importando={importando}
-                onImportar={importarCardapioPadrao}
+                onImportar={importarCatalogoGlobal}
                 onNovoProduto={handleNovoProduto}
                 onEditar={handleEditarProduto}
                 onExcluir={handleExcluir}
@@ -1221,6 +1445,7 @@ export default function PdvPage() {
         open={modalProdutoOpen}
         produto={editandoProduto}
         eventoId={eventoId}
+        produtoraId={produtoraId}
         tipoInicial={tipoInicialModal}
         categoriaInicial={categoriaInicialModal}
         onClose={() => {
@@ -1232,8 +1457,12 @@ export default function PdvPage() {
 
       <ConfirmModal
         open={confirmExcluirOpen}
-        title="Excluir produto"
-        message={`Deseja excluir permanentemente "${excluindoProduto?.nome}"? Esta ação não pode ser desfeita.`}
+        title={eventoId ? "Desvincular produto do evento" : "Excluir produto"}
+        message={
+          eventoId
+            ? `Deseja remover "${excluindoProduto?.nome}" apenas da escala deste evento? O produto continuará existindo no catálogo global.`
+            : `Deseja excluir permanentemente "${excluindoProduto?.nome}" do catálogo global? Esta ação não pode ser desfeita.`
+        }
         onConfirm={confirmarExclusao}
         onCancel={() => {
           setConfirmExcluirOpen(false);
@@ -1244,7 +1473,9 @@ export default function PdvPage() {
       />
 
       {toast && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold shadow-lg transition-all ${toastColors[toast.tipo]}`}>
+        <div
+          className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold shadow-lg transition-all ${toastColors[toast.tipo]}`}
+        >
           {toast.tipo === "ok" && <CheckCircle2 size={16} />}
           {toast.tipo === "erro" && <AlertCircle size={16} />}
           {toast.tipo === "aviso" && <AlertCircle size={16} />}
