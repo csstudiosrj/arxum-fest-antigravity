@@ -733,17 +733,15 @@ function AdminPdvPageInner() {
         .select("*")
         .order("created_at", { ascending: false })
         .limit(100);
-      const configQuery = supabase
-        .from("pdv_config")
-        .select("*")
-        .limit(1)
-        .maybeSingle();
+      const configBaseQuery = supabase.from("pdv_config").select("*");
 
       if (eventoId) {
         produtosQuery.eq("evento_id", eventoId);
         vendasQuery.eq("evento_id", eventoId);
-        configQuery.eq("evento_id", eventoId);
+        configBaseQuery.eq("evento_id", eventoId);
       }
+
+      const configQuery = configBaseQuery.limit(1).maybeSingle();
 
       const [{ data: prods }, { data: vends }, { data: cfg }] =
         await Promise.all([produtosQuery, vendasQuery, configQuery]);
