@@ -23,6 +23,7 @@ import {
   Trash2,
   Mail,
   ShieldCheck,
+  Upload,
 } from "lucide-react";
 import jsQR from "jsqr";
 
@@ -35,6 +36,7 @@ interface Terminologia {
 
 interface Jurado {
   id: string;
+  vinculo_id: string | null;
   nome: string;
   email: string;
   telefone?: string | null;
@@ -81,12 +83,22 @@ interface UsuarioExistente {
   telefone?: string | null;
 }
 
+interface EventoJuradoRow {
+  id: string;
+  evento_id: string;
+  jurado_id: string;
+  cache_valor: number | null;
+  cache_status: "pago" | "pendente" | null;
+  especialidade: string | null;
+}
+
 function moeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 function mascaraTelefone(valor: string) {
   const n = valor.replace(/\D/g, "").slice(0, 11);
+  if (!n) return "";
   if (n.length <= 10) return n.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
   return n.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
 }
@@ -134,18 +146,20 @@ async function descriptografarPayload(base64: string, chave: string): Promise<st
 interface ModalJuradoProps {
   termo: Terminologia;
   eventoId: string | null;
+  produtoraId: string;
   jurado?: Jurado | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoProps) {
+function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }: ModalJuradoProps) {
   const editando = !!jurado;
   const [nome, setNome] = useState(jurado?.nome ?? "");
   const [email, setEmail] = useState(jurado?.email ?? "");
   const [telefone, setTelefone] = useState(jurado?.telefone ? mascaraTelefone(jurado.telefone) : "");
   const [especialidade, setEspecialidade] = useState(jurado?.especialidade ?? "");
   const [cache, setCache] = useState(jurado?.cache_valor != null ? String(jurado.cache_valor) : "");
+  const [cacheStatus, setCacheStatus] = useState<"pago" | "pendente">(jurado?.cache_status ?? "pendente");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [etapa, setEtapa] = useState<"formulario" | "confirmacao">("formulario");
@@ -158,9 +172,21 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
   const nomeExibidoContaExistente = usuarioExistente ? mascararNome(usuarioExistente.nome) : "";
 
   useEffect(() => {
+    setNome(jurado?.nome ?? "");
+    setEmail(jurado?.email ?? "");
+    setTelefone(jurado?.telefone ? mascaraTelefone(jurado.telefone) : "");
+    setEspecialidade(jurado?.especialidade ?? "");
+    setCache(jurado?.cache_valor != null ? String(jurado.cache_valor) : "");
+    setCacheStatus(jurado?.cache_status ?? "pendente");
+    setErro(null);
+    setEtapa("formulario");
+    setCopiado(false);
+  }, [jurado]);
+
+  useEffect(() => {
     const emailNormalizado = email.trim().toLowerCase();
 
-    if (!emailNormalizado) {
+    if (!emailNormalizado || !produtoraId) {
       setUsuarioExistente(null);
       setVerificandoEmail(false);
       return;
@@ -181,6 +207,7 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
         .from("usuarios")
         .select("id, nome, email, telefone")
         .eq("email", emailNormalizado)
+        .eq("produtora_id", produtoraId)
         .limit(1)
         .maybeSingle();
 
@@ -192,7 +219,7 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
     }, 400);
 
     return () => window.clearTimeout(timer);
-  }, [email, editando, jurado?.email, jurado?.id]);
+  }, [email, editando, jurado?.email, jurado?.id, produtoraId]);
 
   async function salvar() {
     const supabase = createClient();
@@ -216,27 +243,17 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
     setSalvando(true);
 
     if (editando && jurado) {
-      const payload: {
-        especialidade: string | null;
-        cache_valor: number | null;
-        nome?: string;
-        email?: string;
-        telefone?: string | null;
-      } = {
-        especialidade: especialidade.trim() || null,
-        cache_valor: cache ? parseFloat(cache) : null,
-      };
-
-      if (!camposPrivadosBloqueados) {
-        payload.nome = nome.trim();
-        payload.email = email.trim().toLowerCase();
-        payload.telefone = telefone.replace(/\D/g, "") || null;
-      }
-
-      const { error } = await supabase.from("usuarios").update(payload).eq("id", jurado.id);
+      const { error } = await supabase
+        .from("evento_jurados")
+        .update({
+          especialidade: especialidade.trim() || null,
+          cache_valor: cache ? parseFloat(cache) : 0,
+          cache_status: cacheStatus,
+        })
+        .eq("id", jurado.vinculo_id);
 
       if (error) {
-        setErro("Erro ao salvar os dados do jurado.");
+        setErro("Erro ao salvar os dados do jurado neste evento.");
         setSalvando(false);
         return;
       }
@@ -247,34 +264,70 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
       return;
     }
 
-    const res = await fetch("/api/convite", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim().toLowerCase(), nome: nome.trim(), role: "jurado" }),
-    });
-    const json = await res.json();
+    let juradoId = usuarioExistente?.id ?? null;
 
-    if (!res.ok) {
-      setErro(json.error || "Erro ao enviar convite.");
+    if (!juradoId) {
+      const res = await fetch("/api/convite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          nome: nome.trim(),
+          telefone: telefone.replace(/\D/g, "") || null,
+          role: "jurado",
+          produtora_id: produtoraId,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        setErro(json.error || "Erro ao enviar convite.");
+        setSalvando(false);
+        return;
+      }
+
+      const { data: usuarioCriado, error: usuarioError } = await supabase
+        .from("usuarios")
+        .select("id")
+        .eq("email", email.trim().toLowerCase())
+        .eq("produtora_id", produtoraId)
+        .single();
+
+      if (usuarioError || !usuarioCriado) {
+        setErro("Usuário convidado, mas não foi possível localizar o cadastro para vincular ao evento.");
+        setSalvando(false);
+        return;
+      }
+
+      juradoId = usuarioCriado.id;
+    }
+
+    const { data: vinculoExistente } = await supabase
+      .from("evento_jurados")
+      .select("id")
+      .eq("evento_id", eventoId)
+      .eq("jurado_id", juradoId)
+      .maybeSingle();
+
+    if (vinculoExistente) {
+      setErro("Este jurado já está escalado neste evento.");
       setSalvando(false);
       return;
     }
 
-    const { data: usuario } = await supabase
-      .from("usuarios")
-      .select("id")
-      .eq("email", email.trim().toLowerCase())
-      .single();
+    const { error: vinculoError } = await supabase.from("evento_jurados").insert({
+      evento_id: eventoId,
+      jurado_id: juradoId,
+      cache_valor: cache ? parseFloat(cache) : 0,
+      cache_status: cacheStatus,
+      especialidade: especialidade.trim() || null,
+    });
 
-    if (usuario) {
-      await supabase
-        .from("usuarios")
-        .update({
-          especialidade: especialidade.trim() || null,
-          cache_valor: cache ? parseFloat(cache) : null,
-          cache_status: "pendente",
-        })
-        .eq("id", usuario.id);
+    if (vinculoError) {
+      setErro("Erro ao criar o vínculo do jurado com este evento.");
+      setSalvando(false);
+      return;
     }
 
     setSalvando(false);
@@ -297,28 +350,18 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={onClose}>
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
           <div>
             <h2 className="text-base font-semibold text-white">
-              {etapa === "formulario"
-                ? editando
-                  ? "Editar Jurado"
-                  : "Adicionar Jurado"
-                : "Jurado adicionado"}
+              {etapa === "formulario" ? (editando ? "Editar Jurado" : "Adicionar Jurado") : "Jurado escalado"}
             </h2>
             {etapa === "formulario" && (
               <p className="text-xs text-gray-500 mt-0.5">
                 {editando
-                  ? `Atualize os dados de atuação do jurado neste evento.`
-                  : `Um convite por e-mail será enviado automaticamente.`}
+                  ? "Atualize os dados de atuação do jurado neste evento."
+                  : "Um convite por e-mail será enviado automaticamente e o vínculo será criado neste evento."}
               </p>
             )}
           </div>
@@ -343,7 +386,7 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
                   value={nome}
                   onChange={(e) => setNome(e.target.value)}
                   placeholder="Nome do jurado"
-                  disabled={camposPrivadosBloqueados}
+                  disabled={camposPrivadosBloqueados || editando}
                   className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
@@ -359,9 +402,7 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
                     disabled={camposPrivadosBloqueados || editando}
                     className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 pr-10 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
-                  {verificandoEmail && (
-                    <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-500" />
-                  )}
+                  {verificandoEmail && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-500" />}
                   {!verificandoEmail && usuarioExistente && usuarioExistente.id !== jurado?.id && (
                     <ShieldCheck size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-axon-gold" />
                   )}
@@ -375,7 +416,7 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
                   value={telefone}
                   onChange={(e) => setTelefone(mascaraTelefone(e.target.value))}
                   placeholder="(21) 99999-9999"
-                  disabled={camposPrivadosBloqueados}
+                  disabled={camposPrivadosBloqueados || editando}
                   className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
@@ -386,7 +427,7 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
                   <div>
                     <p className="text-sm text-white font-medium">Conta existente encontrada</p>
                     <p className="text-xs text-gray-400 mt-1">
-                      Este jurado já possui uma conta no sistema ARXUM. Envie o convite para vinculá-lo ao seu evento.
+                      Este jurado já possui uma conta no sistema. Os dados privados foram preservados e você pode apenas vinculá-lo a este evento.
                     </p>
                     <p className="text-xs text-gray-500 mt-2">
                       Cadastro identificado: <span className="text-gray-300">{nomeExibidoContaExistente}</span>
@@ -406,21 +447,35 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
                 />
               </div>
 
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Cachê (R$)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={cache}
-                  onChange={(e) => setCache(e.target.value)}
-                  placeholder="0,00"
-                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
-                />
-                <p className="text-xs text-gray-600 mt-1">
-                  Valor a ser pago ao jurado pelo evento. Pode ser 0 se for voluntário.
-                </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Cachê (R$)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={cache}
+                    onChange={(e) => setCache(e.target.value)}
+                    placeholder="0,00"
+                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Status do cachê</label>
+                  <select
+                    value={cacheStatus}
+                    onChange={(e) => setCacheStatus(e.target.value as "pago" | "pendente")}
+                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors"
+                  >
+                    <option value="pendente">Pendente</option>
+                    <option value="pago">Pago</option>
+                  </select>
+                </div>
               </div>
+
+              <p className="text-xs text-gray-600 -mt-1">
+                Valor a ser pago ao jurado pelo evento. Pode ser 0 se for voluntário.
+              </p>
 
               {erro && (
                 <p className="flex items-start gap-2 text-xs text-red-400">
@@ -442,7 +497,7 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
                 className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2"
               >
                 {salvando && <Loader2 size={14} className="animate-spin" />}
-                {editando ? "Salvar alterações" : "Cadastrar e convidar"}
+                {editando ? "Salvar alterações" : "Cadastrar e vincular"}
               </button>
             </div>
           </>
@@ -454,7 +509,7 @@ function ModalJurado({ termo, eventoId, jurado, onClose, onSaved }: ModalJuradoP
               <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
                 <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-white">{nome} adicionado!</p>
+                  <p className="text-sm font-medium text-white">{nome} escalado!</p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     Convite enviado para <span className="text-white">{email}</span>
                   </p>
@@ -566,6 +621,7 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
         notas: { apresentacao_id: string; criterio_id: string; nota: number }[];
         ts: number;
       } | null = null;
+
       for (const j of jurados) {
         const chave = `${eventoId}-${j.id}`.replace(/-/g, "").slice(0, 32);
         try {
@@ -574,8 +630,10 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
           break;
         } catch {}
       }
+
       if (!payload) throw new Error("QR inválido ou jurado não cadastrado.");
       if (payload.evento_id !== eventoId) throw new Error("Este QR pertence a outro evento.");
+
       let importados = 0;
       for (const n of payload.notas) {
         const { error } = await supabase.from("avaliacoes").upsert(
@@ -591,6 +649,7 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
         );
         if (!error) importados++;
       }
+
       setStatus("sucesso");
       setMsg(`${importados} nota${importados !== 1 ? "s" : ""} importada${importados !== 1 ? "s" : ""} com sucesso.`);
       onImportado(importados);
@@ -601,14 +660,8 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-sm shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4" onClick={onClose}>
+      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
           <h2 className="text-base font-semibold text-white">Sincronizar via QR Code</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
@@ -630,11 +683,7 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
                   <Loader2 size={16} className="animate-spin" /> Processando...
                 </p>
               )}
-              {status === "aguardando" && (
-                <p className="text-xs text-gray-500 text-center">
-                  Aponte a câmera para o QR Code do tablet do jurado.
-                </p>
-              )}
+              {status === "aguardando" && <p className="text-xs text-gray-500 text-center">Aponte a câmera para o QR Code do tablet do jurado.</p>}
             </>
           )}
           {status === "sucesso" && (
@@ -678,14 +727,8 @@ function ConfirmarExclusaoJurado({ termo, jurado, onClose, onConfirmar }: Confir
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-axon-panel border border-red-500/20 rounded-xl w-full max-w-md shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4" onClick={onClose}>
+      <div className="bg-axon-panel border border-red-500/20 rounded-xl w-full max-w-md shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
           <h2 className="text-base font-semibold text-white">Desvincular jurado</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
@@ -696,9 +739,9 @@ function ConfirmarExclusaoJurado({ termo, jurado, onClose, onConfirmar }: Confir
           <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
             <Trash2 size={16} className="text-red-400 shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm text-white font-medium">Remover {jurado.nome} desta gestão</p>
+              <p className="text-sm text-white font-medium">Remover {jurado.nome} desta escala</p>
               <p className="text-xs text-gray-400 mt-1">
-                Esta ação desvincula o jurado da listagem atual. Use esta opção apenas quando ele não fizer mais parte do evento ou da apuração.
+                Esta ação desvincula o jurado apenas do evento atual. O cadastro global permanecerá disponível no pool da produtora.
               </p>
             </div>
           </div>
@@ -739,6 +782,7 @@ function JuradosPageInner() {
     organizacao: "Organização",
   });
   const [eventoAtivo, setEventoAtivo] = useState<EventoAtivo | null>(null);
+  const [produtoraId, setProdutoraId] = useState("");
   const [jurados, setJurados] = useState<Jurado[]>([]);
   const [apresentacoes, setApresentacoes] = useState<Apresentacao[]>([]);
   const [organizacoes, setOrganizacoes] = useState<Organizacao[]>([]);
@@ -746,6 +790,7 @@ function JuradosPageInner() {
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
   const [observacoes, setObservacoes] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
+  const [importandoPool, setImportandoPool] = useState(false);
   const [modalJuradoAberta, setModalJuradoAberta] = useState(false);
   const [juradoEmEdicao, setJuradoEmEdicao] = useState<Jurado | null>(null);
   const [juradoExclusao, setJuradoExclusao] = useState<Jurado | null>(null);
@@ -757,6 +802,21 @@ function JuradosPageInner() {
   const carregar = useCallback(async () => {
     const supabase = createClient();
     setCarregando(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    let produtoraIdAtual = "";
+    if (user) {
+      const { data: usuarioAuth } = await supabase
+        .from("usuarios")
+        .select("produtora_id")
+        .eq("id", user.id)
+        .maybeSingle();
+      produtoraIdAtual = (usuarioAuth as { produtora_id?: string | null } | null)?.produtora_id ?? "";
+      setProdutoraId(produtoraIdAtual);
+    }
 
     const { data: config } = await supabase
       .from("tenant_config")
@@ -773,13 +833,8 @@ function JuradosPageInner() {
     }
 
     let evento: EventoAtivo | null = null;
-
     if (eventoId) {
-      const { data: eventoUrl } = await supabase
-        .from("eventos")
-        .select("id, nome")
-        .eq("id", eventoId)
-        .maybeSingle();
+      const { data: eventoUrl } = await supabase.from("eventos").select("id, nome").eq("id", eventoId).maybeSingle();
       evento = (eventoUrl as EventoAtivo | null) ?? null;
     } else {
       const { data: eventoFallback } = await supabase
@@ -794,30 +849,55 @@ function JuradosPageInner() {
 
     setEventoAtivo(evento ?? null);
 
-    const { data: juradosData } = await supabase
-      .from("usuarios")
-      .select("id, nome, email, telefone, especialidade, cache_valor, cache_status")
-      .eq("role", "jurado")
-      .order("nome");
+    if (evento && produtoraIdAtual) {
+      const { data: vinculosData } = await supabase
+        .from("evento_jurados")
+        .select("id, evento_id, jurado_id, cache_valor, cache_status, especialidade")
+        .eq("evento_id", evento.id);
 
-    setJurados((juradosData as Jurado[]) ?? []);
+      const vinculos = (vinculosData as EventoJuradoRow[] | null) ?? [];
+      const juradoIds = vinculos.map((v) => v.jurado_id);
+
+      let usuariosMap = new Map<string, UsuarioExistente>();
+      if (juradoIds.length > 0) {
+        const { data: usuariosData } = await supabase
+          .from("usuarios")
+          .select("id, nome, email, telefone")
+          .eq("role", "jurado")
+          .eq("produtora_id", produtoraIdAtual)
+          .in("id", juradoIds)
+          .order("nome");
+
+        usuariosMap = new Map(((usuariosData as UsuarioExistente[] | null) ?? []).map((u) => [u.id, u]));
+      }
+
+      setJurados(
+        vinculos
+          .map((v) => {
+            const usuarioVinculado = usuariosMap.get(v.jurado_id);
+            if (!usuarioVinculado) return null;
+            return {
+              id: usuarioVinculado.id,
+              vinculo_id: v.id,
+              nome: usuarioVinculado.nome,
+              email: usuarioVinculado.email,
+              telefone: usuarioVinculado.telefone ?? null,
+              especialidade: v.especialidade ?? null,
+              cache_valor: v.cache_valor ?? 0,
+              cache_status: v.cache_status === "pago" ? "pago" : "pendente",
+            } satisfies Jurado;
+          })
+          .filter(Boolean) as Jurado[]
+      );
+    } else {
+      setJurados([]);
+    }
 
     if (evento) {
       const [{ data: apres }, { data: crits }, { data: avals }, { data: orgs }] = await Promise.all([
-        supabase
-          .from("apresentacoes")
-          .select("id, nome, grupo_id, observacoes")
-          .eq("evento_id", evento.id)
-          .order("ordem_apresentacao"),
-        supabase
-          .from("criterios_avaliacao")
-          .select("id, nome, nota_min, nota_max")
-          .eq("evento_id", evento.id)
-          .order("ordem"),
-        supabase
-          .from("avaliacoes")
-          .select("apresentacao_id, jurado_id, criterio_id, nota")
-          .eq("evento_id", evento.id),
+        supabase.from("apresentacoes").select("id, nome, grupo_id, observacoes").eq("evento_id", evento.id).order("ordem_apresentacao"),
+        supabase.from("criterios_avaliacao").select("id, nome, nota_min, nota_max").eq("evento_id", evento.id).order("ordem"),
+        supabase.from("avaliacoes").select("apresentacao_id, jurado_id, criterio_id, nota").eq("evento_id", evento.id),
         supabase.from("organizacoes").select("id, nome"),
       ]);
 
@@ -846,6 +926,45 @@ function JuradosPageInner() {
     carregar();
   }, [carregar]);
 
+  async function importarDoPoolGlobal() {
+    if (!eventoAtivo?.id || !produtoraId) return;
+    const supabase = createClient();
+    setImportandoPool(true);
+
+    const [{ data: poolGlobal }, { data: vinculosExistentes }] = await Promise.all([
+      supabase
+        .from("usuarios")
+        .select("id")
+        .eq("role", "jurado")
+        .eq("produtora_id", produtoraId),
+      supabase.from("evento_jurados")
+        .select("jurado_id")
+        .eq("evento_id", eventoAtivo.id),
+    ]);
+
+    const vinculadosIds = new Set(((vinculosExistentes as { jurado_id: string }[] | null) ?? []).map((v) => v.jurado_id));
+    const faltantes = ((poolGlobal as { id: string }[] | null) ?? []).filter((u) => !vinculadosIds.has(u.id));
+
+    if (faltantes.length === 0) {
+      setImportandoPool(false);
+      await carregar();
+      return;
+    }
+
+    await supabase.from("evento_jurados").insert(
+      faltantes.map((u) => ({
+        evento_id: eventoAtivo.id,
+        jurado_id: u.id,
+        cache_valor: 0,
+        cache_status: "pendente",
+        especialidade: null,
+      }))
+    );
+
+    setImportandoPool(false);
+    await carregar();
+  }
+
   async function salvarObservacao(apresId: string) {
     const supabase = createClient();
     setSalvandoObs(apresId);
@@ -853,15 +972,17 @@ function JuradosPageInner() {
     setSalvandoObs(null);
   }
 
-  async function alterarCacheStatus(juradoId: string, status: "pago" | "pendente") {
+  async function alterarCacheStatus(vinculoId: string | null, status: "pago" | "pendente") {
+    if (!vinculoId) return;
     const supabase = createClient();
-    await supabase.from("usuarios").update({ cache_status: status }).eq("id", juradoId);
-    setJurados((prev) => prev.map((j) => (j.id === juradoId ? { ...j, cache_status: status } : j)));
+    await supabase.from("evento_jurados").update({ cache_status: status }).eq("id", vinculoId);
+    setJurados((prev) => prev.map((j) => (j.vinculo_id === vinculoId ? { ...j, cache_status: status } : j)));
   }
 
-  async function excluirJurado(juradoId: string) {
+  async function excluirJurado(vinculoId: string | null) {
+    if (!vinculoId) return;
     const supabase = createClient();
-    await supabase.from("usuarios").delete().eq("id", juradoId);
+    await supabase.from("evento_jurados").delete().eq("id", vinculoId);
     setJuradoExclusao(null);
     await carregar();
   }
@@ -888,6 +1009,7 @@ function JuradosPageInner() {
         <ModalJurado
           termo={termo}
           eventoId={eventoAtivo?.id ?? null}
+          produtoraId={produtoraId}
           jurado={juradoEmEdicao}
           onClose={() => {
             setModalJuradoAberta(false);
@@ -906,12 +1028,12 @@ function JuradosPageInner() {
           termo={termo}
           jurado={juradoExclusao}
           onClose={() => setJuradoExclusao(null)}
-          onConfirmar={() => excluirJurado(juradoExclusao.id)}
+          onConfirmar={() => excluirJurado(juradoExclusao.vinculo_id)}
         />
       )}
 
       <div className="max-w-5xl mx-auto space-y-6 p-6">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-xl font-semibold text-white">Jurados & Apuração</h1>
             <p className="text-sm text-gray-500 mt-0.5">
@@ -979,17 +1101,36 @@ function JuradosPageInner() {
             {abaAtiva === "jurados" && (
               <div className="space-y-3">
                 {jurados.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 border border-dashed border-axon-border rounded-xl text-gray-600">
+                  <div className="flex flex-col items-center justify-center py-16 border border-dashed border-axon-border rounded-xl text-gray-600 px-6 text-center">
                     <Users size={36} className="mb-3 opacity-20 text-axon-gold" />
-                    <p className="font-medium text-gray-300">Nenhum jurado cadastrado</p>
-                    <p className="text-sm mt-1 text-gray-500">
-                      Clique em "Adicionar Jurado" para convidar o primeiro avaliador.
+                    <p className="font-medium text-gray-300">Nenhum jurado escalado</p>
+                    <p className="text-sm mt-1 text-gray-500 max-w-lg">
+                      Este evento ainda não possui jurados vinculados. Você pode importar do pool global da produtora ou cadastrar um novo jurado agora.
                     </p>
+                    <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full max-w-md">
+                      <button
+                        onClick={importarDoPoolGlobal}
+                        disabled={importandoPool || !eventoAtivo || !produtoraId}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 disabled:opacity-50 transition-all duration-200"
+                      >
+                        {importandoPool ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                        Importar do Pool Global
+                      </button>
+                      <button
+                        onClick={() => {
+                          setJuradoEmEdicao(null);
+                          setModalJuradoAberta(true);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200"
+                      >
+                        <Plus size={15} /> Cadastrar Novo Jurado
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   jurados.map((j) => (
                     <div
-                      key={j.id}
+                      key={j.vinculo_id ?? j.id}
                       className="bg-axon-panel border border-axon-border rounded-xl px-5 py-4 flex items-center justify-between gap-4 flex-wrap hover:border-gray-600 transition-colors"
                     >
                       <div className="flex-1 min-w-0">
@@ -1008,7 +1149,7 @@ function JuradosPageInner() {
                         )}
                         <select
                           value={j.cache_status}
-                          onChange={(e) => alterarCacheStatus(j.id, e.target.value as "pago" | "pendente")}
+                          onChange={(e) => alterarCacheStatus(j.vinculo_id, e.target.value as "pago" | "pendente")}
                           className={`text-xs font-medium px-3 py-1.5 rounded-full border bg-transparent cursor-pointer focus:outline-none transition-colors ${
                             j.cache_status === "pago"
                               ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
@@ -1032,7 +1173,7 @@ function JuradosPageInner() {
                           <button
                             onClick={() => setJuradoExclusao(j)}
                             className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200"
-                            title="Excluir jurado"
+                            title="Desvincular jurado"
                           >
                             <Trash2 size={15} />
                           </button>
@@ -1055,7 +1196,7 @@ function JuradosPageInner() {
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
                       <p className="text-sm text-gray-500">
                         {avaliacoes.length} avaliação{avaliacoes.length !== 1 ? "ões" : ""} registrada{avaliacoes.length !== 1 ? "s" : ""}
                       </p>
@@ -1091,11 +1232,7 @@ function JuradosPageInner() {
                                     <p className="text-xs text-gray-500">Média geral</p>
                                     <p className="text-sm font-bold text-white tabular-nums">{mediaApres(a.id)}</p>
                                   </div>
-                                  {expandida ? (
-                                    <ChevronDown size={16} className="text-gray-500" />
-                                  ) : (
-                                    <ChevronRight size={16} className="text-gray-500" />
-                                  )}
+                                  {expandida ? <ChevronDown size={16} className="text-gray-500" /> : <ChevronRight size={16} className="text-gray-500" />}
                                 </div>
                               </button>
 
@@ -1186,11 +1323,7 @@ function JuradosPageInner() {
                             disabled={salvandoObs === a.id}
                             className="px-4 py-2 self-end rounded-lg bg-axon-gold text-black text-xs font-bold hover:bg-axon-gold/80 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center gap-1.5"
                           >
-                            {salvandoObs === a.id ? (
-                              <Loader2 size={13} className="animate-spin" />
-                            ) : (
-                              <Check size={13} />
-                            )}
+                            {salvandoObs === a.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                             Salvar
                           </button>
                         </div>
