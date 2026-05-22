@@ -94,8 +94,6 @@ interface EventoJuradoRow {
   especialidade: string | null;
 }
 
-type AbaJurados = "jurados" | "notas" | "observacoes";
-
 function moeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -346,7 +344,12 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
     let juradoId = colisaoOutroCadastroJurado ? usuarioExistente?.id ?? null : null;
 
     if (!juradoId) {
-      const res = await fetch("/api/convite", {
+      const isFest =
+        typeof window !== "undefined" &&
+        window.location.pathname.startsWith("/fest");
+      const urlConvite = isFest ? "/fest/api/convite" : "/api/convite";
+
+      const res = await fetch(urlConvite, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -442,12 +445,24 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={onClose}>
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
           <div>
             <h2 className="text-base font-semibold text-white">
-              {etapa === "formulario" ? (editando ? "Editar Jurado" : "Adicionar Jurado") : modoPoolGlobal ? "Jurado cadastrado no pool" : "Jurado escalado"}
+              {etapa === "formulario"
+                ? editando
+                  ? "Editar Jurado"
+                  : "Adicionar Jurado"
+                : modoPoolGlobal
+                  ? "Jurado cadastrado no pool"
+                  : "Jurado escalado"}
             </h2>
             {etapa === "formulario" && (
               <p className="text-xs text-gray-500 mt-0.5">
@@ -461,7 +476,11 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+            aria-label="Fechar modal"
+          >
             <X size={18} />
           </button>
         </div>
@@ -502,9 +521,17 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                     disabled={camposPrivadosBloqueados}
                     className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 pr-10 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
-                  {verificandoEmail && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-500" />}
+                  {verificandoEmail && (
+                    <Loader2
+                      size={14}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-500"
+                    />
+                  )}
                   {!verificandoEmail && usuarioExistente && (
-                    <ShieldCheck size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-axon-gold" />
+                    <ShieldCheck
+                      size={14}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-axon-gold"
+                    />
                   )}
                 </div>
               </div>
@@ -536,7 +563,8 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                           : "Já existe um jurado com este e-mail na mesma produtora. Você pode continuar usando o cadastro existente para vinculá-lo ao evento."}
                     </p>
                     <p className="text-xs text-gray-500 mt-2">
-                      Cadastro identificado: <span className="text-gray-300">{nomeExibidoContaExistente}</span>
+                      Cadastro identificado:{" "}
+                      <span className="text-gray-300">{nomeExibidoContaExistente}</span>
                     </p>
                   </div>
                 </div>
@@ -557,7 +585,7 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1">Cachê (R$)</label>
+                      <label className="block text-xs text-gray-400 mb-1">Cache (R$)</label>
                       <input
                         type="number"
                         min="0"
@@ -569,7 +597,7 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1">Status do cachê</label>
+                      <label className="block text-xs text-gray-400 mb-1">Status do cache</label>
                       <select
                         value={cacheStatus}
                         onChange={(e) => setCacheStatus(e.target.value as "pago" | "pendente")}
@@ -589,7 +617,8 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
 
               {modoPoolGlobal && (
                 <p className="text-xs text-gray-600 -mt-1">
-                  No modo Pool Global, o cadastro cria ou atualiza o jurado na produtora e não gera vínculo com evento.
+                  No modo Pool Global, o cadastro cria ou atualiza o jurado na produtora e não gera vínculo
+                  com evento.
                 </p>
               )}
 
@@ -613,7 +642,11 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                 className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2"
               >
                 {salvando && <Loader2 size={14} className="animate-spin" />}
-                {editando ? "Salvar alterações" : modoPoolGlobal ? "Cadastrar no Pool" : "Cadastrar e vincular"}
+                {editando
+                  ? "Salvar alterações"
+                  : modoPoolGlobal
+                    ? "Cadastrar no Pool"
+                    : "Cadastrar e vincular"}
               </button>
             </div>
           </>
@@ -638,7 +671,11 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                   onClick={copiarLink}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200"
                 >
-                  {copiado ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+                  {copiado ? (
+                    <Check size={15} className="text-emerald-400" />
+                  ) : (
+                    <Copy size={15} />
+                  )}
                   {copiado ? "Link copiado!" : "Copiar link do portal do jurado"}
                 </button>
                 <button
@@ -683,7 +720,9 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
   useEffect(() => {
     async function iniciar() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+        });
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -780,7 +819,9 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
       }
 
       setStatus("sucesso");
-      setMsg(`${importados} nota${importados !== 1 ? "s" : ""} importada${importados !== 1 ? "s" : ""} com sucesso.`);
+      setMsg(
+        `${importados} nota${importados !== 1 ? "s" : ""} importada${importados !== 1 ? "s" : ""} com sucesso.`
+      );
       onImportado(importados);
     } catch (e: unknown) {
       setStatus("erro");
@@ -789,11 +830,21 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4" onClick={onClose}>
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-sm shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
           <h2 className="text-base font-semibold text-white">Sincronizar via QR Code</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+            aria-label="Fechar modal"
+          >
             <X size={18} />
           </button>
         </div>
@@ -801,7 +852,12 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
           {(status === "aguardando" || status === "processando") && (
             <>
               <div className="relative w-full aspect-square bg-black rounded-xl overflow-hidden">
-                <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" muted playsInline />
+                <video
+                  ref={videoRef}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  muted
+                  playsInline
+                />
                 <canvas ref={canvasRef} className="hidden" />
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="w-48 h-48 border-2 border-axon-gold/60 rounded-xl" />
@@ -813,7 +869,11 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
                   Processando...
                 </p>
               )}
-              {status === "aguardando" && <p className="text-xs text-gray-500 text-center">Aponte a câmera para o QR Code do tablet do jurado.</p>}
+              {status === "aguardando" && (
+                <p className="text-xs text-gray-500 text-center">
+                  Aponte a câmera para o QR Code do tablet do jurado.
+                </p>
+              )}
             </>
           )}
 
@@ -867,11 +927,23 @@ function ConfirmarExclusaoJurado({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4" onClick={onClose}>
-      <div className="bg-axon-panel border border-red-500/20 rounded-xl w-full max-w-md shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-axon-panel border border-red-500/20 rounded-xl w-full max-w-md shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
-          <h2 className="text-base font-semibold text-white">{modoPoolGlobal ? "Excluir jurado" : "Desvincular jurado"}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
+          <h2 className="text-base font-semibold text-white">
+            {modoPoolGlobal ? "Excluir jurado" : "Desvincular jurado"}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+            aria-label="Fechar modal"
+          >
             <X size={18} />
           </button>
         </div>
@@ -880,7 +952,9 @@ function ConfirmarExclusaoJurado({
             <Trash2 size={16} className="text-red-400 shrink-0 mt-0.5" />
             <div>
               <p className="text-sm text-white font-medium">
-                {modoPoolGlobal ? `Excluir ${jurado.nome} do pool global` : `Remover ${jurado.nome} desta escala`}
+                {modoPoolGlobal
+                  ? `Excluir ${jurado.nome} do pool global`
+                  : `Remover ${jurado.nome} desta escala`}
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 {modoPoolGlobal
@@ -942,7 +1016,7 @@ function JuradosPageInner() {
   const [juradoEmEdicao, setJuradoEmEdicao] = useState<Jurado | null>(null);
   const [juradoExclusao, setJuradoExclusao] = useState<Jurado | null>(null);
   const [modalScanner, setModalScanner] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<AbaJurados>("jurados");
+  const [abaAtiva, setAbaAtiva] = useState<"jurados" | "notas" | "observacoes">("jurados");
   const [apresExpandida, setApresExpandida] = useState<string | null>(null);
   const [salvandoObs, setSalvandoObs] = useState<string | null>(null);
 
@@ -962,7 +1036,8 @@ function JuradosPageInner() {
         .eq("id", user.id)
         .maybeSingle();
 
-      produtoraIdAtual = (usuarioAuth as { produtora_id?: string | null } | null)?.produtora_id ?? "";
+      produtoraIdAtual =
+        (usuarioAuth as { produtora_id?: string | null } | null)?.produtora_id ?? "";
       setProdutoraId(produtoraIdAtual);
     }
 
@@ -982,7 +1057,11 @@ function JuradosPageInner() {
 
     let evento: EventoAtivo | null = null;
     if (eventoId) {
-      const { data: eventoUrl } = await supabase.from("eventos").select("id, nome").eq("id", eventoId).maybeSingle();
+      const { data: eventoUrl } = await supabase
+        .from("eventos")
+        .select("id, nome")
+        .eq("id", eventoId)
+        .maybeSingle();
       evento = (eventoUrl as EventoAtivo | null) ?? null;
     }
 
@@ -1038,7 +1117,9 @@ function JuradosPageInner() {
           .in("id", juradoIds)
           .order("nome");
 
-        usuariosMap = new Map(((usuariosData as UsuarioExistente[] | null) ?? []).map((u) => [u.id, u]));
+        usuariosMap = new Map(
+          ((usuariosData as UsuarioExistente[] | null) ?? []).map((u) => [u.id, u])
+        );
       }
 
       setJurados(
@@ -1064,12 +1145,24 @@ function JuradosPageInner() {
     }
 
     if (evento) {
-      const [{ data: apres }, { data: crits }, { data: avals }, { data: orgs }] = await Promise.all([
-        supabase.from("apresentacoes").select("id, nome, grupo_id, observacoes").eq("evento_id", evento.id).order("ordem_apresentacao"),
-        supabase.from("criterios_avaliacao").select("id, nome, nota_min, nota_max").eq("evento_id", evento.id).order("ordem"),
-        supabase.from("avaliacoes").select("apresentacao_id, jurado_id, criterio_id, nota").eq("evento_id", evento.id),
-        supabase.from("organizacoes").select("id, nome"),
-      ]);
+      const [{ data: apres }, { data: crits }, { data: avals }, { data: orgs }] =
+        await Promise.all([
+          supabase
+            .from("apresentacoes")
+            .select("id, nome, grupo_id, observacoes")
+            .eq("evento_id", evento.id)
+            .order("ordem_apresentacao"),
+          supabase
+            .from("criterios_avaliacao")
+            .select("id, nome, nota_min, nota_max")
+            .eq("evento_id", evento.id)
+            .order("ordem"),
+          supabase
+            .from("avaliacoes")
+            .select("apresentacao_id, jurado_id, criterio_id, nota")
+            .eq("evento_id", evento.id),
+          supabase.from("organizacoes").select("id, nome"),
+        ]);
 
       setApresentacoes((apres as Apresentacao[]) ?? []);
       setCriterios((crits as Criterio[]) ?? []);
@@ -1108,16 +1201,16 @@ function JuradosPageInner() {
     setImportandoPool(true);
 
     const [{ data: poolGlobal }, { data: vinculosExistentes }] = await Promise.all([
-      supabase
-        .from("usuarios")
-        .select("id")
-        .eq("role", "jurado")
-        .eq("produtora_id", produtoraId),
+      supabase.from("usuarios").select("id").eq("role", "jurado").eq("produtora_id", produtoraId),
       supabase.from("evento_jurados").select("jurado_id").eq("evento_id", eventoAtivo.id),
     ]);
 
-    const vinculadosIds = new Set(((vinculosExistentes as { jurado_id: string }[] | null) ?? []).map((v) => v.jurado_id));
-    const faltantes = ((poolGlobal as { id: string }[] | null) ?? []).filter((u) => !vinculadosIds.has(u.id));
+    const vinculadosIds = new Set(
+      ((vinculosExistentes as { jurado_id: string }[] | null) ?? []).map((v) => v.jurado_id)
+    );
+    const faltantes = ((poolGlobal as { id: string }[] | null) ?? []).filter(
+      (u) => !vinculadosIds.has(u.id)
+    );
 
     if (faltantes.length === 0) {
       setImportandoPool(false);
@@ -1142,15 +1235,23 @@ function JuradosPageInner() {
   async function salvarObservacao(apresId: string) {
     const supabase = createClient();
     setSalvandoObs(apresId);
-    await supabase.from("apresentacoes").update({ observacoes: observacoes[apresId] }).eq("id", apresId);
+    await supabase
+      .from("apresentacoes")
+      .update({ observacoes: observacoes[apresId] })
+      .eq("id", apresId);
     setSalvandoObs(null);
   }
 
   async function alterarCacheStatus(vinculoId: string | null, status: "pago" | "pendente") {
     if (!vinculoId) return;
     const supabase = createClient();
-    await supabase.from("evento_jurados").update({ cache_status: status }).eq("id", vinculoId);
-    setJurados((prev) => prev.map((j) => (j.vinculo_id === vinculoId ? { ...j, cache_status: status } : j)));
+    await supabase
+      .from("evento_jurados")
+      .update({ cache_status: status })
+      .eq("id", vinculoId);
+    setJurados((prev) =>
+      prev.map((j) => (j.vinculo_id === vinculoId ? { ...j, cache_status: status } : j))
+    );
   }
 
   async function excluirJurado(jurado: Jurado | null) {
@@ -1170,10 +1271,7 @@ function JuradosPageInner() {
     } else {
       if (!jurado.vinculo_id) return;
 
-      await supabase
-        .from("evento_jurados")
-        .delete()
-        .eq("id", jurado.vinculo_id);
+      await supabase.from("evento_jurados").delete().eq("id", jurado.vinculo_id);
     }
 
     setJuradoExclusao(null);
@@ -1181,7 +1279,9 @@ function JuradosPageInner() {
   }
 
   const totalCache = jurados.reduce((a, j) => a + (j.cache_valor ?? 0), 0);
-  const totalPago = jurados.filter((j) => j.cache_status === "pago").reduce((a, j) => a + (j.cache_valor ?? 0), 0);
+  const totalPago = jurados
+    .filter((j) => j.cache_status === "pago")
+    .reduce((a, j) => a + (j.cache_valor ?? 0), 0);
 
   function mediaApres(apresId: string): string {
     const notas = avaliacoes.filter((a) => a.apresentacao_id === apresId);
@@ -1191,17 +1291,20 @@ function JuradosPageInner() {
 
   function notaJuradoCriterio(apresId: string, juradoId: string, criterioId: string): string {
     const av = avaliacoes.find(
-      (a) => a.apresentacao_id === apresId && a.jurado_id === juradoId && a.criterio_id === criterioId
+      (a) =>
+        a.apresentacao_id === apresId &&
+        a.jurado_id === juradoId &&
+        a.criterio_id === criterioId
     );
     return av ? String(av.nota) : "—";
   }
 
-  const tabsDisponiveis: { id: AbaJurados; label: string }[] = modoPoolGlobal
-    ? [{ id: "jurados", label: "Jurados" }]
+  const tabsDisponiveis = modoPoolGlobal
+    ? [{ id: "jurados", label: "Jurados" as const }]
     : [
-        { id: "jurados", label: "Jurados" },
-        { id: "notas", label: "Apuração de Notas" },
-        { id: "observacoes", label: "Observações" },
+        { id: "jurados", label: "Jurados" as const },
+        { id: "notas", label: "Apuração de Notas" as const },
+        { id: "observacoes", label: "Observações" as const },
       ];
 
   return (
@@ -1221,7 +1324,12 @@ function JuradosPageInner() {
       )}
 
       {modalScanner && eventoAtivo && !modoPoolGlobal && (
-        <ScannerQR eventoId={eventoAtivo.id} jurados={jurados} onImportado={() => carregar()} onClose={() => setModalScanner(false)} />
+        <ScannerQR
+          eventoId={eventoAtivo.id}
+          jurados={jurados}
+          onImportado={() => carregar()}
+          onClose={() => setModalScanner(false)}
+        />
       )}
 
       {juradoExclusao && (
@@ -1237,7 +1345,9 @@ function JuradosPageInner() {
       <div className="max-w-5xl mx-auto space-y-6 p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-semibold text-white">{modoPoolGlobal ? "Pool Global de Jurados" : "Jurados & Apuração"}</h1>
+            <h1 className="text-xl font-semibold text-white">
+              {modoPoolGlobal ? "Pool Global de Jurados" : "Jurados & Apuração"}
+            </h1>
             <p className="text-sm text-gray-500 mt-0.5">
               {modoPoolGlobal
                 ? "Gerencie o cadastro global de jurados da produtora. Os vínculos com eventos são feitos depois, sob demanda."
@@ -1259,11 +1369,15 @@ function JuradosPageInner() {
         <Dica>
           {modoPoolGlobal ? (
             <>
-              Jurados cadastrados aqui entram no <strong>pool global</strong> da produtora e podem ser vinculados a eventos depois.
+              Jurados cadastrados aqui entram no{" "}
+              <strong>pool global</strong> da produtora e podem ser vinculados a eventos depois.
             </>
           ) : (
             <>
-              Jurados adicionados aqui recebem acesso ao <strong>portal do jurado</strong> onde avaliam as {termo.apresentacao.toLowerCase()}s em tempo real. O cachê é o valor combinado pela participação no evento.
+              Jurados adicionados aqui recebem acesso ao{" "}
+              <strong>portal do jurado</strong> onde avaliam as{" "}
+              {termo.apresentacao.toLowerCase()}s em tempo real. O cache é o valor combinado
+              pela participação no evento.
             </>
           )}
         </Dica>
@@ -1271,9 +1385,24 @@ function JuradosPageInner() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
             { label: "Jurados", valor: jurados.length, icon: Users, cor: "text-white" },
-            { label: "Cache pago", valor: jurados.filter((j) => j.cache_status === "pago").length, icon: CheckCircle2, cor: "text-emerald-400" },
-            { label: "Total cachê", valor: moeda(totalCache), icon: CircleDollarSign, cor: "text-white" },
-            { label: "A pagar", valor: moeda(totalCache - totalPago), icon: Clock3, cor: "text-axon-gold" },
+            {
+              label: "Cache pago",
+              valor: jurados.filter((j) => j.cache_status === "pago").length,
+              icon: CheckCircle2,
+              cor: "text-emerald-400",
+            },
+            {
+              label: "Total cache",
+              valor: moeda(totalCache),
+              icon: CircleDollarSign,
+              cor: "text-white",
+            },
+            {
+              label: "A pagar",
+              valor: moeda(totalCache - totalPago),
+              icon: Clock3,
+              cor: "text-axon-gold",
+            },
           ].map(({ label, valor, icon: Icon, cor }) => (
             <div key={label} className="bg-axon-panel border border-axon-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -1312,7 +1441,11 @@ function JuradosPageInner() {
                 {jurados.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 border border-dashed border-axon-border rounded-xl text-gray-600 px-6 text-center">
                     <Users size={36} className="mb-3 opacity-20 text-axon-gold" />
-                    <p className="font-medium text-gray-300">{modoPoolGlobal ? "Nenhum jurado no pool global" : "Nenhum jurado escalado"}</p>
+                    <p className="font-medium text-gray-300">
+                      {modoPoolGlobal
+                        ? "Nenhum jurado no pool global"
+                        : "Nenhum jurado escalado"}
+                    </p>
                     <p className="text-sm mt-1 text-gray-500 max-w-lg">
                       {modoPoolGlobal
                         ? "Ainda não há jurados cadastrados no pool global desta produtora. Cadastre o primeiro jurado agora."
@@ -1325,7 +1458,11 @@ function JuradosPageInner() {
                           disabled={importandoPool || !eventoAtivo || !produtoraId}
                           className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 disabled:opacity-50 transition-all duration-200"
                         >
-                          {importandoPool ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                          {importandoPool ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <Upload size={15} />
+                          )}
                           Importar do Pool Global
                         </button>
                       )}
@@ -1351,22 +1488,31 @@ function JuradosPageInner() {
                         <p className="text-sm font-semibold text-white">{j.nome}</p>
                         <div className="flex flex-wrap gap-3 mt-0.5">
                           <p className="text-xs text-gray-500">{j.email}</p>
-                          {j.especialidade && <p className="text-xs text-gray-600">· {j.especialidade}</p>}
+                          {j.especialidade && (
+                            <p className="text-xs text-gray-600">· {j.especialidade}</p>
+                          )}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-4 shrink-0 flex-wrap">
                         {!modoPoolGlobal && j.cache_valor != null && (
                           <div className="text-right">
-                            <p className="text-xs text-gray-500">Cachê</p>
-                            <p className="text-sm font-semibold text-white tabular-nums">{moeda(j.cache_valor)}</p>
+                            <p className="text-xs text-gray-500">Cache</p>
+                            <p className="text-sm font-semibold text-white tabular-nums">
+                              {moeda(j.cache_valor)}
+                            </p>
                           </div>
                         )}
 
                         {!modoPoolGlobal && (
                           <select
                             value={j.cache_status}
-                            onChange={(e) => alterarCacheStatus(j.vinculo_id, e.target.value as "pago" | "pendente")}
+                            onChange={(e) =>
+                              alterarCacheStatus(
+                                j.vinculo_id,
+                                e.target.value as "pago" | "pendente"
+                              )
+                            }
                             className={`text-xs font-medium px-3 py-1.5 rounded-full border bg-transparent cursor-pointer focus:outline-none transition-colors ${
                               j.cache_status === "pago"
                                 ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
@@ -1399,7 +1545,11 @@ function JuradosPageInner() {
                             onClick={() => setJuradoExclusao(j)}
                             className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200"
                             title={modoPoolGlobal ? "Excluir jurado" : "Desvincular jurado"}
-                            aria-label={modoPoolGlobal ? `Excluir ${j.nome}` : `Desvincular ${j.nome}`}
+                            aria-label={
+                              modoPoolGlobal
+                                ? `Excluir ${j.nome}`
+                                : `Desvincular ${j.nome}`
+                            }
                           >
                             <Trash2 size={15} />
                           </button>
@@ -1417,14 +1567,15 @@ function JuradosPageInner() {
                   <div className="flex items-center gap-3 p-4 bg-axon-gold/10 border border-axon-gold/20 rounded-xl">
                     <AlertCircle size={16} className="text-axon-gold shrink-0" />
                     <p className="text-sm text-gray-400">
-                      Nenhum evento ativo. Mude o status de um evento para "Inscrições Abertas" ou "Em Andamento" para visualizar as notas.
+                      Nenhum evento ativo. Mude o status de um evento para visualizar as notas.
                     </p>
                   </div>
                 ) : (
                   <>
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <p className="text-sm text-gray-500">
-                        {avaliacoes.length} avaliação{avaliacoes.length !== 1 ? "ões" : ""} registrada{avaliacoes.length !== 1 ? "s" : ""}
+                        {avaliacoes.length} avaliação{avaliacoes.length !== 1 ? "ões" : ""}{" "}
+                        registrada{avaliacoes.length !== 1 ? "s" : ""}
                       </p>
                       <button
                         onClick={() => setModalScanner(true)}
@@ -1446,56 +1597,89 @@ function JuradosPageInner() {
                           const expandida = apresExpandida === a.id;
 
                           return (
-                            <div key={a.id} className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
+                            <div
+                              key={a.id}
+                              className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden"
+                            >
                               <button
                                 onClick={() => setApresExpandida(expandida ? null : a.id)}
                                 className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-colors text-left"
                               >
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-semibold text-white">{a.nome}</p>
-                                  {org && <p className="text-xs text-gray-500 mt-0.5">{org.nome}</p>}
+                                  {org && (
+                                    <p className="text-xs text-gray-500 mt-0.5">{org.nome}</p>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-4 shrink-0">
                                   <div className="text-right">
                                     <p className="text-xs text-gray-500">Média geral</p>
-                                    <p className="text-sm font-bold text-white tabular-nums">{mediaApres(a.id)}</p>
+                                    <p className="text-sm font-bold text-white tabular-nums">
+                                      {mediaApres(a.id)}
+                                    </p>
                                   </div>
-                                  {expandida ? <ChevronDown size={16} className="text-gray-500" /> : <ChevronRight size={16} className="text-gray-500" />}
+                                  {expandida ? (
+                                    <ChevronDown size={16} className="text-gray-500" />
+                                  ) : (
+                                    <ChevronRight size={16} className="text-gray-500" />
+                                  )}
                                 </div>
                               </button>
 
                               {expandida && (
                                 <div className="border-t border-axon-border overflow-x-auto">
                                   {criterios.length === 0 ? (
-                                    <p className="text-xs text-gray-600 p-5">Nenhum critério configurado para este evento.</p>
+                                    <p className="text-xs text-gray-600 p-5">
+                                      Nenhum critério configurado para este evento.
+                                    </p>
                                   ) : (
                                     <table className="w-full text-xs">
                                       <thead>
                                         <tr className="border-b border-axon-border">
-                                          <th className="text-left text-gray-500 font-medium px-5 py-3">Jurado</th>
+                                          <th className="text-left text-gray-500 font-medium px-5 py-3">
+                                            Jurado
+                                          </th>
                                           {criterios.map((cr) => (
-                                            <th key={cr.id} className="text-center text-gray-500 font-medium px-3 py-3 whitespace-nowrap">
+                                            <th
+                                              key={cr.id}
+                                              className="text-center text-gray-500 font-medium px-3 py-3 whitespace-nowrap"
+                                            >
                                               {cr.nome}
                                             </th>
                                           ))}
-                                          <th className="text-center text-gray-500 font-medium px-4 py-3">Média</th>
+                                          <th className="text-center text-gray-500 font-medium px-4 py-3">
+                                            Média
+                                          </th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {jurados.map((j) => {
                                           const notasJ = avaliacoes.filter(
-                                            (av) => av.apresentacao_id === a.id && av.jurado_id === j.id
+                                            (av) =>
+                                              av.apresentacao_id === a.id &&
+                                              av.jurado_id === j.id
                                           );
 
                                           const mediaJ = notasJ.length
-                                            ? (notasJ.reduce((s, av) => s + av.nota, 0) / notasJ.length).toFixed(2)
+                                            ? (
+                                                notasJ.reduce((s, av) => s + av.nota, 0) /
+                                                notasJ.length
+                                              ).toFixed(2)
                                             : "—";
 
                                           return (
-                                            <tr key={j.id} className="border-b border-axon-border/50 last:border-0">
-                                              <td className="px-5 py-3 text-gray-300 whitespace-nowrap">{j.nome}</td>
+                                            <tr
+                                              key={j.id}
+                                              className="border-b border-axon-border/50 last:border-0"
+                                            >
+                                              <td className="px-5 py-3 text-gray-300 whitespace-nowrap">
+                                                {j.nome}
+                                              </td>
                                               {criterios.map((cr) => (
-                                                <td key={cr.id} className="px-3 py-3 text-center tabular-nums text-white">
+                                                <td
+                                                  key={cr.id}
+                                                  className="px-3 py-3 text-center tabular-nums text-white"
+                                                >
                                                   {notaJuradoCriterio(a.id, j.id, cr.id)}
                                                 </td>
                                               ))}
@@ -1536,15 +1720,22 @@ function JuradosPageInner() {
                     const org = organizacoes.find((o) => o.id === a.grupo_id);
 
                     return (
-                      <div key={a.id} className="bg-axon-panel border border-axon-border rounded-xl p-5 space-y-3">
+                      <div
+                        key={a.id}
+                        className="bg-axon-panel border border-axon-border rounded-xl p-5 space-y-3"
+                      >
                         <div>
                           <p className="text-sm font-semibold text-white">{a.nome}</p>
-                          {org && <p className="text-xs text-gray-500 mt-0.5">{org.nome}</p>}
+                          {org && (
+                            <p className="text-xs text-gray-500 mt-0.5">{org.nome}</p>
+                          )}
                         </div>
                         <div className="flex gap-3">
                           <textarea
                             value={observacoes[a.id] ?? ""}
-                            onChange={(e) => setObservacoes((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                            onChange={(e) =>
+                              setObservacoes((prev) => ({ ...prev, [a.id]: e.target.value }))
+                            }
                             placeholder={`Observações sobre esta ${termo.apresentacao.toLowerCase()}...`}
                             rows={3}
                             className="flex-1 bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors resize-none"
@@ -1554,7 +1745,11 @@ function JuradosPageInner() {
                             disabled={salvandoObs === a.id}
                             className="px-4 py-2 self-end rounded-lg bg-axon-gold text-black text-xs font-bold hover:bg-axon-gold/80 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center gap-1.5"
                           >
-                            {salvandoObs === a.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                            {salvandoObs === a.id ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Check size={13} />
+                            )}
                             Salvar
                           </button>
                         </div>
