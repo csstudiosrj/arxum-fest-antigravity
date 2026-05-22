@@ -81,6 +81,8 @@ interface UsuarioExistente {
   nome: string;
   email: string;
   telefone?: string | null;
+  role?: string | null;
+  produtora_id?: string | null;
 }
 
 interface EventoJuradoRow {
@@ -154,7 +156,7 @@ interface ModalJuradoProps {
 
 function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }: ModalJuradoProps) {
   const editando = !!jurado;
-  const editandoVinculoEvento = !!jurado?.vinculo_id;
+  const modoPoolGlobal = !eventoId;
 
   const [nome, setNome] = useState(jurado?.nome ?? "");
   const [email, setEmail] = useState(jurado?.email ?? "");
@@ -170,7 +172,15 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
   const [usuarioExistente, setUsuarioExistente] = useState<UsuarioExistente | null>(null);
   const emailCheckRef = useRef(0);
 
-  const camposPrivadosBloqueados = !!usuarioExistente && usuarioExistente.id !== jurado?.id;
+  const emailNormalizadoAtual = email.trim().toLowerCase();
+  const emailOriginalJurado = jurado?.email?.trim().toLowerCase() ?? "";
+  const emailAlteradoNaEdicao = editando && emailNormalizadoAtual !== emailOriginalJurado;
+
+  const colisaoEmailOutroUsuario = !!usuarioExistente && usuarioExistente.id !== jurado?.id;
+  const colisaoOutroRole = colisaoEmailOutroUsuario && usuarioExistente?.role !== "jurado";
+  const colisaoOutroCadastroJurado = colisaoEmailOutroUsuario && usuarioExistente?.role === "jurado";
+
+  const camposPrivadosBloqueados = colisaoOutroRole || colisaoOutroCadastroJurado;
   const nomeExibidoContaExistente = usuarioExistente ? mascararNome(usuarioExistente.nome) : "";
 
   useEffect(() => {
@@ -183,12 +193,14 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
     setErro(null);
     setEtapa("formulario");
     setCopiado(false);
+    setUsuarioExistente(null);
+    setVerificandoEmail(false);
   }, [jurado]);
 
   useEffect(() => {
     const emailNormalizado = email.trim().toLowerCase();
 
-    if (!emailNormalizado || !produtoraId || editandoVinculoEvento) {
+    if (!emailNormalizado || !produtoraId) {
       setUsuarioExistente(null);
       setVerificandoEmail(false);
       return;
@@ -207,10 +219,9 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
       const supabase = createClient();
       const { data } = await supabase
         .from("usuarios")
-        .select("id, nome, email, telefone")
+        .select("id, nome, email, telefone, role, produtora_id")
         .eq("email", emailNormalizado)
         .eq("produtora_id", produtoraId)
-        .eq("role", "jurado")
         .limit(1)
         .maybeSingle();
 
@@ -222,42 +233,56 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
     }, 400);
 
     return () => window.clearTimeout(timer);
-  }, [email, editando, editandoVinculoEvento, jurado?.email, jurado?.id, produtoraId]);
+  }, [email, editando, jurado?.email, produtoraId]);
 
   async function salvar() {
     const supabase = createClient();
     setErro(null);
 
-    if (!eventoId && !editando) {
-      setErro(`Selecione um evento para cadastrar ${termo.participante.toLowerCase()}s desta área.`);
-      return;
-    }
-
-    if (!editandoVinculoEvento && !nome.trim()) {
+    if (!nome.trim()) {
       setErro("Nome é obrigatório.");
       return;
     }
 
-    if (!editandoVinculoEvento && !email.trim()) {
+    if (!email.trim()) {
       setErro("E-mail é obrigatório para enviar o convite.");
+      return;
+    }
+
+    if (camposPrivadosBloqueados) {
+      if (colisaoOutroRole) {
+        setErro("Este e-mail já pertence a outra conta com perfil diferente. Para proteger os dados, use outro e-mail.");
+      } else {
+        setErro("Já existe um jurado com este e-mail no pool global desta produtora. Use o cadastro existente.");
+      }
       return;
     }
 
     setSalvando(true);
 
     if (editando && jurado) {
-      if (jurado.vinculo_id) {
+      if (modoPoolGlobal) {
+        if (!produtoraId) {
+          setErro("Não foi possível identificar a produtora responsável por este cadastro.");
+          setSalvando(false);
+          return;
+        }
+
+        const payloadAtualizacao: { nome: string; email: string; telefone: string | null } = {
+          nome: nome.trim(),
+          email: email.trim().toLowerCase(),
+          telefone: telefone.replace(/\D/g, "") || null,
+        };
+
         const { error } = await supabase
-          .from("evento_jurados")
-          .update({
-            especialidade: especialidade.trim() || null,
-            cache_valor: cache ? parseFloat(cache) : 0,
-            cache_status: cacheStatus,
-          })
-          .eq("id", jurado.vinculo_id);
+          .from("usuarios")
+          .update(payloadAtualizacao)
+          .eq("id", jurado.id)
+          .eq("produtora_id", produtoraId)
+          .eq("role", "jurado");
 
         if (error) {
-          setErro("Erro ao salvar os dados do jurado neste evento.");
+          setErro("Erro ao atualizar o cadastro global do jurado.");
           setSalvando(false);
           return;
         }
@@ -268,17 +293,44 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
         return;
       }
 
-      const { error } = await supabase
-        .from("usuarios")
-        .update({
+      const dadosEvento: {
+        especialidade: string | null;
+        cache_valor: number;
+        cache_status: "pago" | "pendente";
+      } = {
+        especialidade: especialidade.trim() || null,
+        cache_valor: cache ? parseFloat(cache) : 0,
+        cache_status: cacheStatus,
+      };
+
+      if (emailAlteradoNaEdicao) {
+        const payloadAtualizacaoUsuario: { nome: string; email: string; telefone: string | null } = {
           nome: nome.trim(),
           email: email.trim().toLowerCase(),
           telefone: telefone.replace(/\D/g, "") || null,
-        })
-        .eq("id", jurado.id);
+        };
+
+        const { error: usuarioError } = await supabase
+          .from("usuarios")
+          .update(payloadAtualizacaoUsuario)
+          .eq("id", jurado.id)
+          .eq("produtora_id", produtoraId)
+          .eq("role", "jurado");
+
+        if (usuarioError) {
+          setErro("Erro ao atualizar os dados privados do jurado.");
+          setSalvando(false);
+          return;
+        }
+      }
+
+      const { error } = await supabase
+        .from("evento_jurados")
+        .update(dadosEvento)
+        .eq("id", jurado.vinculo_id);
 
       if (error) {
-        setErro("Erro ao atualizar o cadastro global do jurado.");
+        setErro("Erro ao salvar os dados do jurado neste evento.");
         setSalvando(false);
         return;
       }
@@ -289,13 +341,7 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
       return;
     }
 
-    if (!eventoId) {
-      setErro("Nenhum evento selecionado.");
-      setSalvando(false);
-      return;
-    }
-
-    let juradoId = usuarioExistente?.id ?? null;
+    let juradoId = colisaoOutroCadastroJurado ? usuarioExistente?.id ?? null : null;
 
     if (!juradoId) {
       const res = await fetch("/api/convite", {
@@ -323,16 +369,28 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
         .select("id")
         .eq("email", email.trim().toLowerCase())
         .eq("produtora_id", produtoraId)
-        .eq("role", "jurado")
         .single();
 
       if (usuarioError || !usuarioCriado) {
-        setErro("Usuário convidado, mas não foi possível localizar o cadastro para vincular ao evento.");
+        setErro("Usuário convidado, mas não foi possível localizar o cadastro criado.");
         setSalvando(false);
         return;
       }
 
       juradoId = usuarioCriado.id;
+    }
+
+    if (!juradoId) {
+      setErro("Não foi possível identificar o jurado para concluir o cadastro.");
+      setSalvando(false);
+      return;
+    }
+
+    if (modoPoolGlobal) {
+      setSalvando(false);
+      setEtapa("confirmacao");
+      onSaved();
+      return;
     }
 
     const { data: vinculoExistente } = await supabase
@@ -387,19 +445,21 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
           <div>
             <h2 className="text-base font-semibold text-white">
-              {etapa === "formulario" ? (editando ? "Editar Jurado" : "Adicionar Jurado") : "Jurado escalado"}
+              {etapa === "formulario" ? (editando ? "Editar Jurado" : "Adicionar Jurado") : modoPoolGlobal ? "Jurado cadastrado no pool" : "Jurado escalado"}
             </h2>
             {etapa === "formulario" && (
               <p className="text-xs text-gray-500 mt-0.5">
                 {editando
-                  ? jurado?.vinculo_id
-                    ? "Atualize os dados de atuação do jurado neste evento."
-                    : "Atualize o cadastro global do jurado no pool da produtora."
-                  : "Um convite por e-mail será enviado automaticamente e o vínculo será criado neste evento."}
+                  ? modoPoolGlobal
+                    ? "Atualize os dados globais do jurado no pool da produtora."
+                    : "Atualize os dados de atuação do jurado neste evento."
+                  : modoPoolGlobal
+                    ? "Um convite por e-mail será enviado automaticamente e o jurado será cadastrado no pool global da produtora."
+                    : "Um convite por e-mail será enviado automaticamente e o vínculo será criado neste evento."}
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
             <X size={18} />
           </button>
         </div>
@@ -409,10 +469,12 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
             <div className="p-6 space-y-4">
               <Dica>
                 {editando
-                  ? jurado?.vinculo_id
-                    ? `Revise os dados deste jurado e ajuste especialidade e cachê conforme necessário para o evento.`
-                    : `Revise e atualize o cadastro global deste jurado no pool da produtora.`
-                  : `Preencha os dados do jurado. Ele receberá um e-mail com o link para criar a senha e acessar o painel de avaliação das ${termo.apresentacao.toLowerCase()}s.`}
+                  ? modoPoolGlobal
+                    ? "Neste modo você pode editar diretamente os dados globais do jurado. Os campos privados só serão bloqueados se o e-mail informado colidir com outro cadastro protegido."
+                    : `Revise os dados deste jurado e ajuste especialidade e cachê conforme necessário para o evento.`
+                  : modoPoolGlobal
+                    ? "Preencha os dados do jurado. Ele receberá um e-mail com o link para criar a senha e entrar no portal do jurado. Nenhum vínculo com evento será criado agora."
+                    : `Preencha os dados do jurado. Ele receberá um e-mail com o link para criar a senha e acessar o painel de avaliação das ${termo.apresentacao.toLowerCase()}s.`}
               </Dica>
 
               <div>
@@ -422,7 +484,7 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                   value={nome}
                   onChange={(e) => setNome(e.target.value)}
                   placeholder="Nome do jurado"
-                  disabled={camposPrivadosBloqueados || editandoVinculoEvento}
+                  disabled={camposPrivadosBloqueados}
                   className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
@@ -435,11 +497,11 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="email@exemplo.com"
-                    disabled={camposPrivadosBloqueados || editandoVinculoEvento}
+                    disabled={camposPrivadosBloqueados}
                     className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 pr-10 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   {verificandoEmail && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-500" />}
-                  {!verificandoEmail && usuarioExistente && usuarioExistente.id !== jurado?.id && (
+                  {!verificandoEmail && usuarioExistente && (
                     <ShieldCheck size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-axon-gold" />
                   )}
                 </div>
@@ -452,7 +514,7 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                   value={telefone}
                   onChange={(e) => setTelefone(mascaraTelefone(e.target.value))}
                   placeholder="(21) 99999-9999"
-                  disabled={camposPrivadosBloqueados || editandoVinculoEvento}
+                  disabled={camposPrivadosBloqueados}
                   className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
@@ -461,9 +523,15 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                 <div className="flex items-start gap-3 p-4 bg-axon-gold/10 border border-axon-gold/20 rounded-lg">
                   <Mail size={16} className="text-axon-gold shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm text-white font-medium">Conta existente encontrada</p>
+                    <p className="text-sm text-white font-medium">
+                      {colisaoOutroRole ? "Conta protegida encontrada" : "Cadastro existente encontrado"}
+                    </p>
                     <p className="text-xs text-gray-400 mt-1">
-                      Este jurado já possui uma conta no sistema. Os dados privados foram preservados e você pode apenas vinculá-lo a este evento.
+                      {colisaoOutroRole
+                        ? "Este e-mail já está associado a uma conta com papel diferente dentro da mesma produtora. Para proteger dados privados, esse formulário não pode sobrescrever esse cadastro."
+                        : modoPoolGlobal
+                          ? "Já existe um jurado com este e-mail no pool global da produtora. Os dados privados desse cadastro não podem ser sobrescritos por este formulário."
+                          : "Já existe um jurado com este e-mail na mesma produtora. Você pode continuar usando o cadastro existente para vinculá-lo ao evento."}
                     </p>
                     <p className="text-xs text-gray-500 mt-2">
                       Cadastro identificado: <span className="text-gray-300">{nomeExibidoContaExistente}</span>
@@ -483,35 +551,45 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Cachê (R$)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={cache}
-                    onChange={(e) => setCache(e.target.value)}
-                    placeholder="0,00"
-                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Status do cachê</label>
-                  <select
-                    value={cacheStatus}
-                    onChange={(e) => setCacheStatus(e.target.value as "pago" | "pendente")}
-                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors"
-                  >
-                    <option value="pendente">Pendente</option>
-                    <option value="pago">Pago</option>
-                  </select>
-                </div>
-              </div>
+              {!modoPoolGlobal && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">Cachê (R$)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={cache}
+                        onChange={(e) => setCache(e.target.value)}
+                        placeholder="0,00"
+                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">Status do cachê</label>
+                      <select
+                        value={cacheStatus}
+                        onChange={(e) => setCacheStatus(e.target.value as "pago" | "pendente")}
+                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors"
+                      >
+                        <option value="pendente">Pendente</option>
+                        <option value="pago">Pago</option>
+                      </select>
+                    </div>
+                  </div>
 
-              <p className="text-xs text-gray-600 -mt-1">
-                Valor a ser pago ao jurado pelo evento. Pode ser 0 se for voluntário.
-              </p>
+                  <p className="text-xs text-gray-600 -mt-1">
+                    Valor a ser pago ao jurado pelo evento. Pode ser 0 se for voluntário.
+                  </p>
+                </>
+              )}
+
+              {modoPoolGlobal && (
+                <p className="text-xs text-gray-600 -mt-1">
+                  No modo Pool Global, o cadastro cria ou atualiza o jurado na produtora e não gera vínculo com evento.
+                </p>
+              )}
 
               {erro && (
                 <p className="flex items-start gap-2 text-xs text-red-400">
@@ -533,7 +611,7 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                 className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2"
               >
                 {salvando && <Loader2 size={14} className="animate-spin" />}
-                {editando ? "Salvar alterações" : "Cadastrar e vincular"}
+                {editando ? "Salvar alterações" : modoPoolGlobal ? "Cadastrar no Pool" : "Cadastrar e vincular"}
               </button>
             </div>
           </>
@@ -545,7 +623,9 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
               <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
                 <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-white">{nome} escalado!</p>
+                  <p className="text-sm font-medium text-white">
+                    {modoPoolGlobal ? `${nome} cadastrado no pool!` : `${nome} escalado!`}
+                  </p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     Convite enviado para <span className="text-white">{email}</span>
                   </p>
@@ -563,7 +643,8 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                   onClick={abrirWhatsApp}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200"
                 >
-                  <MessageCircle size={15} /> Enviar pelo WhatsApp
+                  <MessageCircle size={15} />
+                  Enviar pelo WhatsApp
                 </button>
               </div>
             </div>
@@ -612,7 +693,9 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
         setMsg("Permissão de câmera negada.");
       }
     }
+
     iniciar();
+
     return () => {
       cancelAnimationFrame(rafRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -623,20 +706,25 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
     rafRef.current = requestAnimationFrame(async () => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
+
       if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
         tick();
         return;
       }
+
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext("2d");
+
       if (!ctx) {
         tick();
         return;
       }
+
       ctx.drawImage(video, 0, 0);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const code = jsQR(imageData.data, imageData.width, imageData.height);
+
       if (code) {
         cancelAnimationFrame(rafRef.current);
         streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -650,6 +738,7 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
   async function processarQR(raw: string) {
     const supabase = createClient();
     setStatus("processando");
+
     try {
       let payload: {
         evento_id: string;
@@ -671,6 +760,7 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
       if (payload.evento_id !== eventoId) throw new Error("Este QR pertence a outro evento.");
 
       let importados = 0;
+
       for (const n of payload.notas) {
         const { error } = await supabase.from("avaliacoes").upsert(
           {
@@ -683,6 +773,7 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
           },
           { onConflict: "evento_id,apresentacao_id,jurado_id,criterio_id" }
         );
+
         if (!error) importados++;
       }
 
@@ -700,7 +791,7 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
       <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
           <h2 className="text-base font-semibold text-white">Sincronizar via QR Code</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
             <X size={18} />
           </button>
         </div>
@@ -716,24 +807,28 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
               </div>
               {status === "processando" && (
                 <p className="flex items-center gap-2 text-sm text-axon-gold">
-                  <Loader2 size={16} className="animate-spin" /> Processando...
+                  <Loader2 size={16} className="animate-spin" />
+                  Processando...
                 </p>
               )}
               {status === "aguardando" && <p className="text-xs text-gray-500 text-center">Aponte a câmera para o QR Code do tablet do jurado.</p>}
             </>
           )}
+
           {status === "sucesso" && (
             <div className="flex flex-col items-center gap-4 py-4">
               <CheckCircle2 size={40} className="text-emerald-400" />
               <p className="text-sm text-white text-center">{msg}</p>
             </div>
           )}
+
           {status === "erro" && (
             <div className="flex flex-col items-center gap-4 py-4">
               <AlertCircle size={40} className="text-red-400" />
               <p className="text-sm text-red-400 text-center">{msg}</p>
             </div>
           )}
+
           <button
             onClick={onClose}
             className="w-full px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white transition-all duration-200"
@@ -749,12 +844,18 @@ function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) 
 interface ConfirmarExclusaoJuradoProps {
   termo: Terminologia;
   jurado: Jurado;
-  modoEvento: boolean;
+  modoPoolGlobal: boolean;
   onClose: () => void;
   onConfirmar: () => Promise<void>;
 }
 
-function ConfirmarExclusaoJurado({ termo, jurado, modoEvento, onClose, onConfirmar }: ConfirmarExclusaoJuradoProps) {
+function ConfirmarExclusaoJurado({
+  termo,
+  jurado,
+  modoPoolGlobal,
+  onClose,
+  onConfirmar,
+}: ConfirmarExclusaoJuradoProps) {
   const [excluindo, setExcluindo] = useState(false);
 
   async function handleConfirmar() {
@@ -767,8 +868,8 @@ function ConfirmarExclusaoJurado({ termo, jurado, modoEvento, onClose, onConfirm
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4" onClick={onClose}>
       <div className="bg-axon-panel border border-red-500/20 rounded-xl w-full max-w-md shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
-          <h2 className="text-base font-semibold text-white">{modoEvento ? "Desvincular jurado" : "Excluir jurado do pool global"}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+          <h2 className="text-base font-semibold text-white">{modoPoolGlobal ? "Excluir jurado" : "Desvincular jurado"}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
             <X size={18} />
           </button>
         </div>
@@ -777,17 +878,19 @@ function ConfirmarExclusaoJurado({ termo, jurado, modoEvento, onClose, onConfirm
             <Trash2 size={16} className="text-red-400 shrink-0 mt-0.5" />
             <div>
               <p className="text-sm text-white font-medium">
-                {modoEvento ? `Remover ${jurado.nome} desta escala` : `Excluir ${jurado.nome} do pool global`}
+                {modoPoolGlobal ? `Excluir ${jurado.nome} do pool global` : `Remover ${jurado.nome} desta escala`}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {modoEvento
-                  ? "Esta ação desvincula o jurado apenas do evento atual. O cadastro global permanecerá disponível no pool da produtora."
-                  : "Esta ação remove o cadastro global do jurado. Use com cautela, pois ele deixará de estar disponível para futuros eventos."}
+                {modoPoolGlobal
+                  ? "Esta ação remove fisicamente o jurado do cadastro global da produtora."
+                  : "Esta ação desvincula o jurado apenas do evento atual. O cadastro global permanecerá disponível no pool da produtora."}
               </p>
             </div>
           </div>
           <p className="text-xs text-gray-500">
-            As avaliações vinculadas a este jurado podem impactar a apuração das {termo.apresentacao.toLowerCase()}s.
+            {modoPoolGlobal
+              ? "Use esta ação apenas quando o cadastro realmente não precisar mais existir no pool global."
+              : `As avaliações vinculadas a este jurado podem impactar a apuração das ${termo.apresentacao.toLowerCase()}s.`}
           </p>
         </div>
         <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
@@ -815,6 +918,7 @@ function ConfirmarExclusaoJurado({ termo, jurado, modoEvento, onClose, onConfirm
 function JuradosPageInner() {
   const searchParams = useSearchParams();
   const eventoId = searchParams.get("eventoId");
+  const modoPoolGlobal = !eventoId;
 
   const [termo, setTermo] = useState<Terminologia>({
     grupo: "Grupo",
@@ -875,25 +979,45 @@ function JuradosPageInner() {
     }
 
     let evento: EventoAtivo | null = null;
-
     if (eventoId) {
       const { data: eventoUrl } = await supabase.from("eventos").select("id, nome").eq("id", eventoId).maybeSingle();
       evento = (eventoUrl as EventoAtivo | null) ?? null;
-    } else {
-      const { data: eventoFallback } = await supabase
-        .from("eventos")
-        .select("id, nome")
-        .in("status", ["inscricoes_abertas", "em_andamento"])
-        .order("data_inicio", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      evento = (eventoFallback as EventoAtivo | null) ?? null;
     }
 
     setEventoAtivo(evento ?? null);
 
-    if (eventoId && evento && produtoraIdAtual) {
+    if (modoPoolGlobal && produtoraIdAtual) {
+      const { data: usuariosData } = await supabase
+        .from("usuarios")
+        .select("id, nome, email, telefone")
+        .eq("role", "jurado")
+        .eq("produtora_id", produtoraIdAtual)
+        .order("nome");
+
+      setJurados(
+        (((usuariosData as UsuarioExistente[] | null) ?? []).map((u) => ({
+          id: u.id,
+          vinculo_id: null,
+          nome: u.nome,
+          email: u.email,
+          telefone: u.telefone ?? null,
+          especialidade: null,
+          cache_valor: 0,
+          cache_status: "pendente",
+        })) as Jurado[])
+      );
+
+      setApresentacoes([]);
+      setCriterios([]);
+      setAvaliacoes([]);
+      setOrganizacoes([]);
+      setObservacoes({});
+      setAbaAtiva("jurados");
+      setCarregando(false);
+      return;
+    }
+
+    if (evento && produtoraIdAtual) {
       const { data: vinculosData } = await supabase
         .from("evento_jurados")
         .select("id, evento_id, jurado_id, cache_valor, cache_status, especialidade")
@@ -903,7 +1027,6 @@ function JuradosPageInner() {
       const juradoIds = vinculos.map((v) => v.jurado_id);
 
       let usuariosMap = new Map<string, UsuarioExistente>();
-
       if (juradoIds.length > 0) {
         const { data: usuariosData } = await supabase
           .from("usuarios")
@@ -916,46 +1039,24 @@ function JuradosPageInner() {
         usuariosMap = new Map(((usuariosData as UsuarioExistente[] | null) ?? []).map((u) => [u.id, u]));
       }
 
-      const juradosFinal = vinculos
-        .map((v) => {
-          const usuarioVinculado = usuariosMap.get(v.jurado_id);
-          if (!usuarioVinculado) return null;
-
-          return {
-            id: usuarioVinculado.id,
-            vinculo_id: v.id,
-            nome: usuarioVinculado.nome,
-            email: usuarioVinculado.email,
-            telefone: usuarioVinculado.telefone ?? null,
-            especialidade: v.especialidade ?? null,
-            cache_valor: v.cache_valor ?? 0,
-            cache_status: v.cache_status === "pago" ? "pago" : "pendente",
-          } satisfies Jurado;
-        })
-        .filter(Boolean) as Jurado[];
-
-      juradosFinal.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-      setJurados(juradosFinal);
-    } else if (!eventoId && produtoraIdAtual) {
-      const { data: usuariosData } = await supabase
-        .from("usuarios")
-        .select("id, nome, email, telefone")
-        .eq("role", "jurado")
-        .eq("produtora_id", produtoraIdAtual)
-        .order("nome");
-
-      const juradosGlobais: Jurado[] = ((usuariosData as UsuarioExistente[] | null) ?? []).map((u) => ({
-        id: u.id,
-        vinculo_id: null,
-        nome: u.nome,
-        email: u.email,
-        telefone: u.telefone ?? null,
-        especialidade: null,
-        cache_valor: null,
-        cache_status: "pendente",
-      }));
-
-      setJurados(juradosGlobais);
+      setJurados(
+        vinculos
+          .map((v) => {
+            const usuarioVinculado = usuariosMap.get(v.jurado_id);
+            if (!usuarioVinculado) return null;
+            return {
+              id: usuarioVinculado.id,
+              vinculo_id: v.id,
+              nome: usuarioVinculado.nome,
+              email: usuarioVinculado.email,
+              telefone: usuarioVinculado.telefone ?? null,
+              especialidade: v.especialidade ?? null,
+              cache_valor: v.cache_valor ?? 0,
+              cache_status: v.cache_status === "pago" ? "pago" : "pendente",
+            } satisfies Jurado;
+          })
+          .filter(Boolean) as Jurado[]
+      );
     } else {
       setJurados([]);
     }
@@ -987,11 +1088,17 @@ function JuradosPageInner() {
     }
 
     setCarregando(false);
-  }, [eventoId]);
+  }, [eventoId, modoPoolGlobal]);
 
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  useEffect(() => {
+    if (modoPoolGlobal) {
+      setAbaAtiva("jurados");
+    }
+  }, [modoPoolGlobal]);
 
   async function importarDoPoolGlobal() {
     if (!eventoAtivo?.id || !produtoraId) return;
@@ -999,7 +1106,11 @@ function JuradosPageInner() {
     setImportandoPool(true);
 
     const [{ data: poolGlobal }, { data: vinculosExistentes }] = await Promise.all([
-      supabase.from("usuarios").select("id").eq("role", "jurado").eq("produtora_id", produtoraId),
+      supabase
+        .from("usuarios")
+        .select("id")
+        .eq("role", "jurado")
+        .eq("produtora_id", produtoraId),
       supabase.from("evento_jurados").select("jurado_id").eq("evento_id", eventoAtivo.id),
     ]);
 
@@ -1040,13 +1151,27 @@ function JuradosPageInner() {
     setJurados((prev) => prev.map((j) => (j.vinculo_id === vinculoId ? { ...j, cache_status: status } : j)));
   }
 
-  async function excluirJurado(jurado: Jurado) {
+  async function excluirJurado(jurado: Jurado | null) {
+    if (!jurado) return;
+
     const supabase = createClient();
 
-    if (eventoId && jurado.vinculo_id) {
-      await supabase.from("evento_jurados").delete().eq("id", jurado.vinculo_id);
+    if (modoPoolGlobal) {
+      if (!produtoraId) return;
+
+      await supabase
+        .from("usuarios")
+        .delete()
+        .eq("id", jurado.id)
+        .eq("produtora_id", produtoraId)
+        .eq("role", "jurado");
     } else {
-      await supabase.from("usuarios").delete().eq("id", jurado.id);
+      if (!jurado.vinculo_id) return;
+
+      await supabase
+        .from("evento_jurados")
+        .delete()
+        .eq("id", jurado.vinculo_id);
     }
 
     setJuradoExclusao(null);
@@ -1069,12 +1194,20 @@ function JuradosPageInner() {
     return av ? String(av.nota) : "—";
   }
 
+  const tabsDisponiveis = modoPoolGlobal
+    ? [{ id: "jurados", label: "Jurados" as const }]
+    : [
+        { id: "jurados", label: "Jurados" as const },
+        { id: "notas", label: "Apuração de Notas" as const },
+        { id: "observacoes", label: "Observações" as const },
+      ];
+
   return (
     <>
       {modalJuradoAberta && (
         <ModalJurado
           termo={termo}
-          eventoId={eventoId ? eventoAtivo?.id ?? null : null}
+          eventoId={eventoId}
           produtoraId={produtoraId}
           jurado={juradoEmEdicao}
           onClose={() => {
@@ -1085,7 +1218,7 @@ function JuradosPageInner() {
         />
       )}
 
-      {modalScanner && eventoAtivo && (
+      {modalScanner && eventoAtivo && !modoPoolGlobal && (
         <ScannerQR eventoId={eventoAtivo.id} jurados={jurados} onImportado={() => carregar()} onClose={() => setModalScanner(false)} />
       )}
 
@@ -1093,7 +1226,7 @@ function JuradosPageInner() {
         <ConfirmarExclusaoJurado
           termo={termo}
           jurado={juradoExclusao}
-          modoEvento={!!eventoId}
+          modoPoolGlobal={modoPoolGlobal}
           onClose={() => setJuradoExclusao(null)}
           onConfirmar={() => excluirJurado(juradoExclusao)}
         />
@@ -1102,9 +1235,11 @@ function JuradosPageInner() {
       <div className="max-w-5xl mx-auto space-y-6 p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-semibold text-white">Jurados & Apuração</h1>
+            <h1 className="text-xl font-semibold text-white">{modoPoolGlobal ? "Pool Global de Jurados" : "Jurados & Apuração"}</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Gerencie jurados, visualize notas e registre observações por {termo.apresentacao.toLowerCase()}.
+              {modoPoolGlobal
+                ? "Gerencie o cadastro global de jurados da produtora. Os vínculos com eventos são feitos depois, sob demanda."
+                : `Gerencie jurados, visualize notas e registre observações por ${termo.apresentacao.toLowerCase()}.`}
             </p>
           </div>
           <button
@@ -1114,12 +1249,21 @@ function JuradosPageInner() {
             }}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 transition-all duration-200 whitespace-nowrap shrink-0"
           >
-            <Plus size={15} /> Adicionar Jurado
+            <Plus size={15} />
+            Adicionar Jurado
           </button>
         </div>
 
         <Dica>
-          Jurados adicionados aqui recebem acesso ao <strong>portal do jurado</strong> onde avaliam as {termo.apresentacao.toLowerCase()}s em tempo real. O cachê é o valor combinado pela participação no evento.
+          {modoPoolGlobal ? (
+            <>
+              Jurados cadastrados aqui entram no <strong>pool global</strong> da produtora e podem ser vinculados a eventos depois.
+            </>
+          ) : (
+            <>
+              Jurados adicionados aqui recebem acesso ao <strong>portal do jurado</strong> onde avaliam as {termo.apresentacao.toLowerCase()}s em tempo real. O cachê é o valor combinado pela participação no evento.
+            </>
+          )}
         </Dica>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1140,14 +1284,10 @@ function JuradosPageInner() {
         </div>
 
         <div className="flex border-b border-axon-border overflow-x-auto">
-          {[
-            { id: "jurados", label: "Jurados" },
-            { id: "notas", label: "Apuração de Notas" },
-            { id: "observacoes", label: "Observações" },
-          ].map((tab) => (
+          {tabsDisponiveis.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setAbaAtiva(tab.id as typeof abaAtiva)}
+              onClick={() => setAbaAtiva(tab.id)}
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap ${
                 abaAtiva === tab.id
                   ? "border-axon-gold text-axon-gold"
@@ -1167,22 +1307,26 @@ function JuradosPageInner() {
           <>
             {abaAtiva === "jurados" && (
               <div className="space-y-3">
-                {eventoId && jurados.length === 0 ? (
+                {jurados.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 border border-dashed border-axon-border rounded-xl text-gray-600 px-6 text-center">
                     <Users size={36} className="mb-3 opacity-20 text-axon-gold" />
-                    <p className="font-medium text-gray-300">Nenhum jurado escalado</p>
+                    <p className="font-medium text-gray-300">{modoPoolGlobal ? "Nenhum jurado no pool global" : "Nenhum jurado escalado"}</p>
                     <p className="text-sm mt-1 text-gray-500 max-w-lg">
-                      Este evento ainda não possui jurados vinculados. Você pode importar do pool global da produtora ou cadastrar um novo jurado agora.
+                      {modoPoolGlobal
+                        ? "Ainda não há jurados cadastrados no pool global desta produtora. Cadastre o primeiro jurado agora."
+                        : "Este evento ainda não possui jurados vinculados. Você pode importar do pool global da produtora ou cadastrar um novo jurado agora."}
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full max-w-md">
-                      <button
-                        onClick={importarDoPoolGlobal}
-                        disabled={importandoPool || !eventoAtivo || !produtoraId}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 disabled:opacity-50 transition-all duration-200"
-                      >
-                        {importandoPool ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-                        Importar do Pool Global
-                      </button>
+                      {!modoPoolGlobal && (
+                        <button
+                          onClick={importarDoPoolGlobal}
+                          disabled={importandoPool || !eventoAtivo || !produtoraId}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 disabled:opacity-50 transition-all duration-200"
+                        >
+                          {importandoPool ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                          Importar do Pool Global
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           setJuradoEmEdicao(null);
@@ -1190,26 +1334,8 @@ function JuradosPageInner() {
                         }}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200"
                       >
-                        <Plus size={15} /> Cadastrar Novo Jurado
-                      </button>
-                    </div>
-                  </div>
-                ) : jurados.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 border border-dashed border-axon-border rounded-xl text-gray-600 px-6 text-center">
-                    <Users size={36} className="mb-3 opacity-20 text-axon-gold" />
-                    <p className="font-medium text-gray-300">Nenhum jurado no pool global</p>
-                    <p className="text-sm mt-1 text-gray-500 max-w-lg">
-                      Ainda não há jurados cadastrados para esta produtora. Cadastre o primeiro jurado para começar a montar sua escala.
-                    </p>
-                    <div className="flex mt-6 w-full max-w-md">
-                      <button
-                        onClick={() => {
-                          setJuradoEmEdicao(null);
-                          setModalJuradoAberta(true);
-                        }}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 transition-all duration-200"
-                      >
-                        <Plus size={15} /> Cadastrar Novo Jurado
+                        <Plus size={15} />
+                        Cadastrar Novo Jurado
                       </button>
                     </div>
                   </div>
@@ -1226,14 +1352,16 @@ function JuradosPageInner() {
                           {j.especialidade && <p className="text-xs text-gray-600">· {j.especialidade}</p>}
                         </div>
                       </div>
+
                       <div className="flex items-center gap-4 shrink-0 flex-wrap">
-                        {j.cache_valor != null && (
+                        {!modoPoolGlobal && j.cache_valor != null && (
                           <div className="text-right">
                             <p className="text-xs text-gray-500">Cachê</p>
                             <p className="text-sm font-semibold text-white tabular-nums">{moeda(j.cache_valor)}</p>
                           </div>
                         )}
-                        {eventoId && j.vinculo_id ? (
+
+                        {!modoPoolGlobal && (
                           <select
                             value={j.cache_status}
                             onChange={(e) => alterarCacheStatus(j.vinculo_id, e.target.value as "pago" | "pendente")}
@@ -1250,11 +1378,8 @@ function JuradosPageInner() {
                               Pendente
                             </option>
                           </select>
-                        ) : (
-                          <span className="text-xs font-medium px-3 py-1.5 rounded-full border border-gray-600 text-gray-400 bg-white/[0.02]">
-                            Pool global
-                          </span>
                         )}
+
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => {
@@ -1263,13 +1388,16 @@ function JuradosPageInner() {
                             }}
                             className="p-1.5 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-200"
                             title="Editar jurado"
+                            aria-label={`Editar ${j.nome}`}
                           >
                             <Pencil size={15} />
                           </button>
+
                           <button
                             onClick={() => setJuradoExclusao(j)}
                             className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200"
-                            title={eventoId ? "Desvincular jurado" : "Excluir jurado"}
+                            title={modoPoolGlobal ? "Excluir jurado" : "Desvincular jurado"}
+                            aria-label={modoPoolGlobal ? `Excluir ${j.nome}` : `Desvincular ${j.nome}`}
                           >
                             <Trash2 size={15} />
                           </button>
@@ -1281,7 +1409,7 @@ function JuradosPageInner() {
               </div>
             )}
 
-            {abaAtiva === "notas" && (
+            {!modoPoolGlobal && abaAtiva === "notas" && (
               <div className="space-y-5">
                 {!eventoAtivo ? (
                   <div className="flex items-center gap-3 p-4 bg-axon-gold/10 border border-axon-gold/20 rounded-xl">
@@ -1300,7 +1428,8 @@ function JuradosPageInner() {
                         onClick={() => setModalScanner(true)}
                         className="flex items-center gap-2 px-3 py-2 rounded-lg bg-axon-gold text-black text-xs font-bold hover:bg-axon-gold/80 active:scale-95 transition-all duration-200"
                       >
-                        <QrCode size={14} /> Sincronizar via QR Code
+                        <QrCode size={14} />
+                        Sincronizar via QR Code
                       </button>
                     </div>
 
@@ -1313,6 +1442,7 @@ function JuradosPageInner() {
                         {apresentacoes.map((a) => {
                           const org = organizacoes.find((o) => o.id === a.grupo_id);
                           const expandida = apresExpandida === a.id;
+
                           return (
                             <div key={a.id} className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
                               <button
@@ -1354,9 +1484,11 @@ function JuradosPageInner() {
                                           const notasJ = avaliacoes.filter(
                                             (av) => av.apresentacao_id === a.id && av.jurado_id === j.id
                                           );
+
                                           const mediaJ = notasJ.length
                                             ? (notasJ.reduce((s, av) => s + av.nota, 0) / notasJ.length).toFixed(2)
                                             : "—";
+
                                           return (
                                             <tr key={j.id} className="border-b border-axon-border/50 last:border-0">
                                               <td className="px-5 py-3 text-gray-300 whitespace-nowrap">{j.nome}</td>
@@ -1386,7 +1518,7 @@ function JuradosPageInner() {
               </div>
             )}
 
-            {abaAtiva === "observacoes" && (
+            {!modoPoolGlobal && abaAtiva === "observacoes" && (
               <div className="space-y-3">
                 {!eventoAtivo ? (
                   <div className="flex items-center gap-3 p-4 bg-axon-gold/10 border border-axon-gold/20 rounded-xl">
@@ -1400,6 +1532,7 @@ function JuradosPageInner() {
                 ) : (
                   apresentacoes.map((a) => {
                     const org = organizacoes.find((o) => o.id === a.grupo_id);
+
                     return (
                       <div key={a.id} className="bg-axon-panel border border-axon-border rounded-xl p-5 space-y-3">
                         <div>

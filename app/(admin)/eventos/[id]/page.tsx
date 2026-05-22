@@ -12,9 +12,6 @@ import {
   LayoutDashboard, Info, AlertCircle,
 } from "lucide-react";
 
-// ============================================================
-// MAPEAMENTO DE PRESETS DINÂMICOS
-// ============================================================
 const PRESETS: Record<string, {
   placeholderNovo: string;
   dica: React.ReactNode;
@@ -63,11 +60,21 @@ const PRESETS: Record<string, {
     taxaConjunto: "Elenco/Grupo (R$)",
     explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o gênero teatral, mas tem duração ou elenco específicos.",
   },
+  multidisciplinar: {
+    placeholderNovo: "Ex: Festival Multicultural ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai por linguagem artística (ex: <em>Dança, Música, Teatro</em>) e, dentro delas, subcategorias por modalidade, faixa etária ou formação. As taxas podem variar por categoria.
+      </>
+    ),
+    placeholderNome: "Ex: Dança Contemporânea, Solo Vocal, Cena Curta...",
+    taxaSolo: "Solo (R$)",
+    taxaDuo: "Duo (R$)",
+    taxaConjunto: "Grupo/pax (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Use para organizar melhor as modalidades e faixas do evento.",
+  },
 };
 
-// ============================================================
-// TIPOS
-// ============================================================
 type Evento = {
   id: string;
   nome: string;
@@ -273,12 +280,14 @@ export default function PainelEventoPage() {
 
       try {
         const { count } = await supabase
-          .from("usuarios")
+          .from("evento_jurados")
           .select("id", { count: "exact", head: true })
-          .eq("role", "jurado");
+          .eq("evento_id", eventoId);
 
         setTotalJurados(count ?? 0);
-      } catch {}
+      } catch {
+        setTotalJurados(0);
+      }
 
       try {
         const { count } = await supabase
@@ -287,16 +296,26 @@ export default function PainelEventoPage() {
           .eq("evento_id", eventoId);
 
         setCriteriosConfigurados((count ?? 0) > 0);
-      } catch {}
+      } catch {
+        setCriteriosConfigurados(false);
+      }
 
       try {
-        const { count } = await supabase
-          .from("pdv_config")
-          .select("id", { count: "exact", head: true })
-          .eq("evento_id", eventoId);
+        const [{ count: pdvCount }, { count: produtosCount }] = await Promise.all([
+          supabase
+            .from("pdv_config")
+            .select("id", { count: "exact", head: true })
+            .eq("evento_id", eventoId),
+          supabase
+            .from("evento_produtos")
+            .select("id", { count: "exact", head: true })
+            .eq("evento_id", eventoId),
+        ]);
 
-        setPdvConfigurado((count ?? 0) > 0);
-      } catch {}
+        setPdvConfigurado((pdvCount ?? 0) > 0 && (produtosCount ?? 0) > 0);
+      } catch {
+        setPdvConfigurado(false);
+      }
 
       setLoading(false);
     }
@@ -1046,7 +1065,6 @@ export default function PainelEventoPage() {
                       : "Categoria principal. Você pode adicionar subcategorias depois."}
                   </p>
                 </div>
-
                 <button
                   onClick={() => setModalCat(false)}
                   className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200"
