@@ -198,9 +198,11 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
       setPreco(formatarPrecoInicial(produto.preco));
       setEstoque(produto.estoque != null ? String(produto.estoque) : "");
       setTipo(produto.tipo);
+
       const listaCantina: string[] = CATEGORIAS_CANTINA;
       const listaBilheteria: string[] = CATEGORIAS_BILHETERIA;
       const lista = produto.tipo === "cantina" ? listaCantina : listaBilheteria;
+
       if (lista.includes(produto.categoria ?? "")) {
         setCategoriaSelect(produto.categoria ?? "Outros");
         setCategoriaCustom("");
@@ -208,6 +210,7 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
         setCategoriaSelect("Outros");
         setCategoriaCustom(produto.categoria ?? "");
       }
+
       setAtivo(produto.ativo);
     } else {
       setNome("");
@@ -215,10 +218,12 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
       setPreco("");
       setEstoque("");
       setTipo(tipoInicial ?? "cantina");
+
       const cat = categoriaInicial ?? "";
       const listaCantina: string[] = CATEGORIAS_CANTINA;
       const listaBilheteria: string[] = CATEGORIAS_BILHETERIA;
       const lista = (tipoInicial ?? "cantina") === "cantina" ? listaCantina : listaBilheteria;
+
       if (lista.includes(cat)) {
         setCategoriaSelect(cat);
         setCategoriaCustom("");
@@ -226,6 +231,7 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
         setCategoriaSelect("Outros");
         setCategoriaCustom("");
       }
+
       setAtivo(true);
     }
 
@@ -401,9 +407,15 @@ function ModalProduto({ open, produto, eventoId, tipoInicial, categoriaInicial, 
             <button
               type="button"
               onClick={() => setAtivo(!ativo)}
-              className={`relative w-10 h-6 rounded-full transition-colors ${ativo ? "bg-axon-gold" : "bg-axon-border"}`}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                ativo ? "bg-axon-gold" : "bg-axon-border"
+              }`}
             >
-              <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${ativo ? "translate-x-5" : "translate-x-1"}`} />
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  ativo ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
             </button>
             <span className="text-sm text-gray-300">Produto {ativo ? "ativo" : "inativo"}</span>
           </div>
@@ -524,15 +536,20 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
 
       <div className="flex border-b border-axon-border">
         {[
-          { key: "cantina" as TipoProduto, label: "🍔 Cantina", icon: Coffee },
-          { key: "bilheteria" as TipoProduto, label: "🎟 Bilheteria", icon: Ticket },
-        ].map(({ key, label }) => (
+          { key: "cantina" as TipoProduto, label: "Cantina", icon: Coffee },
+          { key: "bilheteria" as TipoProduto, label: "Bilheteria", icon: Ticket },
+        ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => handleTipoChange(key)}
-            className={`px-5 py-2.5 text-sm font-medium transition-colors ${tipoAtivo === key ? "border-b-2 border-axon-gold text-axon-gold" : "text-gray-400 hover:text-white"}`}
+            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors ${
+              tipoAtivo === key ? "border-b-2 border-axon-gold text-axon-gold" : "text-gray-400 hover:text-white"
+            }`}
           >
-            {label} ({produtos.filter((p) => p.tipo === key).length})
+            <Icon size={15} />
+            <span>
+              {label} ({produtos.filter((p) => p.tipo === key).length})
+            </span>
           </button>
         ))}
       </div>
@@ -813,6 +830,7 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
       if (data) setConfig(data as ConfigPdv);
       setCarregando(false);
     };
+
     if (produtoraId) carregar();
   }, [produtoraId]);
 
@@ -837,16 +855,14 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
 
     if (config.id) {
       const { error } = await supabase.from("pdv_config").update(payload).eq("id", config.id);
-      if (error) {
-        setErro(error.message);
-      } else {
-        setSucesso("Configurações salvas.");
-      }
+
+      if (error) setErro(error.message);
+      else setSucesso("Configurações salvas.");
     } else {
       const { data, error } = await supabase.from("pdv_config").insert(payload).select().single();
-      if (error) {
-        setErro(error.message);
-      } else {
+
+      if (error) setErro(error.message);
+      else {
         setConfig(data as ConfigPdv);
         setSucesso("Configurações salvas.");
       }
@@ -1015,9 +1031,7 @@ export default function PdvPage() {
 
       const { data } = await supabase.from("usuarios").select("produtora_id").eq("id", user.id).single();
 
-      if (data?.produtora_id) {
-        setProdutoraId(data.produtora_id);
-      }
+      if (data?.produtora_id) setProdutoraId(data.produtora_id);
     };
 
     fetchUser();
