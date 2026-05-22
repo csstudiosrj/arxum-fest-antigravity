@@ -381,6 +381,17 @@ function ModalProduto({
               setSalvando(false);
               return;
             }
+
+            const produtoAtualizado: PdvProduto = {
+              ...produto,
+              ...payloadGlobal,
+              evento_id: eventoId,
+              vinculo_id: vinculoExistente.id,
+            };
+
+            onSaved(produtoAtualizado);
+            setSalvando(false);
+            return;
           } else {
             const { data: novoVinculo, error: insertVinculoError } = await supabase
               .from("evento_produtos")
@@ -1299,26 +1310,27 @@ function PdvPageInner() {
     const rows = (data ?? []) as unknown as EventoProdutoRow[];
 
     const produtosMapeados: PdvProduto[] = rows
-      .map((row) => {
+      .flatMap((row) => {
         const pdvProd = Array.isArray(row.pdv_produtos) ? row.pdv_produtos[0] : row.pdv_produtos;
-        if (!pdvProd || pdvProd.produtora_id !== produtoraId) return null;
+        if (!pdvProd || pdvProd.produtora_id !== produtoraId) return [];
 
-        return {
-          id: pdvProd.id,
-          nome: pdvProd.nome,
-          descricao: pdvProd.descricao,
-          preco: row.preco_evento ?? pdvProd.preco,
-          estoque: row.estoque_evento ?? pdvProd.estoque,
-          tipo: mapTipoProduto(pdvProd.tipo),
-          categoria: pdvProd.categoria,
-          ativo: row.ativo_evento ?? pdvProd.ativo,
-          produtora_id: pdvProd.produtora_id,
-          evento_id: row.evento_id,
-          created_at: pdvProd.created_at,
-          vinculo_id: row.id,
-        } satisfies PdvProduto;
+        return [
+          {
+            id: pdvProd.id,
+            nome: pdvProd.nome,
+            descricao: pdvProd.descricao,
+            preco: row.preco_evento ?? pdvProd.preco,
+            estoque: row.estoque_evento ?? pdvProd.estoque,
+            tipo: mapTipoProduto(pdvProd.tipo),
+            categoria: pdvProd.categoria,
+            ativo: row.ativo_evento ?? pdvProd.ativo,
+            produtora_id: pdvProd.produtora_id,
+            evento_id: row.evento_id,
+            created_at: pdvProd.created_at,
+            vinculo_id: row.id,
+          },
+        ];
       })
-      .filter((p): p is PdvProduto => p !== null)
       .sort((a, b) => a.nome.localeCompare(b.nome));
 
     setProdutos(produtosMapeados);
