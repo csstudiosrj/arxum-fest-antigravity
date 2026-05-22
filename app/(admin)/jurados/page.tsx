@@ -94,6 +94,8 @@ interface EventoJuradoRow {
   especialidade: string | null;
 }
 
+type AbaJurados = "jurados" | "notas" | "observacoes";
+
 function moeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -940,7 +942,7 @@ function JuradosPageInner() {
   const [juradoEmEdicao, setJuradoEmEdicao] = useState<Jurado | null>(null);
   const [juradoExclusao, setJuradoExclusao] = useState<Jurado | null>(null);
   const [modalScanner, setModalScanner] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<"jurados" | "notas" | "observacoes">("jurados");
+  const [abaAtiva, setAbaAtiva] = useState<AbaJurados>("jurados");
   const [apresExpandida, setApresExpandida] = useState<string | null>(null);
   const [salvandoObs, setSalvandoObs] = useState<string | null>(null);
 
@@ -1194,12 +1196,12 @@ function JuradosPageInner() {
     return av ? String(av.nota) : "—";
   }
 
-  const tabsDisponiveis = modoPoolGlobal
-    ? [{ id: "jurados", label: "Jurados" as const }]
+  const tabsDisponiveis: { id: AbaJurados; label: string }[] = modoPoolGlobal
+    ? [{ id: "jurados", label: "Jurados" }]
     : [
-        { id: "jurados", label: "Jurados" as const },
-        { id: "notas", label: "Apuração de Notas" as const },
-        { id: "observacoes", label: "Observações" as const },
+        { id: "jurados", label: "Jurados" },
+        { id: "notas", label: "Apuração de Notas" },
+        { id: "observacoes", label: "Observações" },
       ];
 
   return (

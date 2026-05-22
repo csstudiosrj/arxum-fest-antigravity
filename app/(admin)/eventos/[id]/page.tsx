@@ -1,123 +1,175 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import {
-  Plus,
-  X,
-  Loader2,
-  AlertCircle,
-  Users,
-  CircleDollarSign,
-  CheckCircle2,
-  Clock3,
-  QrCode,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  Check,
-  MessageCircle,
-  Info,
-  Pencil,
-  Trash2,
-  Mail,
-  ShieldCheck,
-  Upload,
+  ChevronLeft, Settings, ListTree, CalendarDays, GripVertical,
+  Plus, Trash2, Save, Loader2, X, CheckCircle, XCircle,
+  Users, CreditCard, Star, ShoppingCart, Pencil,
+  LayoutDashboard, Info, AlertCircle,
 } from "lucide-react";
-import jsQR from "jsqr";
 
-interface Terminologia {
-  grupo: string;
-  participante: string;
-  apresentacao: string;
-  organizacao: string;
-}
+const PRESETS: Record<string, {
+  placeholderNovo: string;
+  dica: React.ReactNode;
+  placeholderNome: string;
+  taxaSolo: string;
+  taxaDuo: string;
+  taxaConjunto: string;
+  explicacaoSub: string;
+}> = {
+  danca: {
+    placeholderNovo: "Ex: Festival de Dança ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Ballet</em>) e, dentro delas, subcategorias por faixa etária ou gênero (ex: <em>Ballet Infantil Feminino</em>). As taxas de inscrição são definidas por categoria. Solo, Duo e Conjunto têm valores diferentes.
+      </>
+    ),
+    placeholderNome: "Ex: Ballet Clássico, Jazz Adulto, Contemporâneo...",
+    taxaSolo: "Solo (R$)",
+    taxaDuo: "Duo (R$)",
+    taxaConjunto: "Conjunto/pax (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o estilo, mas tem faixa etária e gênero próprios.",
+  },
+  musica: {
+    placeholderNovo: "Ex: Festival de Música ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>MPB, Rock</em>) e, dentro delas, subcategorias por formato (ex: <em>Solo Vocal, Banda Instrumental</em>). As taxas de inscrição são definidas por categoria.
+      </>
+    ),
+    placeholderNome: "Ex: MPB, Rock, Solo Vocal, Música Clássica...",
+    taxaSolo: "Solo (R$)",
+    taxaDuo: "Duo/Dupla (R$)",
+    taxaConjunto: "Banda/Grupo (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o estilo musical, mas tem formato e características próprias.",
+  },
+  teatro: {
+    placeholderNovo: "Ex: Mostra de Teatro ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Comédia, Drama</em>) e, dentro delas, subcategorias (ex: <em>Cena Curta, Monólogo</em>). As taxas de inscrição são definidas por categoria.
+      </>
+    ),
+    placeholderNome: "Ex: Comédia, Drama, Monólogo, Teatro Musical...",
+    taxaSolo: "Monólogo (R$)",
+    taxaDuo: "Cena em Dupla (R$)",
+    taxaConjunto: "Elenco/Grupo (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o gênero teatral, mas tem duração ou elenco específicos.",
+  },
+  multidisciplinar: {
+    placeholderNovo: "Ex: Festival Multicultural ARXUM 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> Crie categorias-pai por linguagem artística (ex: <em>Dança, Música, Teatro</em>) e, dentro delas, subcategorias por modalidade, faixa etária ou formação. As taxas podem variar por categoria.
+      </>
+    ),
+    placeholderNome: "Ex: Dança Contemporânea, Solo Vocal, Cena Curta...",
+    taxaSolo: "Solo (R$)",
+    taxaDuo: "Duo (R$)",
+    taxaConjunto: "Grupo/pax (R$)",
+    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Use para organizar melhor as modalidades e faixas do evento.",
+  },
+};
 
-interface Jurado {
+type Evento = {
   id: string;
-  vinculo_id: string | null;
   nome: string;
-  email: string;
-  telefone?: string | null;
-  especialidade: string | null;
-  cache_valor: number | null;
-  cache_status: "pago" | "pendente";
-}
+  data_inicio: string;
+  data_fim: string;
+  local: string;
+  status: string;
+  descricao: string | null;
+  produtora_id: string | null;
+};
 
-interface Apresentacao {
+type Categoria = {
   id: string;
   nome: string;
-  grupo_id: string;
-  observacoes: string | null;
-}
+  valor_solo: number;
+  valor_duo: number;
+  valor_conjunto: number;
+  genero: string;
+  faixa_etaria_min: number | null;
+  faixa_etaria_max: number | null;
+  faixa_etaria_label: string | null;
+  categoria_pai_id: string | null;
+  subcategorias?: Categoria[];
+};
 
-interface Organizacao {
+type Apresentacao = {
   id: string;
   nome: string;
-}
+  tipo: string;
+  ordem_apresentacao: number | null;
+  status_pagamento?: string | null;
+};
 
-interface Criterio {
-  id: string;
-  nome: string;
-  nota_min: number;
-  nota_max: number;
-}
+type Toast = {
+  id: number;
+  tipo: "sucesso" | "erro" | "info";
+  mensagem: string;
+};
 
-interface Avaliacao {
-  apresentacao_id: string;
-  jurado_id: string;
-  criterio_id: string;
-  nota: number;
-}
+const GENERO_LABELS: Record<string, string> = {
+  livre: "Livre",
+  masculino: "Masculino",
+  feminino: "Feminino",
+  misto: "Misto",
+};
 
-interface EventoAtivo {
-  id: string;
-  nome: string;
-}
+const STATUS_LABELS: Record<string, string> = {
+  rascunho: "Rascunho",
+  inscricoes_abertas: "Inscrições Abertas",
+  em_andamento: "Em Andamento",
+  encerrado: "Encerrado",
+};
 
-interface UsuarioExistente {
-  id: string;
-  nome: string;
-  email: string;
-  telefone?: string | null;
-  role?: string | null;
-  produtora_id?: string | null;
-}
-
-interface EventoJuradoRow {
-  id: string;
-  evento_id: string;
-  jurado_id: string;
-  cache_valor: number | null;
-  cache_status: "pago" | "pendente" | null;
-  especialidade: string | null;
-}
-
-type AbaJurados = "jurados" | "notas" | "observacoes";
+const STATUS_CORES: Record<string, string> = {
+  inscricoes_abertas: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+  encerrado: "text-red-400 bg-red-400/10 border-red-400/20",
+  rascunho: "text-gray-400 bg-white/5 border-white/10",
+  em_andamento: "text-axon-gold bg-axon-gold/10 border-axon-gold/20",
+};
 
 function moeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function mascaraTelefone(valor: string) {
-  const n = valor.replace(/\D/g, "").slice(0, 11);
-  if (!n) return "";
-  if (n.length <= 10) return n.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
-  return n.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
-}
+let toastId = 0;
 
-function mascararNome(nome: string) {
-  return nome
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((parte) => {
-      const letras = Array.from(parte);
-      if (letras.length <= 1) return `${parte[0] ?? "*"}***`;
-      return `${letras[0]}***`;
-    })
-    .join(" ");
+function ToastContainer({ toasts, remover }: { toasts: Toast[]; remover: (id: number) => void }) {
+  const cores: Record<Toast["tipo"], string> = {
+    sucesso: "border-emerald-500/30 bg-axon-panel",
+    erro: "border-red-400/30 bg-axon-panel",
+    info: "border-axon-gold/30 bg-axon-panel",
+  };
+
+  const icones: Record<Toast["tipo"], React.ReactNode> = {
+    sucesso: <CheckCircle size={16} className="text-emerald-400 shrink-0" />,
+    erro: <XCircle size={16} className="text-red-400 shrink-0" />,
+    info: <Info size={16} className="text-axon-gold shrink-0" />,
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 pointer-events-none">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl pointer-events-auto transition-all ${cores[t.tipo]}`}
+        >
+          {icones[t.tipo]}
+          <span className="text-sm font-medium text-white">{t.mensagem}</span>
+          <button onClick={() => remover(t.id)} className="ml-2 text-gray-500 hover:text-white transition-colors">
+            <X size={14} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function Dica({ children }: { children: React.ReactNode }) {
@@ -129,1458 +181,1041 @@ function Dica({ children }: { children: React.ReactNode }) {
   );
 }
 
-async function descriptografarPayload(base64: string, chave: string): Promise<string> {
-  const bin = atob(base64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const iv = bytes.slice(0, 12);
-  const data = bytes.slice(12);
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(chave.padEnd(32, "0").slice(0, 32)),
-    { name: "AES-GCM" },
-    false,
-    ["decrypt"]
-  );
-  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, keyMaterial, data);
-  return new TextDecoder().decode(decrypted);
-}
+export default function PainelEventoPage() {
+  const params = useParams();
+  const router = useRouter();
+  const eventoId = params.id as string;
 
-interface ModalJuradoProps {
-  termo: Terminologia;
-  eventoId: string | null;
-  produtoraId: string;
-  jurado?: Jurado | null;
-  onClose: () => void;
-  onSaved: () => void;
-}
-
-function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }: ModalJuradoProps) {
-  const editando = !!jurado;
-  const modoPoolGlobal = !eventoId;
-
-  const [nome, setNome] = useState(jurado?.nome ?? "");
-  const [email, setEmail] = useState(jurado?.email ?? "");
-  const [telefone, setTelefone] = useState(jurado?.telefone ? mascaraTelefone(jurado.telefone) : "");
-  const [especialidade, setEspecialidade] = useState(jurado?.especialidade ?? "");
-  const [cache, setCache] = useState(jurado?.cache_valor != null ? String(jurado.cache_valor) : "");
-  const [cacheStatus, setCacheStatus] = useState<"pago" | "pendente">(jurado?.cache_status ?? "pendente");
+  const [abaAtiva, setAbaAtiva] = useState("visao-geral");
+  const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [etapa, setEtapa] = useState<"formulario" | "confirmacao">("formulario");
-  const [copiado, setCopiado] = useState(false);
-  const [verificandoEmail, setVerificandoEmail] = useState(false);
-  const [usuarioExistente, setUsuarioExistente] = useState<UsuarioExistente | null>(null);
-  const emailCheckRef = useRef(0);
+  const [evento, setEvento] = useState<Evento | null>(null);
+  const [form, setForm] = useState<Partial<Evento>>({});
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [apresentacoes, setApresentacoes] = useState<Apresentacao[]>([]);
+  const [totalInscritos, setTotalInscritos] = useState(0);
+  const [totalPendentes, setTotalPendentes] = useState(0);
+  const [totalJurados, setTotalJurados] = useState(0);
+  const [pdvConfigurado, setPdvConfigurado] = useState(false);
+  const [criteriosConfigurados, setCriteriosConfigurados] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [perfilSlug, setPerfilSlug] = useState("danca");
+  const [modalCat, setModalCat] = useState(false);
+  const [catEditando, setCatEditando] = useState<Categoria | null>(null);
+  const [formCat, setFormCat] = useState({
+    nome: "",
+    valor_solo: 0,
+    valor_duo: 0,
+    valor_conjunto: 0,
+    genero: "livre",
+    faixa_etaria_min: "",
+    faixa_etaria_max: "",
+    faixa_etaria_label: "",
+    categoria_pai_id: "",
+  });
 
-  const emailNormalizadoAtual = email.trim().toLowerCase();
-  const emailOriginalJurado = jurado?.email?.trim().toLowerCase() ?? "";
-  const emailAlteradoNaEdicao = editando && emailNormalizadoAtual !== emailOriginalJurado;
+  const addToast = useCallback((tipo: Toast["tipo"], mensagem: string) => {
+    const id = ++toastId;
+    setToasts((p) => [...p, { id, tipo, mensagem }]);
+    setTimeout(() => {
+      setToasts((p) => p.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
 
-  const colisaoEmailOutroUsuario = !!usuarioExistente && usuarioExistente.id !== jurado?.id;
-  const colisaoOutroRole = colisaoEmailOutroUsuario && usuarioExistente?.role !== "jurado";
-  const colisaoOutroCadastroJurado = colisaoEmailOutroUsuario && usuarioExistente?.role === "jurado";
-
-  const camposPrivadosBloqueados = colisaoOutroRole || colisaoOutroCadastroJurado;
-  const nomeExibidoContaExistente = usuarioExistente ? mascararNome(usuarioExistente.nome) : "";
+  const removerToast = useCallback((id: number) => {
+    setToasts((p) => p.filter((t) => t.id !== id));
+  }, []);
 
   useEffect(() => {
-    setNome(jurado?.nome ?? "");
-    setEmail(jurado?.email ?? "");
-    setTelefone(jurado?.telefone ? mascaraTelefone(jurado.telefone) : "");
-    setEspecialidade(jurado?.especialidade ?? "");
-    setCache(jurado?.cache_valor != null ? String(jurado.cache_valor) : "");
-    setCacheStatus(jurado?.cache_status ?? "pendente");
-    setErro(null);
-    setEtapa("formulario");
-    setCopiado(false);
-    setUsuarioExistente(null);
-    setVerificandoEmail(false);
-  }, [jurado]);
-
-  useEffect(() => {
-    const emailNormalizado = email.trim().toLowerCase();
-
-    if (!emailNormalizado || !produtoraId) {
-      setUsuarioExistente(null);
-      setVerificandoEmail(false);
-      return;
-    }
-
-    if (editando && jurado?.email?.trim().toLowerCase() === emailNormalizado) {
-      setUsuarioExistente(null);
-      setVerificandoEmail(false);
-      return;
-    }
-
-    const currentRequest = ++emailCheckRef.current;
-    setVerificandoEmail(true);
-
-    const timer = window.setTimeout(async () => {
+    async function carregar() {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("usuarios")
-        .select("id, nome, email, telefone, role, produtora_id")
-        .eq("email", emailNormalizado)
-        .eq("produtora_id", produtoraId)
-        .limit(1)
-        .maybeSingle();
+      setLoading(true);
 
-      if (currentRequest !== emailCheckRef.current) return;
+      const [{ data: ev }, { data: cats }, { data: apres }] = await Promise.all([
+        supabase.from("eventos").select("*").eq("id", eventoId).single(),
+        supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome"),
+        supabase
+          .from("apresentacoes")
+          .select("id, nome, tipo, ordem_apresentacao, status_pagamento")
+          .eq("evento_id", eventoId)
+          .order("ordem_apresentacao", { ascending: true, nullsFirst: false }),
+      ]);
 
-      const existente = (data as UsuarioExistente | null) ?? null;
-      setUsuarioExistente(existente);
-      setVerificandoEmail(false);
-    }, 400);
-
-    return () => window.clearTimeout(timer);
-  }, [email, editando, jurado?.email, produtoraId]);
-
-  async function salvar() {
-    const supabase = createClient();
-    setErro(null);
-
-    if (!nome.trim()) {
-      setErro("Nome é obrigatório.");
-      return;
-    }
-
-    if (!email.trim()) {
-      setErro("E-mail é obrigatório para enviar o convite.");
-      return;
-    }
-
-    if (camposPrivadosBloqueados) {
-      if (colisaoOutroRole) {
-        setErro("Este e-mail já pertence a outra conta com perfil diferente. Para proteger os dados, use outro e-mail.");
-      } else {
-        setErro("Já existe um jurado com este e-mail no pool global desta produtora. Use o cadastro existente.");
+      if (!ev) {
+        router.push("/eventos");
+        return;
       }
-      return;
+
+      setEvento(ev);
+      setForm(ev);
+
+      if (ev.produtora_id) {
+        const { data: config } = await supabase
+          .from("tenant_config")
+          .select("perfis_festival:perfil_id ( slug )")
+          .eq("produtora_id", ev.produtora_id)
+          .maybeSingle();
+
+        const slugConfig = (config as { perfis_festival?: { slug?: string } | null } | null)?.perfis_festival?.slug;
+        if (slugConfig) {
+          setPerfilSlug(slugConfig);
+        }
+      }
+
+      const todasCats = (cats ?? []) as Categoria[];
+      const pais = todasCats
+        .filter((c) => !c.categoria_pai_id)
+        .map((pai) => ({
+          ...pai,
+          subcategorias: todasCats.filter((c) => c.categoria_pai_id === pai.id),
+        }));
+
+      setCategorias(pais);
+      setApresentacoes((apres ?? []) as Apresentacao[]);
+
+      const total = (apres ?? []).length;
+      const pendentes = (apres ?? []).filter((a) => a.status_pagamento === "Pendente").length;
+      setTotalInscritos(total);
+      setTotalPendentes(pendentes);
+
+      try {
+        const { count } = await supabase
+          .from("evento_jurados")
+          .select("id", { count: "exact", head: true })
+          .eq("evento_id", eventoId);
+
+        setTotalJurados(count ?? 0);
+      } catch {
+        setTotalJurados(0);
+      }
+
+      try {
+        const { count } = await supabase
+          .from("criterios_avaliacao")
+          .select("id", { count: "exact", head: true })
+          .eq("evento_id", eventoId);
+
+        setCriteriosConfigurados((count ?? 0) > 0);
+      } catch {
+        setCriteriosConfigurados(false);
+      }
+
+      try {
+        const [{ count: pdvCount }, { count: produtosCount }] = await Promise.all([
+          supabase
+            .from("pdv_config")
+            .select("id", { count: "exact", head: true })
+            .eq("evento_id", eventoId),
+          supabase
+            .from("evento_produtos")
+            .select("id", { count: "exact", head: true })
+            .eq("evento_id", eventoId),
+        ]);
+
+        setPdvConfigurado((pdvCount ?? 0) > 0 && (produtosCount ?? 0) > 0);
+      } catch {
+        setPdvConfigurado(false);
+      }
+
+      setLoading(false);
     }
 
+    carregar();
+  }, [eventoId, router]);
+
+  async function salvarEvento() {
+    const supabase = createClient();
     setSalvando(true);
 
-    if (editando && jurado) {
-      if (modoPoolGlobal) {
-        if (!produtoraId) {
-          setErro("Não foi possível identificar a produtora responsável por este cadastro.");
-          setSalvando(false);
-          return;
-        }
+    const { error } = await supabase
+      .from("eventos")
+      .update({
+        nome: form.nome,
+        local: form.local,
+        data_inicio: form.data_inicio,
+        data_fim: form.data_fim,
+        status: form.status,
+        descricao: form.descricao,
+      })
+      .eq("id", eventoId);
 
-        const payloadAtualizacao: { nome: string; email: string; telefone: string | null } = {
-          nome: nome.trim(),
-          email: email.trim().toLowerCase(),
-          telefone: telefone.replace(/\D/g, "") || null,
-        };
-
-        const { error } = await supabase
-          .from("usuarios")
-          .update(payloadAtualizacao)
-          .eq("id", jurado.id)
-          .eq("produtora_id", produtoraId)
-          .eq("role", "jurado");
-
-        if (error) {
-          setErro("Erro ao atualizar o cadastro global do jurado.");
-          setSalvando(false);
-          return;
-        }
-
-        setSalvando(false);
-        onSaved();
-        onClose();
-        return;
-      }
-
-      const dadosEvento: {
-        especialidade: string | null;
-        cache_valor: number;
-        cache_status: "pago" | "pendente";
-      } = {
-        especialidade: especialidade.trim() || null,
-        cache_valor: cache ? parseFloat(cache) : 0,
-        cache_status: cacheStatus,
-      };
-
-      if (emailAlteradoNaEdicao) {
-        const payloadAtualizacaoUsuario: { nome: string; email: string; telefone: string | null } = {
-          nome: nome.trim(),
-          email: email.trim().toLowerCase(),
-          telefone: telefone.replace(/\D/g, "") || null,
-        };
-
-        const { error: usuarioError } = await supabase
-          .from("usuarios")
-          .update(payloadAtualizacaoUsuario)
-          .eq("id", jurado.id)
-          .eq("produtora_id", produtoraId)
-          .eq("role", "jurado");
-
-        if (usuarioError) {
-          setErro("Erro ao atualizar os dados privados do jurado.");
-          setSalvando(false);
-          return;
-        }
-      }
-
-      const { error } = await supabase
-        .from("evento_jurados")
-        .update(dadosEvento)
-        .eq("id", jurado.vinculo_id);
-
-      if (error) {
-        setErro("Erro ao salvar os dados do jurado neste evento.");
-        setSalvando(false);
-        return;
-      }
-
-      setSalvando(false);
-      onSaved();
-      onClose();
-      return;
-    }
-
-    let juradoId = colisaoOutroCadastroJurado ? usuarioExistente?.id ?? null : null;
-
-    if (!juradoId) {
-      const res = await fetch("/api/convite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          nome: nome.trim(),
-          telefone: telefone.replace(/\D/g, "") || null,
-          role: "jurado",
-          produtora_id: produtoraId,
-        }),
-      });
-
-      const json = await res.json();
-
-      if (!res.ok) {
-        setErro(json.error || "Erro ao enviar convite.");
-        setSalvando(false);
-        return;
-      }
-
-      const { data: usuarioCriado, error: usuarioError } = await supabase
-        .from("usuarios")
-        .select("id")
-        .eq("email", email.trim().toLowerCase())
-        .eq("produtora_id", produtoraId)
-        .single();
-
-      if (usuarioError || !usuarioCriado) {
-        setErro("Usuário convidado, mas não foi possível localizar o cadastro criado.");
-        setSalvando(false);
-        return;
-      }
-
-      juradoId = usuarioCriado.id;
-    }
-
-    if (!juradoId) {
-      setErro("Não foi possível identificar o jurado para concluir o cadastro.");
-      setSalvando(false);
-      return;
-    }
-
-    if (modoPoolGlobal) {
-      setSalvando(false);
-      setEtapa("confirmacao");
-      onSaved();
-      return;
-    }
-
-    const { data: vinculoExistente } = await supabase
-      .from("evento_jurados")
-      .select("id")
-      .eq("evento_id", eventoId)
-      .eq("jurado_id", juradoId)
-      .maybeSingle();
-
-    if (vinculoExistente) {
-      setErro("Este jurado já está escalado neste evento.");
-      setSalvando(false);
-      return;
-    }
-
-    const { error: vinculoError } = await supabase.from("evento_jurados").insert({
-      evento_id: eventoId,
-      jurado_id: juradoId,
-      cache_valor: cache ? parseFloat(cache) : 0,
-      cache_status: cacheStatus,
-      especialidade: especialidade.trim() || null,
-    });
-
-    if (vinculoError) {
-      setErro("Erro ao criar o vínculo do jurado com este evento.");
-      setSalvando(false);
-      return;
+    if (!error) {
+      setEvento({ ...evento!, ...(form as Evento) });
+      addToast("sucesso", "Evento salvo com sucesso!");
+    } else {
+      addToast("erro", "Erro ao salvar. Tente novamente.");
     }
 
     setSalvando(false);
-    setEtapa("confirmacao");
-    onSaved();
   }
 
-  function copiarLink() {
-    navigator.clipboard.writeText(`${window.location.origin}/jurado`);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 2000);
+  async function recarregarCategorias() {
+    const supabase = createClient();
+    const { data } = await supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome");
+
+    const todasCats = (data ?? []) as Categoria[];
+    const pais = todasCats
+      .filter((c) => !c.categoria_pai_id)
+      .map((pai) => ({
+        ...pai,
+        subcategorias: todasCats.filter((c) => c.categoria_pai_id === pai.id),
+      }));
+
+    setCategorias(pais);
   }
 
-  function abrirWhatsApp() {
-    const link = `${window.location.origin}/jurado`;
-    const msg = encodeURIComponent(
-      `Olá, ${nome.trim()}! Você foi convidado para ser jurado em ${termo.organizacao}.\n\nAcesse o link para criar sua senha:\n\n${link}`
-    );
-    window.open(`https://wa.me/?text=${msg}`, "_blank");
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={onClose}>
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
-          <div>
-            <h2 className="text-base font-semibold text-white">
-              {etapa === "formulario" ? (editando ? "Editar Jurado" : "Adicionar Jurado") : modoPoolGlobal ? "Jurado cadastrado no pool" : "Jurado escalado"}
-            </h2>
-            {etapa === "formulario" && (
-              <p className="text-xs text-gray-500 mt-0.5">
-                {editando
-                  ? modoPoolGlobal
-                    ? "Atualize os dados globais do jurado no pool da produtora."
-                    : "Atualize os dados de atuação do jurado neste evento."
-                  : modoPoolGlobal
-                    ? "Um convite por e-mail será enviado automaticamente e o jurado será cadastrado no pool global da produtora."
-                    : "Um convite por e-mail será enviado automaticamente e o vínculo será criado neste evento."}
-              </p>
-            )}
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
-            <X size={18} />
-          </button>
-        </div>
-
-        {etapa === "formulario" && (
-          <>
-            <div className="p-6 space-y-4">
-              <Dica>
-                {editando
-                  ? modoPoolGlobal
-                    ? "Neste modo você pode editar diretamente os dados globais do jurado. Os campos privados só serão bloqueados se o e-mail informado colidir com outro cadastro protegido."
-                    : `Revise os dados deste jurado e ajuste especialidade e cachê conforme necessário para o evento.`
-                  : modoPoolGlobal
-                    ? "Preencha os dados do jurado. Ele receberá um e-mail com o link para criar a senha e entrar no portal do jurado. Nenhum vínculo com evento será criado agora."
-                    : `Preencha os dados do jurado. Ele receberá um e-mail com o link para criar a senha e acessar o painel de avaliação das ${termo.apresentacao.toLowerCase()}s.`}
-              </Dica>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Nome completo *</label>
-                <input
-                  type="text"
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  placeholder="Nome do jurado"
-                  disabled={camposPrivadosBloqueados}
-                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">E-mail *</label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="email@exemplo.com"
-                    disabled={camposPrivadosBloqueados}
-                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 pr-10 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
-                  {verificandoEmail && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-500" />}
-                  {!verificandoEmail && usuarioExistente && (
-                    <ShieldCheck size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-axon-gold" />
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Telefone / WhatsApp</label>
-                <input
-                  type="tel"
-                  value={telefone}
-                  onChange={(e) => setTelefone(mascaraTelefone(e.target.value))}
-                  placeholder="(21) 99999-9999"
-                  disabled={camposPrivadosBloqueados}
-                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </div>
-
-              {usuarioExistente && usuarioExistente.id !== jurado?.id && (
-                <div className="flex items-start gap-3 p-4 bg-axon-gold/10 border border-axon-gold/20 rounded-lg">
-                  <Mail size={16} className="text-axon-gold shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm text-white font-medium">
-                      {colisaoOutroRole ? "Conta protegida encontrada" : "Cadastro existente encontrado"}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {colisaoOutroRole
-                        ? "Este e-mail já está associado a uma conta com papel diferente dentro da mesma produtora. Para proteger dados privados, esse formulário não pode sobrescrever esse cadastro."
-                        : modoPoolGlobal
-                          ? "Já existe um jurado com este e-mail no pool global da produtora. Os dados privados desse cadastro não podem ser sobrescritos por este formulário."
-                          : "Já existe um jurado com este e-mail na mesma produtora. Você pode continuar usando o cadastro existente para vinculá-lo ao evento."}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Cadastro identificado: <span className="text-gray-300">{nomeExibidoContaExistente}</span>
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Especialidade</label>
-                <input
-                  type="text"
-                  value={especialidade}
-                  onChange={(e) => setEspecialidade(e.target.value)}
-                  placeholder={`Ex: avaliação de ${termo.apresentacao.toLowerCase()}s infantis, dança, técnica`}
-                  className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
-                />
-              </div>
-
-              {!modoPoolGlobal && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">Cachê (R$)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={cache}
-                        onChange={(e) => setCache(e.target.value)}
-                        placeholder="0,00"
-                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">Status do cachê</label>
-                      <select
-                        value={cacheStatus}
-                        onChange={(e) => setCacheStatus(e.target.value as "pago" | "pendente")}
-                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold transition-colors"
-                      >
-                        <option value="pendente">Pendente</option>
-                        <option value="pago">Pago</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-gray-600 -mt-1">
-                    Valor a ser pago ao jurado pelo evento. Pode ser 0 se for voluntário.
-                  </p>
-                </>
-              )}
-
-              {modoPoolGlobal && (
-                <p className="text-xs text-gray-600 -mt-1">
-                  No modo Pool Global, o cadastro cria ou atualiza o jurado na produtora e não gera vínculo com evento.
-                </p>
-              )}
-
-              {erro && (
-                <p className="flex items-start gap-2 text-xs text-red-400">
-                  <AlertCircle size={14} className="shrink-0 mt-0.5" /> {erro}
-                </p>
-              )}
-            </div>
-
-            <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
-              <button
-                onClick={onClose}
-                className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-gray-500 transition-all duration-200"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={salvar}
-                disabled={salvando || verificandoEmail}
-                className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                {salvando && <Loader2 size={14} className="animate-spin" />}
-                {editando ? "Salvar alterações" : modoPoolGlobal ? "Cadastrar no Pool" : "Cadastrar e vincular"}
-              </button>
-            </div>
-          </>
-        )}
-
-        {etapa === "confirmacao" && (
-          <>
-            <div className="p-6 space-y-5">
-              <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-white">
-                    {modoPoolGlobal ? `${nome} cadastrado no pool!` : `${nome} escalado!`}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Convite enviado para <span className="text-white">{email}</span>
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <button
-                  onClick={copiarLink}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200"
-                >
-                  {copiado ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
-                  {copiado ? "Link copiado!" : "Copiar link do portal do jurado"}
-                </button>
-                <button
-                  onClick={abrirWhatsApp}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200"
-                >
-                  <MessageCircle size={15} />
-                  Enviar pelo WhatsApp
-                </button>
-              </div>
-            </div>
-            <div className="px-6 py-4 border-t border-axon-border">
-              <button
-                onClick={onClose}
-                className="w-full px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 transition-all duration-200"
-              >
-                Concluir
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-interface ScannerQRProps {
-  eventoId: string;
-  jurados: Jurado[];
-  onImportado: (count: number) => void;
-  onClose: () => void;
-}
-
-function ScannerQR({ eventoId, jurados, onImportado, onClose }: ScannerQRProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number>(0);
-  const [status, setStatus] = useState<"aguardando" | "processando" | "sucesso" | "erro">("aguardando");
-  const [msg, setMsg] = useState("");
-
-  useEffect(() => {
-    async function iniciar() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          tick();
-        }
-      } catch {
-        setStatus("erro");
-        setMsg("Permissão de câmera negada.");
-      }
-    }
-
-    iniciar();
-
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
-
-  function tick() {
-    rafRef.current = requestAnimationFrame(async () => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-
-      if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
-        tick();
-        return;
-      }
-
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
-
-      if (!ctx) {
-        tick();
-        return;
-      }
-
-      ctx.drawImage(video, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height);
-
-      if (code) {
-        cancelAnimationFrame(rafRef.current);
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        await processarQR(code.data);
-      } else {
-        tick();
-      }
+  function abrirModalNova() {
+    setCatEditando(null);
+    setFormCat({
+      nome: "",
+      valor_solo: 0,
+      valor_duo: 0,
+      valor_conjunto: 0,
+      genero: "livre",
+      faixa_etaria_min: "",
+      faixa_etaria_max: "",
+      faixa_etaria_label: "",
+      categoria_pai_id: "",
     });
+    setModalCat(true);
   }
 
-  async function processarQR(raw: string) {
+  function abrirModalEditar(cat: Categoria) {
+    setCatEditando(cat);
+    setFormCat({
+      nome: cat.nome,
+      valor_solo: cat.valor_solo,
+      valor_duo: cat.valor_duo,
+      valor_conjunto: cat.valor_conjunto,
+      genero: cat.genero,
+      faixa_etaria_min: cat.faixa_etaria_min?.toString() ?? "",
+      faixa_etaria_max: cat.faixa_etaria_max?.toString() ?? "",
+      faixa_etaria_label: cat.faixa_etaria_label ?? "",
+      categoria_pai_id: cat.categoria_pai_id ?? "",
+    });
+    setModalCat(true);
+  }
+
+  async function salvarCategoria() {
     const supabase = createClient();
-    setStatus("processando");
 
-    try {
-      let payload: {
-        evento_id: string;
-        jurado_id: string;
-        notas: { apresentacao_id: string; criterio_id: string; nota: number }[];
-        ts: number;
-      } | null = null;
+    if (!formCat.nome.trim()) return;
 
-      for (const j of jurados) {
-        const chave = `${eventoId}-${j.id}`.replace(/-/g, "").slice(0, 32);
-        try {
-          const texto = await descriptografarPayload(raw, chave);
-          payload = JSON.parse(texto);
-          break;
-        } catch {}
+    const payload = {
+      nome: formCat.nome,
+      valor_solo: Number(formCat.valor_solo),
+      valor_duo: Number(formCat.valor_duo),
+      valor_conjunto: Number(formCat.valor_conjunto),
+      genero: formCat.genero,
+      faixa_etaria_min: formCat.faixa_etaria_min ? Number(formCat.faixa_etaria_min) : null,
+      faixa_etaria_max: formCat.faixa_etaria_max ? Number(formCat.faixa_etaria_max) : null,
+      faixa_etaria_label: formCat.faixa_etaria_label || null,
+      categoria_pai_id: formCat.categoria_pai_id || null,
+      evento_id: eventoId,
+    };
+
+    if (catEditando) {
+      const { error } = await supabase.from("categorias").update(payload).eq("id", catEditando.id);
+
+      if (!error) {
+        addToast("sucesso", `"${formCat.nome}" atualizada!`);
+        recarregarCategorias();
+      } else {
+        addToast("erro", "Erro ao atualizar categoria.");
       }
-
-      if (!payload) throw new Error("QR inválido ou jurado não cadastrado.");
-      if (payload.evento_id !== eventoId) throw new Error("Este QR pertence a outro evento.");
-
-      let importados = 0;
-
-      for (const n of payload.notas) {
-        const { error } = await supabase.from("avaliacoes").upsert(
-          {
-            evento_id: eventoId,
-            apresentacao_id: n.apresentacao_id,
-            jurado_id: payload.jurado_id,
-            criterio_id: n.criterio_id,
-            nota: n.nota,
-            sincronizado: true,
-          },
-          { onConflict: "evento_id,apresentacao_id,jurado_id,criterio_id" }
-        );
-
-        if (!error) importados++;
-      }
-
-      setStatus("sucesso");
-      setMsg(`${importados} nota${importados !== 1 ? "s" : ""} importada${importados !== 1 ? "s" : ""} com sucesso.`);
-      onImportado(importados);
-    } catch (e: unknown) {
-      setStatus("erro");
-      setMsg(e instanceof Error ? e.message : "Erro desconhecido.");
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4" onClick={onClose}>
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
-          <h2 className="text-base font-semibold text-white">Sincronizar via QR Code</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
-            <X size={18} />
-          </button>
-        </div>
-        <div className="p-6 flex flex-col items-center gap-5">
-          {(status === "aguardando" || status === "processando") && (
-            <>
-              <div className="relative w-full aspect-square bg-black rounded-xl overflow-hidden">
-                <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" muted playsInline />
-                <canvas ref={canvasRef} className="hidden" />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-48 h-48 border-2 border-axon-gold/60 rounded-xl" />
-                </div>
-              </div>
-              {status === "processando" && (
-                <p className="flex items-center gap-2 text-sm text-axon-gold">
-                  <Loader2 size={16} className="animate-spin" />
-                  Processando...
-                </p>
-              )}
-              {status === "aguardando" && <p className="text-xs text-gray-500 text-center">Aponte a câmera para o QR Code do tablet do jurado.</p>}
-            </>
-          )}
-
-          {status === "sucesso" && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <CheckCircle2 size={40} className="text-emerald-400" />
-              <p className="text-sm text-white text-center">{msg}</p>
-            </div>
-          )}
-
-          {status === "erro" && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <AlertCircle size={40} className="text-red-400" />
-              <p className="text-sm text-red-400 text-center">{msg}</p>
-            </div>
-          )}
-
-          <button
-            onClick={onClose}
-            className="w-full px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white transition-all duration-200"
-          >
-            {status === "sucesso" || status === "erro" ? "Fechar" : "Cancelar"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface ConfirmarExclusaoJuradoProps {
-  termo: Terminologia;
-  jurado: Jurado;
-  modoPoolGlobal: boolean;
-  onClose: () => void;
-  onConfirmar: () => Promise<void>;
-}
-
-function ConfirmarExclusaoJurado({
-  termo,
-  jurado,
-  modoPoolGlobal,
-  onClose,
-  onConfirmar,
-}: ConfirmarExclusaoJuradoProps) {
-  const [excluindo, setExcluindo] = useState(false);
-
-  async function handleConfirmar() {
-    setExcluindo(true);
-    await onConfirmar();
-    setExcluindo(false);
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4" onClick={onClose}>
-      <div className="bg-axon-panel border border-red-500/20 rounded-xl w-full max-w-md shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
-          <h2 className="text-base font-semibold text-white">{modoPoolGlobal ? "Excluir jurado" : "Desvincular jurado"}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
-            <X size={18} />
-          </button>
-        </div>
-        <div className="p-6 space-y-4">
-          <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-            <Trash2 size={16} className="text-red-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm text-white font-medium">
-                {modoPoolGlobal ? `Excluir ${jurado.nome} do pool global` : `Remover ${jurado.nome} desta escala`}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                {modoPoolGlobal
-                  ? "Esta ação remove fisicamente o jurado do cadastro global da produtora."
-                  : "Esta ação desvincula o jurado apenas do evento atual. O cadastro global permanecerá disponível no pool da produtora."}
-              </p>
-            </div>
-          </div>
-          <p className="text-xs text-gray-500">
-            {modoPoolGlobal
-              ? "Use esta ação apenas quando o cadastro realmente não precisar mais existir no pool global."
-              : `As avaliações vinculadas a este jurado podem impactar a apuração das ${termo.apresentacao.toLowerCase()}s.`}
-          </p>
-        </div>
-        <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
-          <button
-            onClick={onClose}
-            disabled={excluindo}
-            className="flex-1 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-gray-500 transition-all duration-200 disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleConfirmar}
-            disabled={excluindo}
-            className="flex-1 px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-bold hover:bg-red-400 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2"
-          >
-            {excluindo && <Loader2 size={14} className="animate-spin" />}
-            Excluir
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function JuradosPageInner() {
-  const searchParams = useSearchParams();
-  const eventoId = searchParams.get("eventoId");
-  const modoPoolGlobal = !eventoId;
-
-  const [termo, setTermo] = useState<Terminologia>({
-    grupo: "Grupo",
-    participante: "Participante",
-    apresentacao: "Apresentação",
-    organizacao: "Organização",
-  });
-  const [eventoAtivo, setEventoAtivo] = useState<EventoAtivo | null>(null);
-  const [produtoraId, setProdutoraId] = useState("");
-  const [jurados, setJurados] = useState<Jurado[]>([]);
-  const [apresentacoes, setApresentacoes] = useState<Apresentacao[]>([]);
-  const [organizacoes, setOrganizacoes] = useState<Organizacao[]>([]);
-  const [criterios, setCriterios] = useState<Criterio[]>([]);
-  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
-  const [observacoes, setObservacoes] = useState<Record<string, string>>({});
-  const [carregando, setCarregando] = useState(true);
-  const [importandoPool, setImportandoPool] = useState(false);
-  const [modalJuradoAberta, setModalJuradoAberta] = useState(false);
-  const [juradoEmEdicao, setJuradoEmEdicao] = useState<Jurado | null>(null);
-  const [juradoExclusao, setJuradoExclusao] = useState<Jurado | null>(null);
-  const [modalScanner, setModalScanner] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<AbaJurados>("jurados");
-  const [apresExpandida, setApresExpandida] = useState<string | null>(null);
-  const [salvandoObs, setSalvandoObs] = useState<string | null>(null);
-
-  const carregar = useCallback(async () => {
-    const supabase = createClient();
-    setCarregando(true);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    let produtoraIdAtual = "";
-    if (user) {
-      const { data: usuarioAuth } = await supabase
-        .from("usuarios")
-        .select("produtora_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      produtoraIdAtual = (usuarioAuth as { produtora_id?: string | null } | null)?.produtora_id ?? "";
-      setProdutoraId(produtoraIdAtual);
-    }
-
-    const { data: config } = await supabase
-      .from("tenant_config")
-      .select("termo_grupo, termo_participante, termo_apresentacao, nome_organizacao")
-      .maybeSingle();
-
-    if (config) {
-      setTermo({
-        grupo: (config as Record<string, string>).termo_grupo ?? "Grupo",
-        participante: (config as Record<string, string>).termo_participante ?? "Participante",
-        apresentacao: (config as Record<string, string>).termo_apresentacao ?? "Apresentação",
-        organizacao: (config as Record<string, string>).nome_organizacao ?? "Organização",
-      });
-    }
-
-    let evento: EventoAtivo | null = null;
-    if (eventoId) {
-      const { data: eventoUrl } = await supabase.from("eventos").select("id, nome").eq("id", eventoId).maybeSingle();
-      evento = (eventoUrl as EventoAtivo | null) ?? null;
-    }
-
-    setEventoAtivo(evento ?? null);
-
-    if (modoPoolGlobal && produtoraIdAtual) {
-      const { data: usuariosData } = await supabase
-        .from("usuarios")
-        .select("id, nome, email, telefone")
-        .eq("role", "jurado")
-        .eq("produtora_id", produtoraIdAtual)
-        .order("nome");
-
-      setJurados(
-        (((usuariosData as UsuarioExistente[] | null) ?? []).map((u) => ({
-          id: u.id,
-          vinculo_id: null,
-          nome: u.nome,
-          email: u.email,
-          telefone: u.telefone ?? null,
-          especialidade: null,
-          cache_valor: 0,
-          cache_status: "pendente",
-        })) as Jurado[])
-      );
-
-      setApresentacoes([]);
-      setCriterios([]);
-      setAvaliacoes([]);
-      setOrganizacoes([]);
-      setObservacoes({});
-      setAbaAtiva("jurados");
-      setCarregando(false);
-      return;
-    }
-
-    if (evento && produtoraIdAtual) {
-      const { data: vinculosData } = await supabase
-        .from("evento_jurados")
-        .select("id, evento_id, jurado_id, cache_valor, cache_status, especialidade")
-        .eq("evento_id", evento.id);
-
-      const vinculos = (vinculosData as EventoJuradoRow[] | null) ?? [];
-      const juradoIds = vinculos.map((v) => v.jurado_id);
-
-      let usuariosMap = new Map<string, UsuarioExistente>();
-      if (juradoIds.length > 0) {
-        const { data: usuariosData } = await supabase
-          .from("usuarios")
-          .select("id, nome, email, telefone")
-          .eq("role", "jurado")
-          .eq("produtora_id", produtoraIdAtual)
-          .in("id", juradoIds)
-          .order("nome");
-
-        usuariosMap = new Map(((usuariosData as UsuarioExistente[] | null) ?? []).map((u) => [u.id, u]));
-      }
-
-      setJurados(
-        vinculos
-          .map((v) => {
-            const usuarioVinculado = usuariosMap.get(v.jurado_id);
-            if (!usuarioVinculado) return null;
-            return {
-              id: usuarioVinculado.id,
-              vinculo_id: v.id,
-              nome: usuarioVinculado.nome,
-              email: usuarioVinculado.email,
-              telefone: usuarioVinculado.telefone ?? null,
-              especialidade: v.especialidade ?? null,
-              cache_valor: v.cache_valor ?? 0,
-              cache_status: v.cache_status === "pago" ? "pago" : "pendente",
-            } satisfies Jurado;
-          })
-          .filter(Boolean) as Jurado[]
-      );
     } else {
-      setJurados([]);
+      const { error } = await supabase.from("categorias").insert(payload);
+
+      if (!error) {
+        addToast("sucesso", `"${formCat.nome}" criada!`);
+        recarregarCategorias();
+      } else {
+        addToast("erro", "Erro ao criar categoria.");
+      }
     }
 
-    if (evento) {
-      const [{ data: apres }, { data: crits }, { data: avals }, { data: orgs }] = await Promise.all([
-        supabase.from("apresentacoes").select("id, nome, grupo_id, observacoes").eq("evento_id", evento.id).order("ordem_apresentacao"),
-        supabase.from("criterios_avaliacao").select("id, nome, nota_min, nota_max").eq("evento_id", evento.id).order("ordem"),
-        supabase.from("avaliacoes").select("apresentacao_id, jurado_id, criterio_id, nota").eq("evento_id", evento.id),
-        supabase.from("organizacoes").select("id, nome"),
-      ]);
+    setModalCat(false);
+  }
 
-      setApresentacoes((apres as Apresentacao[]) ?? []);
-      setCriterios((crits as Criterio[]) ?? []);
-      setAvaliacoes((avals as Avaliacao[]) ?? []);
-      setOrganizacoes((orgs as Organizacao[]) ?? []);
-
-      const obsInit: Record<string, string> = {};
-      ((apres as Apresentacao[]) ?? []).forEach((a) => {
-        obsInit[a.id] = a.observacoes ?? "";
-      });
-      setObservacoes(obsInit);
-    } else {
-      setApresentacoes([]);
-      setCriterios([]);
-      setAvaliacoes([]);
-      setOrganizacoes([]);
-      setObservacoes({});
-    }
-
-    setCarregando(false);
-  }, [eventoId, modoPoolGlobal]);
-
-  useEffect(() => {
-    carregar();
-  }, [carregar]);
-
-  useEffect(() => {
-    if (modoPoolGlobal) {
-      setAbaAtiva("jurados");
-    }
-  }, [modoPoolGlobal]);
-
-  async function importarDoPoolGlobal() {
-    if (!eventoAtivo?.id || !produtoraId) return;
+  async function excluirCategoria(id: string, nome: string) {
     const supabase = createClient();
-    setImportandoPool(true);
+    const { error } = await supabase.from("categorias").delete().eq("id", id);
 
-    const [{ data: poolGlobal }, { data: vinculosExistentes }] = await Promise.all([
-      supabase
-        .from("usuarios")
-        .select("id")
-        .eq("role", "jurado")
-        .eq("produtora_id", produtoraId),
-      supabase.from("evento_jurados").select("jurado_id").eq("evento_id", eventoAtivo.id),
-    ]);
-
-    const vinculadosIds = new Set(((vinculosExistentes as { jurado_id: string }[] | null) ?? []).map((v) => v.jurado_id));
-    const faltantes = ((poolGlobal as { id: string }[] | null) ?? []).filter((u) => !vinculadosIds.has(u.id));
-
-    if (faltantes.length === 0) {
-      setImportandoPool(false);
-      await carregar();
-      return;
+    if (!error) {
+      addToast("sucesso", `"${nome}" removida.`);
+      recarregarCategorias();
+    } else {
+      addToast("erro", "Erro ao remover categoria.");
     }
+  }
 
-    await supabase.from("evento_jurados").insert(
-      faltantes.map((u) => ({
-        evento_id: eventoAtivo.id,
-        jurado_id: u.id,
-        cache_valor: 0,
-        cache_status: "pendente",
-        especialidade: null,
-      }))
+  async function onDragEnd(result: DropResult) {
+    const supabase = createClient();
+
+    if (!result.destination) return;
+
+    const items = Array.from(apresentacoes);
+    const [moved] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, moved);
+
+    const reordenadas = items.map((c, i) => ({ ...c, ordem_apresentacao: i + 1 }));
+    setApresentacoes(reordenadas);
+
+    await Promise.all(
+      reordenadas.map((c) =>
+        supabase.from("apresentacoes").update({ ordem_apresentacao: c.ordem_apresentacao }).eq("id", c.id)
+      )
     );
 
-    setImportandoPool(false);
-    await carregar();
+    addToast("sucesso", "Ordem salva!");
   }
 
-  async function salvarObservacao(apresId: string) {
-    const supabase = createClient();
-    setSalvandoObs(apresId);
-    await supabase.from("apresentacoes").update({ observacoes: observacoes[apresId] }).eq("id", apresId);
-    setSalvandoObs(null);
-  }
-
-  async function alterarCacheStatus(vinculoId: string | null, status: "pago" | "pendente") {
-    if (!vinculoId) return;
-    const supabase = createClient();
-    await supabase.from("evento_jurados").update({ cache_status: status }).eq("id", vinculoId);
-    setJurados((prev) => prev.map((j) => (j.vinculo_id === vinculoId ? { ...j, cache_status: status } : j)));
-  }
-
-  async function excluirJurado(jurado: Jurado | null) {
-    if (!jurado) return;
-
-    const supabase = createClient();
-
-    if (modoPoolGlobal) {
-      if (!produtoraId) return;
-
-      await supabase
-        .from("usuarios")
-        .delete()
-        .eq("id", jurado.id)
-        .eq("produtora_id", produtoraId)
-        .eq("role", "jurado");
-    } else {
-      if (!jurado.vinculo_id) return;
-
-      await supabase
-        .from("evento_jurados")
-        .delete()
-        .eq("id", jurado.vinculo_id);
-    }
-
-    setJuradoExclusao(null);
-    await carregar();
-  }
-
-  const totalCache = jurados.reduce((a, j) => a + (j.cache_valor ?? 0), 0);
-  const totalPago = jurados.filter((j) => j.cache_status === "pago").reduce((a, j) => a + (j.cache_valor ?? 0), 0);
-
-  function mediaApres(apresId: string): string {
-    const notas = avaliacoes.filter((a) => a.apresentacao_id === apresId);
-    if (!notas.length) return "—";
-    return (notas.reduce((s, a) => s + a.nota, 0) / notas.length).toFixed(2);
-  }
-
-  function notaJuradoCriterio(apresId: string, juradoId: string, criterioId: string): string {
-    const av = avaliacoes.find(
-      (a) => a.apresentacao_id === apresId && a.jurado_id === juradoId && a.criterio_id === criterioId
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 size={32} className="animate-spin text-axon-gold" />
+      </div>
     );
-    return av ? String(av.nota) : "—";
   }
 
-  const tabsDisponiveis: { id: AbaJurados; label: string }[] = modoPoolGlobal
-    ? [{ id: "jurados", label: "Jurados" }]
-    : [
-        { id: "jurados", label: "Jurados" },
-        { id: "notas", label: "Apuração de Notas" },
-        { id: "observacoes", label: "Observações" },
-      ];
+  if (!evento) return null;
+
+  const categoriasRaiz = categorias.filter((c) => !c.categoria_pai_id);
+  const presetAtual = PRESETS[perfilSlug] || PRESETS.multidisciplinar;
 
   return (
     <>
-      {modalJuradoAberta && (
-        <ModalJurado
-          termo={termo}
-          eventoId={eventoId}
-          produtoraId={produtoraId}
-          jurado={juradoEmEdicao}
-          onClose={() => {
-            setModalJuradoAberta(false);
-            setJuradoEmEdicao(null);
-          }}
-          onSaved={carregar}
-        />
-      )}
+      <ToastContainer toasts={toasts} remover={removerToast} />
 
-      {modalScanner && eventoAtivo && !modoPoolGlobal && (
-        <ScannerQR eventoId={eventoAtivo.id} jurados={jurados} onImportado={() => carregar()} onClose={() => setModalScanner(false)} />
-      )}
+      <div className="max-w-6xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/eventos"
+            className="w-10 h-10 bg-axon-panel border border-axon-border rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:border-axon-gold hover:bg-axon-gold/10 transition-all duration-200"
+          >
+            <ChevronLeft size={20} />
+          </Link>
 
-      {juradoExclusao && (
-        <ConfirmarExclusaoJurado
-          termo={termo}
-          jurado={juradoExclusao}
-          modoPoolGlobal={modoPoolGlobal}
-          onClose={() => setJuradoExclusao(null)}
-          onConfirmar={() => excluirJurado(juradoExclusao)}
-        />
-      )}
-
-      <div className="max-w-5xl mx-auto space-y-6 p-6">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-semibold text-white">{modoPoolGlobal ? "Pool Global de Jurados" : "Jurados & Apuração"}</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {modoPoolGlobal
-                ? "Gerencie o cadastro global de jurados da produtora. Os vínculos com eventos são feitos depois, sob demanda."
-                : `Gerencie jurados, visualize notas e registre observações por ${termo.apresentacao.toLowerCase()}.`}
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-white">{evento.nome}</h1>
+              <span
+                className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_CORES[evento.status] ?? "text-gray-400 bg-white/5 border-white/10"}`}
+              >
+                {STATUS_LABELS[evento.status] ?? evento.status}
+              </span>
+            </div>
+
+            <p className="text-sm text-gray-400 mt-1">
+              {new Date(evento.data_inicio).toLocaleDateString("pt-BR")} até{" "}
+              {new Date(evento.data_fim).toLocaleDateString("pt-BR")}
+              {evento.local ? ` • ${evento.local}` : ""}
             </p>
           </div>
-          <button
-            onClick={() => {
-              setJuradoEmEdicao(null);
-              setModalJuradoAberta(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 active:scale-95 transition-all duration-200 whitespace-nowrap shrink-0"
-          >
-            <Plus size={15} />
-            Adicionar Jurado
-          </button>
         </div>
 
-        <Dica>
-          {modoPoolGlobal ? (
-            <>
-              Jurados cadastrados aqui entram no <strong>pool global</strong> da produtora e podem ser vinculados a eventos depois.
-            </>
-          ) : (
-            <>
-              Jurados adicionados aqui recebem acesso ao <strong>portal do jurado</strong> onde avaliam as {termo.apresentacao.toLowerCase()}s em tempo real. O cachê é o valor combinado pela participação no evento.
-            </>
-          )}
-        </Dica>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { label: "Jurados", valor: jurados.length, icon: Users, cor: "text-white" },
-            { label: "Cache pago", valor: jurados.filter((j) => j.cache_status === "pago").length, icon: CheckCircle2, cor: "text-emerald-400" },
-            { label: "Total cachê", valor: moeda(totalCache), icon: CircleDollarSign, cor: "text-white" },
-            { label: "A pagar", valor: moeda(totalCache - totalPago), icon: Clock3, cor: "text-axon-gold" },
-          ].map(({ label, valor, icon: Icon, cor }) => (
-            <div key={label} className="bg-axon-panel border border-axon-border rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Icon size={14} className={cor} />
-                <p className="text-xs text-gray-500">{label}</p>
-              </div>
-              <p className={`text-lg font-semibold tabular-nums ${cor}`}>{valor}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex border-b border-axon-border overflow-x-auto">
-          {tabsDisponiveis.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setAbaAtiva(tab.id)}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap ${
-                abaAtiva === tab.id
-                  ? "border-axon-gold text-axon-gold"
-                  : "border-transparent text-gray-500 hover:text-white hover:border-gray-600"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {carregando ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 size={24} className="animate-spin text-gray-600" />
+        <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
+          <div className="flex border-b border-axon-border px-4 overflow-x-auto">
+            {[
+              { id: "visao-geral", label: "Visão Geral", icon: LayoutDashboard },
+              { id: "configuracoes", label: "Configurações", icon: Settings },
+              { id: "categorias", label: "Categorias & Taxas", icon: ListTree },
+              { id: "lineup", label: "Line-up", icon: CalendarDays },
+            ].map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setAbaAtiva(id)}
+                className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-all duration-200 ${
+                  abaAtiva === id
+                    ? "border-axon-gold text-axon-gold"
+                    : "border-transparent text-gray-400 hover:text-white hover:border-gray-600"
+                }`}
+              >
+                <Icon size={16} />
+                {label}
+              </button>
+            ))}
           </div>
-        ) : (
-          <>
-            {abaAtiva === "jurados" && (
-              <div className="space-y-3">
-                {jurados.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 border border-dashed border-axon-border rounded-xl text-gray-600 px-6 text-center">
-                    <Users size={36} className="mb-3 opacity-20 text-axon-gold" />
-                    <p className="font-medium text-gray-300">{modoPoolGlobal ? "Nenhum jurado no pool global" : "Nenhum jurado escalado"}</p>
-                    <p className="text-sm mt-1 text-gray-500 max-w-lg">
-                      {modoPoolGlobal
-                        ? "Ainda não há jurados cadastrados no pool global desta produtora. Cadastre o primeiro jurado agora."
-                        : "Este evento ainda não possui jurados vinculados. Você pode importar do pool global da produtora ou cadastrar um novo jurado agora."}
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full max-w-md">
-                      {!modoPoolGlobal && (
+
+          <div className="p-8">
+            {abaAtiva === "visao-geral" && (
+              <div className="space-y-8">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-1">Visão Geral do Evento</h3>
+                  <p className="text-sm text-gray-400">
+                    Acompanhe o status atual e verifique o que ainda precisa ser configurado antes de abrir as inscrições.
+                  </p>
+                </div>
+
+                {evento.status === "rascunho" && (
+                  <div className="bg-axon-gold/10 border border-axon-gold/30 rounded-xl p-4 flex items-start gap-3">
+                    <AlertCircle size={18} className="text-axon-gold shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-axon-gold font-semibold text-sm">Evento em Rascunho — inscrições bloqueadas</p>
+                      <p className="text-gray-300 text-sm mt-1">
+                        As organizações ainda não podem se inscrever. Quando tudo estiver configurado, vá em{" "}
                         <button
-                          onClick={importarDoPoolGlobal}
-                          disabled={importandoPool || !eventoAtivo || !produtoraId}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 disabled:opacity-50 transition-all duration-200"
+                          onClick={() => setAbaAtiva("configuracoes")}
+                          className="text-axon-gold underline hover:no-underline"
                         >
-                          {importandoPool ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-                          Importar do Pool Global
-                        </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          setJuradoEmEdicao(null);
-                          setModalJuradoAberta(true);
-                        }}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200"
-                      >
-                        <Plus size={15} />
-                        Cadastrar Novo Jurado
-                      </button>
+                          Configurações
+                        </button>{" "}
+                        e mude o status para <strong>Inscrições Abertas</strong>.
+                      </p>
                     </div>
                   </div>
-                ) : (
-                  jurados.map((j) => (
-                    <div
-                      key={j.vinculo_id ?? j.id}
-                      className="bg-axon-panel border border-axon-border rounded-xl px-5 py-4 flex items-center justify-between gap-4 flex-wrap hover:border-gray-600 transition-colors"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white">{j.nome}</p>
-                        <div className="flex flex-wrap gap-3 mt-0.5">
-                          <p className="text-xs text-gray-500">{j.email}</p>
-                          {j.especialidade && <p className="text-xs text-gray-600">· {j.especialidade}</p>}
-                        </div>
-                      </div>
+                )}
 
-                      <div className="flex items-center gap-4 shrink-0 flex-wrap">
-                        {!modoPoolGlobal && j.cache_valor != null && (
-                          <div className="text-right">
-                            <p className="text-xs text-gray-500">Cachê</p>
-                            <p className="text-sm font-semibold text-white tabular-nums">{moeda(j.cache_valor)}</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    {
+                      label: "Inscrições",
+                      valor: totalInscritos,
+                      icon: Users,
+                      cor: "text-axon-gold",
+                      sufixo: totalInscritos === 1 ? "inscrição" : "inscrições",
+                    },
+                    {
+                      label: "Pagamentos Pendentes",
+                      valor: totalPendentes,
+                      icon: CreditCard,
+                      cor: totalPendentes > 0 ? "text-red-400" : "text-emerald-400",
+                      sufixo: totalPendentes > 0 ? "aguardando" : "tudo em dia",
+                    },
+                    {
+                      label: "Jurados",
+                      valor: totalJurados,
+                      icon: Star,
+                      cor: "text-white",
+                      sufixo: totalJurados === 1 ? "jurado cadastrado" : "jurados cadastrados",
+                      onClick: () => router.push(`/jurados?eventoId=${eventoId}`),
+                    },
+                    {
+                      label: "PDV & Bilheteria",
+                      valor: pdvConfigurado ? "Ativo" : "Inativo",
+                      icon: ShoppingCart,
+                      cor: pdvConfigurado ? "text-emerald-400" : "text-gray-500",
+                      sufixo: pdvConfigurado ? "Configurado" : "Não configurado",
+                      onClick: () => router.push(`/pdv?eventoId=${eventoId}`),
+                    },
+                  ].map(({ label, valor, icon: Icon, cor, sufixo, onClick }) =>
+                    onClick ? (
+                      <button
+                        key={label}
+                        onClick={onClick}
+                        className="bg-axon-bg border border-axon-border rounded-xl p-5 text-left hover:border-gray-600 hover:bg-white/[0.02] transition-all duration-200"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">{label}</p>
+                          <Icon size={16} className={cor} />
+                        </div>
+                        <p className={`text-2xl font-bold tabular-nums ${cor}`}>{valor}</p>
+                        <p className="text-xs text-gray-500 mt-1">{sufixo}</p>
+                      </button>
+                    ) : (
+                      <div key={label} className="bg-axon-bg border border-axon-border rounded-xl p-5">
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">{label}</p>
+                          <Icon size={16} className={cor} />
+                        </div>
+                        <p className={`text-2xl font-bold tabular-nums ${cor}`}>{valor}</p>
+                        <p className="text-xs text-gray-500 mt-1">{sufixo}</p>
+                      </div>
+                    )
+                  )}
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-white mb-1">Checklist de Preparação</h4>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Complete esses itens antes de abrir as inscrições para as organizações.
+                  </p>
+
+                  <div className="bg-axon-bg border border-axon-border rounded-xl divide-y divide-axon-border">
+                    {[
+                      {
+                        label: "Dados básicos preenchidos",
+                        descricao: "Nome, local e datas do evento",
+                        ok: !!(evento.nome && evento.local && evento.data_inicio),
+                        acao: "configuracoes",
+                        onAcao: null as null | (() => void),
+                        acaoLabel: "Preencher →",
+                      },
+                      {
+                        label: "Ao menos 1 categoria criada",
+                        descricao: "Categorias definem as taxas e faixas etárias aceitas",
+                        ok: categorias.length > 0,
+                        acao: "categorias",
+                        onAcao: null as null | (() => void),
+                        acaoLabel: "Criar categoria →",
+                      },
+                      {
+                        label: "Jurados configurados",
+                        descricao: "Módulo de avaliação",
+                        ok: criteriosConfigurados,
+                        acao: null,
+                        onAcao: () => router.push(`/jurados?eventoId=${eventoId}`),
+                        acaoLabel: "Configurar →",
+                      },
+                      {
+                        label: "PDV & Bilheteria configurados",
+                        descricao: "Ponto de venda no dia do evento",
+                        ok: pdvConfigurado,
+                        acao: null,
+                        onAcao: () => router.push(`/pdv?eventoId=${eventoId}`),
+                        acaoLabel: "Configurar →",
+                      },
+                    ].map(({ label, descricao, ok, acao, onAcao, acaoLabel }) => (
+                      <div key={label} className="flex items-center justify-between px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${ok ? "bg-emerald-500/20" : "bg-white/5"}`}>
+                            {ok ? (
+                              <CheckCircle size={14} className="text-emerald-400" />
+                            ) : (
+                              <div className="w-2 h-2 rounded-full bg-gray-600" />
+                            )}
+                          </div>
+
+                          <div>
+                            <p className={`text-sm font-medium ${ok ? "text-white" : "text-gray-300"}`}>{label}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{descricao}</p>
+                          </div>
+                        </div>
+
+                        {!ok && acao && acaoLabel && (
+                          <button
+                            onClick={() => setAbaAtiva(acao)}
+                            className="text-xs text-axon-gold hover:text-white hover:bg-axon-gold/10 px-3 py-1.5 rounded-lg border border-axon-gold/30 transition-all duration-200 whitespace-nowrap"
+                          >
+                            {acaoLabel}
+                          </button>
+                        )}
+
+                        {!ok && onAcao && acaoLabel && (
+                          <button
+                            onClick={onAcao}
+                            className="text-xs text-axon-gold hover:text-white hover:bg-axon-gold/10 px-3 py-1.5 rounded-lg border border-axon-gold/30 transition-all duration-200 whitespace-nowrap"
+                          >
+                            {acaoLabel}
+                          </button>
+                        )}
+
+                        {!ok && !acao && !onAcao && (
+                          <span className="text-xs text-gray-600 bg-white/5 px-2.5 py-1 rounded-full">Em breve</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {abaAtiva === "configuracoes" && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-1">Dados do Evento</h3>
+                  <p className="text-sm text-gray-400">
+                    Informações básicas do festival. O status controla se as inscrições estão abertas ou não.
+                  </p>
+                </div>
+
+                <div
+                  className={`rounded-xl p-4 border text-sm flex items-start gap-2.5 ${
+                    form.status === "inscricoes_abertas"
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+                      : form.status === "em_andamento"
+                        ? "bg-axon-gold/10 border-axon-gold/20 text-axon-gold"
+                        : form.status === "encerrado"
+                          ? "bg-red-400/10 border-red-400/20 text-red-300"
+                          : "bg-white/5 border-white/10 text-gray-400"
+                  }`}
+                >
+                  <Info size={15} className="shrink-0 mt-0.5" />
+                  <span>
+                    {form.status === "rascunho" && "Rascunho — o formulário de inscrição está bloqueado para as organizações."}
+                    {form.status === "inscricoes_abertas" && "Inscrições Abertas — as organizações já podem se inscrever neste evento."}
+                    {form.status === "em_andamento" && "Em Andamento — inscrições encerradas, evento em curso."}
+                    {form.status === "encerrado" && "Encerrado — evento concluído. Os resultados podem ser disponibilizados."}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm text-gray-400 font-medium">Nome do Festival</label>
+                    <input
+                      type="text"
+                      value={form.nome ?? ""}
+                      onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400 font-medium">Local</label>
+                    <input
+                      type="text"
+                      value={form.local ?? ""}
+                      placeholder="Ex: Teatro Municipal, São Paulo - SP"
+                      onChange={(e) => setForm({ ...form, local: e.target.value })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400 font-medium">Status</label>
+                    <select
+                      value={form.status ?? ""}
+                      onChange={(e) => setForm({ ...form, status: e.target.value })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
+                    >
+                      <option value="rascunho">Rascunho</option>
+                      <option value="inscricoes_abertas">Inscrições Abertas</option>
+                      <option value="em_andamento">Em Andamento</option>
+                      <option value="encerrado">Encerrado</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400 font-medium">Data de Início</label>
+                    <input
+                      type="date"
+                      value={form.data_inicio ?? ""}
+                      onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400 font-medium">Data de Fim</label>
+                    <input
+                      type="date"
+                      value={form.data_fim ?? ""}
+                      onChange={(e) => setForm({ ...form, data_fim: e.target.value })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm text-gray-400 font-medium">Descrição / Observações</label>
+                    <textarea
+                      rows={3}
+                      value={form.descricao ?? ""}
+                      placeholder="Informações adicionais sobre o evento, regras gerais, etc."
+                      onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200 resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={salvarEvento}
+                    disabled={salvando}
+                    className="flex items-center gap-2 bg-axon-gold text-black font-bold px-6 py-2.5 rounded-lg hover:bg-axon-gold/80 hover:shadow-lg hover:shadow-axon-gold/20 active:scale-95 transition-all duration-200 disabled:opacity-50"
+                  >
+                    {salvando ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    {salvando ? "Salvando..." : "Salvar Alterações"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {abaAtiva === "categorias" && (
+              <div className="space-y-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-1">Categorias & Taxas</h3>
+                    <p className="text-sm text-gray-400">
+                      Defina as categorias de competição deste evento com suas respectivas taxas de inscrição.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={abrirModalNova}
+                    className="flex items-center gap-2 text-sm bg-axon-gold text-black font-bold px-4 py-2.5 rounded-lg hover:bg-axon-gold/80 hover:shadow-lg hover:shadow-axon-gold/20 active:scale-95 transition-all duration-200 whitespace-nowrap shrink-0"
+                  >
+                    <Plus size={16} />
+                    Nova Categoria
+                  </button>
+                </div>
+
+                <Dica>{presetAtual.dica}</Dica>
+
+                {categorias.length === 0 ? (
+                  <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
+                    <ListTree size={40} className="mx-auto mb-3 opacity-20 text-axon-gold" />
+                    <p className="font-medium text-gray-300">Nenhuma categoria ainda</p>
+                    <p className="text-sm mt-1 text-gray-500">
+                      Crie a primeira categoria para definir as taxas de inscrição do evento.
+                    </p>
+                    <button
+                      onClick={abrirModalNova}
+                      className="mt-4 text-sm text-axon-gold hover:text-white border border-axon-gold/30 hover:border-axon-gold hover:bg-axon-gold/10 px-4 py-2 rounded-lg transition-all duration-200"
+                    >
+                      Criar primeira categoria
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {categorias.map((cat) => (
+                      <div
+                        key={cat.id}
+                        className="bg-axon-bg border border-axon-border rounded-xl overflow-hidden hover:border-gray-600 transition-colors"
+                      >
+                        <div className="flex items-center justify-between p-4 group">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-white font-semibold">{cat.nome}</p>
+                              <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                {GENERO_LABELS[cat.genero]}
+                              </span>
+                              {cat.faixa_etaria_label && (
+                                <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                  {cat.faixa_etaria_label}
+                                  {cat.faixa_etaria_min && cat.faixa_etaria_max
+                                    ? ` (${cat.faixa_etaria_min}–${cat.faixa_etaria_max} anos)`
+                                    : ""}
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-sm text-gray-400 mt-1.5">
+                              {presetAtual.taxaSolo.replace(" (R$)", "")}: <span className="text-white">{moeda(cat.valor_solo)}</span>
+                              {" · "}
+                              {presetAtual.taxaDuo.replace(" (R$)", "")}: <span className="text-white">{moeda(cat.valor_duo)}</span>
+                              {" · "}
+                              {presetAtual.taxaConjunto.replace(" (R$)", "")}: <span className="text-white">{moeda(cat.valor_conjunto)}/pax</span>
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => abrirModalEditar(cat)}
+                              className="p-2 text-gray-400 hover:text-axon-gold hover:bg-axon-gold/10 rounded-lg transition-all duration-200"
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              onClick={() => excluirCategoria(cat.id, cat.nome)}
+                              className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {cat.subcategorias && cat.subcategorias.length > 0 && (
+                          <div className="border-t border-axon-border divide-y divide-axon-border bg-black/10">
+                            {cat.subcategorias.map((sub) => (
+                              <div key={sub.id} className="flex items-center justify-between px-4 py-3 group">
+                                <div className="flex items-center gap-3 pl-4">
+                                  <div className="w-px h-4 bg-axon-border" />
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="text-sm text-gray-200 font-medium">{sub.nome}</p>
+                                      <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                        {GENERO_LABELS[sub.genero]}
+                                      </span>
+                                      {sub.faixa_etaria_label && (
+                                        <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                          {sub.faixa_etaria_label}
+                                          {sub.faixa_etaria_min && sub.faixa_etaria_max
+                                            ? ` (${sub.faixa_etaria_min}–${sub.faixa_etaria_max} anos)`
+                                            : ""}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                      {presetAtual.taxaSolo.replace(" (R$)", "")}: {moeda(sub.valor_solo)} ·{" "}
+                                      {presetAtual.taxaDuo.replace(" (R$)", "")}: {moeda(sub.valor_duo)} ·{" "}
+                                      {presetAtual.taxaConjunto.replace(" (R$)", "")}: {moeda(sub.valor_conjunto)}/pax
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => abrirModalEditar(sub)}
+                                    className="p-2 text-gray-400 hover:text-axon-gold hover:bg-axon-gold/10 rounded-lg transition-all duration-200"
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => excluirCategoria(sub.id, sub.nome)}
+                                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         )}
 
-                        {!modoPoolGlobal && (
-                          <select
-                            value={j.cache_status}
-                            onChange={(e) => alterarCacheStatus(j.vinculo_id, e.target.value as "pago" | "pendente")}
-                            className={`text-xs font-medium px-3 py-1.5 rounded-full border bg-transparent cursor-pointer focus:outline-none transition-colors ${
-                              j.cache_status === "pago"
-                                ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
-                                : "border-axon-gold/30 text-axon-gold bg-axon-gold/10"
-                            }`}
-                          >
-                            <option value="pago" className="bg-axon-panel text-white">
-                              Pago
-                            </option>
-                            <option value="pendente" className="bg-axon-panel text-white">
-                              Pendente
-                            </option>
-                          </select>
-                        )}
-
-                        <div className="flex items-center gap-1">
+                        <div className="border-t border-axon-border px-4 py-2">
                           <button
                             onClick={() => {
-                              setJuradoEmEdicao(j);
-                              setModalJuradoAberta(true);
+                              setCatEditando(null);
+                              setFormCat({
+                                nome: "",
+                                valor_solo: 0,
+                                valor_duo: 0,
+                                valor_conjunto: 0,
+                                genero: "livre",
+                                faixa_etaria_min: "",
+                                faixa_etaria_max: "",
+                                faixa_etaria_label: "",
+                                categoria_pai_id: cat.id,
+                              });
+                              setModalCat(true);
                             }}
-                            className="p-1.5 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-200"
-                            title="Editar jurado"
-                            aria-label={`Editar ${j.nome}`}
+                            className="text-xs text-gray-500 hover:text-axon-gold transition-all duration-200 flex items-center gap-1.5 py-1 px-2 rounded-lg hover:bg-axon-gold/5"
                           >
-                            <Pencil size={15} />
-                          </button>
-
-                          <button
-                            onClick={() => setJuradoExclusao(j)}
-                            className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200"
-                            title={modoPoolGlobal ? "Excluir jurado" : "Desvincular jurado"}
-                            aria-label={modoPoolGlobal ? `Excluir ${j.nome}` : `Desvincular ${j.nome}`}
-                          >
-                            <Trash2 size={15} />
+                            <Plus size={12} />
+                            Adicionar subcategoria
                           </button>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
             )}
 
-            {!modoPoolGlobal && abaAtiva === "notas" && (
-              <div className="space-y-5">
-                {!eventoAtivo ? (
-                  <div className="flex items-center gap-3 p-4 bg-axon-gold/10 border border-axon-gold/20 rounded-xl">
-                    <AlertCircle size={16} className="text-axon-gold shrink-0" />
-                    <p className="text-sm text-gray-400">
-                      Nenhum evento ativo. Mude o status de um evento para "Inscrições Abertas" ou "Em Andamento" para visualizar as notas.
+            {abaAtiva === "lineup" && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-1">Montagem do Line-up</h3>
+                  <p className="text-sm text-gray-400">
+                    Defina a ordem de apresentação do evento. As apresentações aparecem aqui após as inscrições serem aprovadas.
+                  </p>
+                </div>
+
+                <Dica>
+                  Arraste e solte as apresentações para reordenar. A ordem salva automaticamente e será usada na geração do programa oficial do evento.
+                </Dica>
+
+                {apresentacoes.length === 0 ? (
+                  <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
+                    <CalendarDays size={40} className="mx-auto mb-3 opacity-20 text-axon-gold" />
+                    <p className="font-medium text-gray-300">Nenhuma apresentação ainda</p>
+                    <p className="text-sm mt-1 text-gray-500">
+                      As apresentações aparecerão aqui após as organizações se inscreverem e as inscrições forem aprovadas.
                     </p>
                   </div>
                 ) : (
-                  <>
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <p className="text-sm text-gray-500">
-                        {avaliacoes.length} avaliação{avaliacoes.length !== 1 ? "ões" : ""} registrada{avaliacoes.length !== 1 ? "s" : ""}
-                      </p>
-                      <button
-                        onClick={() => setModalScanner(true)}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-axon-gold text-black text-xs font-bold hover:bg-axon-gold/80 active:scale-95 transition-all duration-200"
-                      >
-                        <QrCode size={14} />
-                        Sincronizar via QR Code
-                      </button>
-                    </div>
-
-                    {apresentacoes.length === 0 ? (
-                      <p className="text-sm text-gray-600 text-center py-8">
-                        Nenhuma {termo.apresentacao.toLowerCase()} neste evento ainda.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {apresentacoes.map((a) => {
-                          const org = organizacoes.find((o) => o.id === a.grupo_id);
-                          const expandida = apresExpandida === a.id;
-
-                          return (
-                            <div key={a.id} className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
-                              <button
-                                onClick={() => setApresExpandida(expandida ? null : a.id)}
-                                className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-colors text-left"
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold text-white">{a.nome}</p>
-                                  {org && <p className="text-xs text-gray-500 mt-0.5">{org.nome}</p>}
-                                </div>
-                                <div className="flex items-center gap-4 shrink-0">
-                                  <div className="text-right">
-                                    <p className="text-xs text-gray-500">Média geral</p>
-                                    <p className="text-sm font-bold text-white tabular-nums">{mediaApres(a.id)}</p>
+                  <DragDropContext onDragEnd={onDragEnd}>
+                    <Droppable droppableId="lineup">
+                      {(provided) => (
+                        <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
+                          {apresentacoes.map((ap, index) => (
+                            <Draggable key={ap.id} draggableId={ap.id} index={index}>
+                              {(provided, snapshot) => (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  className={`flex items-center gap-4 bg-axon-bg border rounded-xl p-3.5 transition-all cursor-move group ${
+                                    snapshot.isDragging
+                                      ? "border-axon-gold shadow-lg shadow-axon-gold/10 scale-[1.02]"
+                                      : "border-axon-border hover:border-gray-600"
+                                  }`}
+                                >
+                                  <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
+                                    <GripVertical size={20} className="text-gray-600 group-hover:text-gray-400 transition-colors" />
                                   </div>
-                                  {expandida ? <ChevronDown size={16} className="text-gray-500" /> : <ChevronRight size={16} className="text-gray-500" />}
-                                </div>
-                              </button>
 
-                              {expandida && (
-                                <div className="border-t border-axon-border overflow-x-auto">
-                                  {criterios.length === 0 ? (
-                                    <p className="text-xs text-gray-600 p-5">Nenhum critério configurado para este evento.</p>
-                                  ) : (
-                                    <table className="w-full text-xs">
-                                      <thead>
-                                        <tr className="border-b border-axon-border">
-                                          <th className="text-left text-gray-500 font-medium px-5 py-3">Jurado</th>
-                                          {criterios.map((cr) => (
-                                            <th key={cr.id} className="text-center text-gray-500 font-medium px-3 py-3 whitespace-nowrap">
-                                              {cr.nome}
-                                            </th>
-                                          ))}
-                                          <th className="text-center text-gray-500 font-medium px-4 py-3">Média</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {jurados.map((j) => {
-                                          const notasJ = avaliacoes.filter(
-                                            (av) => av.apresentacao_id === a.id && av.jurado_id === j.id
-                                          );
+                                  <div className="w-8 h-8 rounded-lg bg-axon-gold/10 border border-axon-gold/20 flex items-center justify-center text-xs font-bold text-axon-gold">
+                                    {index + 1}
+                                  </div>
 
-                                          const mediaJ = notasJ.length
-                                            ? (notasJ.reduce((s, av) => s + av.nota, 0) / notasJ.length).toFixed(2)
-                                            : "—";
-
-                                          return (
-                                            <tr key={j.id} className="border-b border-axon-border/50 last:border-0">
-                                              <td className="px-5 py-3 text-gray-300 whitespace-nowrap">{j.nome}</td>
-                                              {criterios.map((cr) => (
-                                                <td key={cr.id} className="px-3 py-3 text-center tabular-nums text-white">
-                                                  {notaJuradoCriterio(a.id, j.id, cr.id)}
-                                                </td>
-                                              ))}
-                                              <td className="px-4 py-3 text-center tabular-nums font-semibold text-axon-gold">
-                                                {mediaJ}
-                                              </td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  )}
+                                  <div className="flex-1">
+                                    <p className="text-white text-sm font-medium">{ap.nome}</p>
+                                    <p className="text-xs text-gray-400 mt-0.5">{ap.tipo || "Tipo não informado"}</p>
+                                  </div>
                                 </div>
                               )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                        </div>
+                      )}
+                    </Droppable>
+                  </DragDropContext>
                 )}
               </div>
             )}
-
-            {!modoPoolGlobal && abaAtiva === "observacoes" && (
-              <div className="space-y-3">
-                {!eventoAtivo ? (
-                  <div className="flex items-center gap-3 p-4 bg-axon-gold/10 border border-axon-gold/20 rounded-xl">
-                    <AlertCircle size={16} className="text-axon-gold shrink-0" />
-                    <p className="text-sm text-gray-400">Nenhum evento ativo.</p>
-                  </div>
-                ) : apresentacoes.length === 0 ? (
-                  <p className="text-sm text-gray-600 text-center py-8">
-                    Nenhuma {termo.apresentacao.toLowerCase()} neste evento ainda.
-                  </p>
-                ) : (
-                  apresentacoes.map((a) => {
-                    const org = organizacoes.find((o) => o.id === a.grupo_id);
-
-                    return (
-                      <div key={a.id} className="bg-axon-panel border border-axon-border rounded-xl p-5 space-y-3">
-                        <div>
-                          <p className="text-sm font-semibold text-white">{a.nome}</p>
-                          {org && <p className="text-xs text-gray-500 mt-0.5">{org.nome}</p>}
-                        </div>
-                        <div className="flex gap-3">
-                          <textarea
-                            value={observacoes[a.id] ?? ""}
-                            onChange={(e) => setObservacoes((prev) => ({ ...prev, [a.id]: e.target.value }))}
-                            placeholder={`Observações sobre esta ${termo.apresentacao.toLowerCase()}...`}
-                            rows={3}
-                            className="flex-1 bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors resize-none"
-                          />
-                          <button
-                            onClick={() => salvarObservacao(a.id)}
-                            disabled={salvandoObs === a.id}
-                            className="px-4 py-2 self-end rounded-lg bg-axon-gold text-black text-xs font-bold hover:bg-axon-gold/80 active:scale-95 disabled:opacity-50 transition-all duration-200 flex items-center gap-1.5"
-                          >
-                            {salvandoObs === a.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                            Salvar
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </>
-  );
-}
-
-export default function JuradosPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center py-16">
-          <Loader2 size={24} className="animate-spin text-gray-600" />
+          </div>
         </div>
-      }
-    >
-      <JuradosPageInner />
-    </Suspense>
+      </div>
+
+      {modalCat && (
+        <>
+          <div className="fixed inset-0 bg-black/70 z-50" onClick={() => setModalCat(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">
+                    {catEditando ? "Editar Categoria" : formCat.categoria_pai_id ? "Nova Subcategoria" : "Nova Categoria"}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {formCat.categoria_pai_id
+                      ? presetAtual.explicacaoSub
+                      : "Categoria principal. Você pode adicionar subcategorias depois."}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setModalCat(false)}
+                  className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {!formCat.categoria_pai_id && !catEditando?.categoria_pai_id && (
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400 font-medium">
+                      Categoria Pai <span className="text-gray-600 font-normal">(opcional)</span>
+                    </label>
+                    <select
+                      value={formCat.categoria_pai_id}
+                      onChange={(e) => setFormCat({ ...formCat, categoria_pai_id: e.target.value })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                    >
+                      <option value="">Nenhuma (categoria raiz)</option>
+                      {categoriasRaiz.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-400 font-medium">Nome *</label>
+                  <input
+                    type="text"
+                    placeholder={presetAtual.placeholderNome}
+                    value={formCat.nome}
+                    onChange={(e) => setFormCat({ ...formCat, nome: e.target.value })}
+                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-400 font-medium">Gênero</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {(["livre", "feminino", "masculino", "misto"] as const).map((g) => (
+                      <button
+                        key={g}
+                        onClick={() => setFormCat({ ...formCat, genero: g })}
+                        className={`py-2 rounded-lg text-sm font-medium border transition-all duration-200 ${
+                          formCat.genero === g
+                            ? "bg-axon-gold text-black border-axon-gold shadow-md shadow-axon-gold/20"
+                            : "bg-axon-bg border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
+                        }`}
+                      >
+                        {GENERO_LABELS[g]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-400 font-medium">
+                    Faixa Etária <span className="text-gray-600 font-normal">(opcional)</span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-500">Label</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Infantil"
+                        value={formCat.faixa_etaria_label}
+                        onChange={(e) => setFormCat({ ...formCat, faixa_etaria_label: e.target.value })}
+                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-500">Idade mínima</label>
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="6"
+                        value={formCat.faixa_etaria_min}
+                        onChange={(e) => setFormCat({ ...formCat, faixa_etaria_min: e.target.value })}
+                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-500">Idade máxima</label>
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="12"
+                        value={formCat.faixa_etaria_max}
+                        onChange={(e) => setFormCat({ ...formCat, faixa_etaria_max: e.target.value })}
+                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-400 font-medium">Taxas de Inscrição</label>
+                  <p className="text-xs text-gray-500">Valor cobrado por modalidade. O terceiro campo é o valor por participante.</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {(["valor_solo", "valor_duo", "valor_conjunto"] as const).map((campo) => {
+                      const labelTaxa =
+                        campo === "valor_solo"
+                          ? presetAtual.taxaSolo
+                          : campo === "valor_duo"
+                            ? presetAtual.taxaDuo
+                            : presetAtual.taxaConjunto;
+
+                      return (
+                        <div key={campo} className="space-y-1">
+                          <label className="text-xs text-gray-500">{labelTaxa}</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={formCat[campo]}
+                            onChange={(e) => setFormCat({ ...formCat, [campo]: Number(e.target.value) })}
+                            className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  onClick={() => setModalCat(false)}
+                  className="px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-200"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  onClick={salvarCategoria}
+                  disabled={!formCat.nome.trim()}
+                  className="flex items-center gap-2 bg-axon-gold text-black font-bold px-5 py-2.5 rounded-lg hover:bg-axon-gold/80 hover:shadow-lg hover:shadow-axon-gold/20 active:scale-95 transition-all duration-200 text-sm disabled:opacity-50"
+                >
+                  <Save size={15} />
+                  {catEditando ? "Salvar Alterações" : "Criar Categoria"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
