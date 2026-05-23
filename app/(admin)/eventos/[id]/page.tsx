@@ -431,10 +431,13 @@ function ModalConfigurarJuradosEvento({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/70 z-50" onClick={async () => {
-        onClose();
-        await onSaved();
-      }} />
+      <div
+        className="fixed inset-0 bg-black/70 z-50"
+        onClick={async () => {
+          onClose();
+          await onSaved();
+        }}
+      />
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
         <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-5xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
           <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
@@ -865,10 +868,13 @@ function ModalConfigurarPdvEvento({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/70 z-50" onClick={async () => {
-        onClose();
-        await onSaved();
-      }} />
+      <div
+        className="fixed inset-0 bg-black/70 z-50"
+        onClick={async () => {
+          onClose();
+          await onSaved();
+        }}
+      />
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
         <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-6xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
           <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
@@ -1840,7 +1846,6 @@ export default function PainelEventoPage() {
                                         </span>
                                       )}
                                     </div>
-
                                     <p className="text-xs text-gray-500 mt-0.5">
                                       {presetAtual.taxaSolo.replace(" (R$)", "")}: {moeda(sub.valor_solo)} ·{" "}
                                       {presetAtual.taxaDuo.replace(" (R$)", "")}: {moeda(sub.valor_duo)} ·{" "}
@@ -1957,6 +1962,61 @@ export default function PainelEventoPage() {
                       )}
                     </Droppable>
                   </DragDropContext>
+                )}
+              </div>
+            )}
+
+            {abaAtiva === "jurados" && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-1">Jurados do Evento</h3>
+                  <p className="text-sm text-gray-400">
+                    Gerencie os jurados escalados para este evento e organize a configuração de avaliação.
+                  </p>
+                </div>
+
+                {totalJurados === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 border border-dashed border-axon-border rounded-xl text-gray-600 px-6 text-center">
+                    <Users size={36} className="mb-3 opacity-20 text-axon-gold" />
+                    <p className="font-medium text-gray-300">Nenhum jurado escalado</p>
+                    <p className="text-sm mt-1 text-gray-500 max-w-lg">
+                      Este evento ainda não possui jurados vinculados. Você pode configurar jurados diretamente neste evento ou acessar o cadastro central.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full max-w-md">
+                      <button
+                        onClick={() => setModalJuradosOpen(true)}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 disabled:opacity-50 transition-all duration-200"
+                      >
+                        <Plus size={15} />
+                        Configurar Jurados do Evento
+                      </button>
+                      <Link
+                        href="/jurados"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200"
+                      >
+                        <Plus size={15} />
+                        Ir para o Cadastro de Jurados
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-axon-bg border border-axon-border rounded-xl p-5">
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                      <div>
+                        <p className="text-sm font-semibold text-white">Jurados configurados</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Este evento já possui {totalJurados} {totalJurados === 1 ? "jurado vinculado" : "jurados vinculados"}.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setModalJuradosOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 transition-all duration-200"
+                      >
+                        <Pencil size={15} />
+                        Gerenciar Jurados
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
