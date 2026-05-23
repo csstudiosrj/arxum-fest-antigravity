@@ -36,7 +36,7 @@ interface Jurado {
 
 interface UsuarioExistente {
   id: string;
-  nome: string;
+  nome: string | null;
   email: string;
   telefone: string | null;
   role?: string | null;
@@ -50,7 +50,9 @@ function mascaraTelefone(valor: string) {
   return n.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
 }
 
-function mascararNome(nome: string) {
+// BUG 1 CORRIGIDO: aceita string | null | undefined com salvaguarda antes de .trim()
+function mascararNome(nome: string | null | undefined): string {
+  if (!nome || !nome.trim()) return "Convidado (Pendente)";
   return nome
     .trim()
     .split(/\s+/)
@@ -97,8 +99,13 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
   const colisaoEmailOutroUsuario = !!usuarioExistente && usuarioExistente.id !== jurado?.id;
   const colisaoOutroRole = colisaoEmailOutroUsuario && usuarioExistente?.role !== "jurado";
   const colisaoOutroCadastroJurado = colisaoEmailOutroUsuario && usuarioExistente?.role === "jurado";
-  const camposPrivadosBloqueados = colisaoOutroRole || colisaoOutroCadastroJurado;
-  const nomeExibidoContaExistente = usuarioExistente ? mascararNome(usuarioExistente.nome) : "";
+  // BUG 2 CORRIGIDO: usuário sem produtora_id é convite pendente, não colisão
+  const usuarioSemProdutora = !!usuarioExistente && !usuarioExistente.produtora_id;
+  const camposPrivadosBloqueados =
+    (colisaoOutroRole || colisaoOutroCadastroJurado) && !usuarioSemProdutora;
+  const nomeExibidoContaExistente = usuarioExistente
+    ? mascararNome(usuarioExistente.nome)
+    : "";
 
   useEffect(() => {
     setNome(jurado?.nome ?? "");
@@ -131,11 +138,13 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
 
     const timer = window.setTimeout(async () => {
       const supabase = createClient();
+
+      // BUG 2 CORRIGIDO: busca apenas por e-mail (sem filtro de produtora_id),
+      // pois um usuário recém-convidado pode ter produtora_id ainda nulo.
       const { data } = await supabase
         .from("usuarios")
         .select("id, nome, email, telefone, role, produtora_id")
         .eq("email", emailNormalizado)
-        .eq("produtora_id", produtoraId)
         .limit(1)
         .maybeSingle();
 
@@ -170,9 +179,13 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
 
     if (camposPrivadosBloqueados) {
       if (colisaoOutroRole) {
-        setErro("Este e-mail já pertence a outra conta com perfil diferente. Para proteger os dados, use outro e-mail.");
+        setErro(
+          "Este e-mail já pertence a outra conta com perfil diferente. Para proteger os dados, use outro e-mail."
+        );
       } else {
-        setErro("Já existe um jurado com este e-mail no cadastro central da produtora. Use o cadastro existente.");
+        setErro(
+          "Já existe um jurado com este e-mail vinculado a outra produtora. Use o cadastro existente."
+        );
       }
       return;
     }
@@ -205,7 +218,28 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
       return;
     }
 
-    const isFest = typeof window !== "undefined" && window.location.pathname.startsWith("/fest");
+    // BUG 2 CORRIGIDO: se o usuário existe mas está sem produtora_id (convite pendente),
+    // apenas vinculamos a produtora sem tentar criar um novo registro no Auth.
+    if (usuarioExistente && usuarioSemProdutora) {
+      const { error: vinculoError } = await supabase
+        .from("usuarios")
+        .update({ produtora_id: produtoraId })
+        .eq("id", usuarioExistente.id);
+
+      if (vinculoError) {
+        setErro("Erro ao vincular o jurado existente à produtora.");
+        setSalvando(false);
+        return;
+      }
+
+      setSalvando(false);
+      setEtapa("confirmacao");
+      onSaved();
+      return;
+    }
+
+    const isFest =
+      typeof window !== "undefined" && window.location.pathname.startsWith("/fest");
     const urlConvite = isFest ? "/fest/api/convite" : "/api/convite";
 
     const res = await fetch(urlConvite, {
@@ -220,7 +254,7 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
       }),
     });
 
-    const json = await res.json();
+    const json = (await res.json()) as { error?: string };
 
     if (!res.ok) {
       setErro(json.error || "Erro ao enviar convite.");
@@ -228,11 +262,13 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
       return;
     }
 
+    // BUG 2 CORRIGIDO: busca sem filtro de produtora_id para localizar
+    // usuários cujo produtora_id pode ainda estar nulo após o convite.
     const { data: usuarioCriado, error: usuarioError } = await supabase
       .from("usuarios")
       .select("id, produtora_id")
       .eq("email", email.trim().toLowerCase())
-      .single();
+      .maybeSingle();
 
     if (usuarioError || !usuarioCriado) {
       setErro("Usuário convidado, mas não foi possível localizar o cadastro criado.");
@@ -240,12 +276,12 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
       return;
     }
 
-    // Se o usuário foi criado no Auth mas o banco ainda não vinculou a produtora, vinculamos aqui
-    if (!usuarioCriado.produtora_id) {
+    // BUG 2 CORRIGIDO: auto-vinculação quando produtora_id ainda está nulo
+    if (!(usuarioCriado as { id: string; produtora_id: string | null }).produtora_id) {
       await supabase
         .from("usuarios")
         .update({ produtora_id: produtoraId })
-        .eq("id", usuarioCriado.id);
+        .eq("id", (usuarioCriado as { id: string; produtora_id: string | null }).id);
     }
 
     setSalvando(false);
@@ -268,12 +304,22 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" onClick={onClose}>
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
           <div>
             <h2 className="text-base font-semibold text-white">
-              {etapa === "formulario" ? (editando ? "Editar Jurado" : "Adicionar Jurado") : "Jurado cadastrado"}
+              {etapa === "formulario"
+                ? editando
+                  ? "Editar Jurado"
+                  : "Adicionar Jurado"
+                : "Jurado cadastrado"}
             </h2>
             {etapa === "formulario" && (
               <p className="text-xs text-gray-500 mt-0.5">
@@ -283,7 +329,11 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+            aria-label="Fechar modal"
+          >
             <X size={18} />
           </button>
         </div>
@@ -320,9 +370,17 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
                     disabled={camposPrivadosBloqueados}
                     className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 pr-10 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
-                  {verificandoEmail && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-500" />}
+                  {verificandoEmail && (
+                    <Loader2
+                      size={14}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-500"
+                    />
+                  )}
                   {!verificandoEmail && usuarioExistente && (
-                    <ShieldCheck size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-axon-gold" />
+                    <ShieldCheck
+                      size={14}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-axon-gold"
+                    />
                   )}
                 </div>
               </div>
@@ -339,27 +397,46 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
                 />
               </div>
 
-              {usuarioExistente && usuarioExistente.id !== jurado?.id && (
-                <div className="flex items-start gap-3 p-4 bg-axon-gold/10 border border-axon-gold/20 rounded-lg">
-                  <Mail size={16} className="text-axon-gold shrink-0 mt-0.5" />
+              {usuarioExistente &&
+                usuarioExistente.id !== jurado?.id &&
+                !usuarioSemProdutora && (
+                  <div className="flex items-start gap-3 p-4 bg-axon-gold/10 border border-axon-gold/20 rounded-lg">
+                    <Mail size={16} className="text-axon-gold shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm text-white font-medium">
+                        {colisaoOutroRole
+                          ? "Conta protegida encontrada"
+                          : "Cadastro existente encontrado"}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {colisaoOutroRole
+                          ? "Este e-mail já está associado a uma conta com papel diferente. Para proteger dados privados, esse formulário não pode sobrescrever esse cadastro."
+                          : "Já existe um jurado com este e-mail vinculado a outra produtora. Os dados privados desse cadastro não podem ser sobrescritos por este formulário."}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Cadastro identificado:{" "}
+                        <span className="text-gray-300">{nomeExibidoContaExistente}</span>
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+              {usuarioExistente && usuarioSemProdutora && (
+                <div className="flex items-start gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                  <ShieldCheck size={16} className="text-emerald-400 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm text-white font-medium">
-                      {colisaoOutroRole ? "Conta protegida encontrada" : "Cadastro existente encontrado"}
-                    </p>
+                    <p className="text-sm text-white font-medium">Convite pendente encontrado</p>
                     <p className="text-xs text-gray-400 mt-1">
-                      {colisaoOutroRole
-                        ? "Este e-mail já está associado a uma conta com papel diferente dentro da mesma produtora. Para proteger dados privados, esse formulário não pode sobrescrever esse cadastro."
-                        : "Já existe um jurado com este e-mail no cadastro central da produtora. Os dados privados desse cadastro não podem ser sobrescritos por este formulário."}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Cadastro identificado: <span className="text-gray-300">{nomeExibidoContaExistente}</span>
+                      Este e-mail já recebeu um convite, mas ainda não vinculou uma produtora. Ao
+                      salvar, o cadastro será vinculado automaticamente a esta produtora.
                     </p>
                   </div>
                 </div>
               )}
 
               <p className="text-xs text-gray-600 -mt-1">
-                Este cadastro é centralizado por produtora e será reutilizado em outros fluxos internos do sistema.
+                Este cadastro é centralizado por produtora e será reutilizado em outros fluxos
+                internos do sistema.
               </p>
 
               {erro && (
@@ -406,7 +483,11 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
                   onClick={copiarLink}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200"
                 >
-                  {copiado ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+                  {copiado ? (
+                    <Check size={15} className="text-emerald-400" />
+                  ) : (
+                    <Copy size={15} />
+                  )}
                   {copiado ? "Link copiado" : "Copiar link do portal do jurado"}
                 </button>
 
@@ -441,7 +522,11 @@ interface ConfirmarExclusaoJuradoProps {
   onConfirmar: () => Promise<void>;
 }
 
-function ConfirmarExclusaoJurado({ jurado, onClose, onConfirmar }: ConfirmarExclusaoJuradoProps) {
+function ConfirmarExclusaoJurado({
+  jurado,
+  onClose,
+  onConfirmar,
+}: ConfirmarExclusaoJuradoProps) {
   const [excluindo, setExcluindo] = useState(false);
 
   async function handleConfirmar() {
@@ -451,11 +536,21 @@ function ConfirmarExclusaoJurado({ jurado, onClose, onConfirmar }: ConfirmarExcl
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4" onClick={onClose}>
-      <div className="bg-axon-panel border border-red-500/20 rounded-xl w-full max-w-md shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-axon-panel border border-red-500/20 rounded-xl w-full max-w-md shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
           <h2 className="text-base font-semibold text-white">Excluir jurado</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors" aria-label="Fechar modal">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+            aria-label="Fechar modal"
+          >
             <X size={18} />
           </button>
         </div>
@@ -464,7 +559,9 @@ function ConfirmarExclusaoJurado({ jurado, onClose, onConfirmar }: ConfirmarExcl
           <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
             <Trash2 size={16} className="text-red-400 shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm text-white font-medium">Excluir {jurado.nome} do cadastro de jurados</p>
+              <p className="text-sm text-white font-medium">
+                Excluir {jurado.nome || "Sem Nome (Pendente)"} do cadastro de jurados
+              </p>
               <p className="text-xs text-gray-400 mt-1">
                 Esta ação remove definitivamente o jurado do cadastro centralizado da produtora.
               </p>
@@ -472,7 +569,8 @@ function ConfirmarExclusaoJurado({ jurado, onClose, onConfirmar }: ConfirmarExcl
           </div>
 
           <p className="text-xs text-gray-500">
-            Use esta ação apenas quando o cadastro realmente não precisar mais existir na base central de jurados.
+            Use esta ação apenas quando o cadastro realmente não precisar mais existir na base
+            central de jurados.
           </p>
         </div>
 
@@ -529,7 +627,8 @@ export default function JuradosPage() {
         .eq("id", user.id)
         .maybeSingle();
 
-      produtoraIdAtual = (usuarioAuth as { produtora_id?: string | null } | null)?.produtora_id ?? "";
+      produtoraIdAtual =
+        (usuarioAuth as { produtora_id?: string | null } | null)?.produtora_id ?? "";
       setProdutoraId(produtoraIdAtual);
     } else {
       setProdutoraId("");
@@ -562,20 +661,30 @@ export default function JuradosPage() {
       .eq("produtora_id", produtoraIdAtual)
       .order("nome");
 
+    // BUG 3 CORRIGIDO: fallback seguro para nome nulo no mapeamento
     setJurados(
-      (((usuariosData as UsuarioExistente[] | null) ?? []).map((u) => ({
-        id: u.id,
-        nome: u.nome,
-        email: u.email,
-        telefone: u.telefone ?? null,
-      })) as Jurado[])
+      (
+        (
+          (usuariosData as Array<{
+            id: string;
+            nome: string | null;
+            email: string;
+            telefone: string | null;
+          }> | null) ?? []
+        ).map((u) => ({
+          id: u.id,
+          nome: u.nome ?? "",
+          email: u.email,
+          telefone: u.telefone ?? null,
+        })) satisfies Jurado[]
+      )
     );
 
     setCarregando(false);
   }, []);
 
   useEffect(() => {
-    carregar();
+    void carregar();
   }, [carregar]);
 
   async function excluirJurado(jurado: Jurado | null) {
@@ -639,25 +748,28 @@ export default function JuradosPage() {
         </div>
 
         <Dica>
-          Jurados cadastrados aqui compõem o <strong>cadastro central</strong> da produtora e poderão ser reutilizados em outros fluxos do sistema sem depender desta página de eventos.
+          Jurados cadastrados aqui compõem o <strong>cadastro central</strong> da produtora e
+          poderão ser reutilizados em outros fluxos do sistema sem depender desta página de eventos.
         </Dica>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            { label: "Jurados cadastrados", valor: jurados.length, icon: Users, cor: "text-white" },
-            {
-              label: "Com e-mail",
-              valor: jurados.filter((j) => Boolean(j.email)).length,
-              icon: Mail,
-              cor: "text-axon-gold",
-            },
-            {
-              label: "Com telefone",
-              valor: jurados.filter((j) => Boolean(j.telefone)).length,
-              icon: Phone,
-              cor: "text-emerald-400",
-            },
-          ].map(({ label, valor, icon: Icon, cor }) => (
+          {(
+            [
+              { label: "Jurados cadastrados", valor: jurados.length, icon: Users, cor: "text-white" },
+              {
+                label: "Com e-mail",
+                valor: jurados.filter((j) => Boolean(j.email)).length,
+                icon: Mail,
+                cor: "text-axon-gold",
+              },
+              {
+                label: "Com telefone",
+                valor: jurados.filter((j) => Boolean(j.telefone)).length,
+                icon: Phone,
+                cor: "text-emerald-400",
+              },
+            ] as const
+          ).map(({ label, valor, icon: Icon, cor }) => (
             <div key={label} className="bg-axon-panel border border-axon-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Icon size={14} className={cor} />
@@ -677,7 +789,8 @@ export default function JuradosPage() {
             <Users size={36} className="mb-3 opacity-20 text-axon-gold" />
             <p className="font-medium text-gray-300">Nenhum jurado cadastrado</p>
             <p className="text-sm mt-1 text-gray-500 max-w-lg">
-              Ainda não há jurados no cadastro central da produtora. Cadastre o primeiro jurado agora.
+              Ainda não há jurados no cadastro central da produtora. Cadastre o primeiro jurado
+              agora.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full max-w-md">
               <button
@@ -700,10 +813,15 @@ export default function JuradosPage() {
                 className="bg-axon-panel border border-axon-border rounded-xl px-5 py-4 flex items-center justify-between gap-4 flex-wrap hover:border-gray-600 transition-colors"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white">{j.nome}</p>
+                  {/* BUG 1 + BUG 3 CORRIGIDO: exibe fallback amigável se nome for vazio */}
+                  <p className="text-sm font-semibold text-white">
+                    {j.nome || "Sem Nome (Pendente)"}
+                  </p>
                   <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-3 mt-1">
                     <p className="text-xs text-gray-500 break-all">{j.email}</p>
-                    {j.telefone && <p className="text-xs text-gray-600">{mascaraTelefone(j.telefone)}</p>}
+                    {j.telefone && (
+                      <p className="text-xs text-gray-600">{mascaraTelefone(j.telefone)}</p>
+                    )}
                   </div>
                 </div>
 
@@ -715,7 +833,7 @@ export default function JuradosPage() {
                     }}
                     className="p-1.5 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-200"
                     title="Editar jurado"
-                    aria-label={`Editar ${j.nome}`}
+                    aria-label={`Editar ${j.nome || "jurado"}`}
                   >
                     <Pencil size={15} />
                   </button>
@@ -724,7 +842,7 @@ export default function JuradosPage() {
                     onClick={() => setJuradoExclusao(j)}
                     className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200"
                     title="Excluir jurado"
-                    aria-label={`Excluir ${j.nome}`}
+                    aria-label={`Excluir ${j.nome || "jurado"}`}
                   >
                     <Trash2 size={15} />
                   </button>
