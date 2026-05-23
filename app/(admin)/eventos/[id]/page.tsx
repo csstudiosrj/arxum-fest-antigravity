@@ -30,11 +30,8 @@ import {
   Ticket,
   Coffee,
   MapPin,
-  Image as ImageIcon,
-  Type,
   Trophy,
   Globe,
-  Link2,
 } from "lucide-react";
 
 const PRESETS: Record<
@@ -113,7 +110,13 @@ const PRESETS: Record<
   },
 };
 
-type EventoStatus = "rascunho" | "inscricoes_abertas" | "em_andamento" | "encerrado";
+type EventoStatus =
+  | "Em Montagem"
+  | "inscricoes_abertas"
+  | "inscricoes_prorrogadas"
+  | "adiado"
+  | "cancelado";
+
 type EventoFormato = "competitivo" | "mostra" | "misto";
 type TipoPremiacao = "sem_premiacao" | "apenas_trofeus_e_medalhas" | "com_premiacao_dinheiro";
 
@@ -194,7 +197,7 @@ type ProdutoCatalogo = {
   preco: number | null;
   estoque: number | null;
   ativo: boolean | null;
-  secao: string | null;
+  tipo: string | null;
 };
 
 type EventoProduto = {
@@ -213,7 +216,7 @@ type ProdutoVinculado = {
   preco_base: number;
   estoque_base: number;
   ativo_base: boolean;
-  secao: string;
+  tipo: string;
   preco_evento: number;
   estoque_evento: number;
   ativo_evento: boolean;
@@ -234,19 +237,29 @@ const GENERO_LABELS: Record<string, string> = {
   misto: "Misto",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  rascunho: "Rascunho",
+const STATUS_LABELS: Record<EventoStatus, string> = {
+  "Em Montagem": "Rascunho / Em Montagem",
   inscricoes_abertas: "Inscrições Abertas",
-  em_andamento: "Em Andamento",
-  encerrado: "Encerrado",
+  inscricoes_prorrogadas: "Inscrições Prorrogadas",
+  adiado: "Adiado",
+  cancelado: "Cancelado",
 };
 
-const STATUS_CORES: Record<string, string> = {
+const STATUS_CORES: Record<EventoStatus, string> = {
+  "Em Montagem": "text-gray-400 bg-white/5 border-white/10",
   inscricoes_abertas: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-  encerrado: "text-red-400 bg-red-400/10 border-red-400/20",
-  rascunho: "text-gray-400 bg-white/5 border-white/10",
-  em_andamento: "text-axon-gold bg-axon-gold/10 border-axon-gold/20",
+  inscricoes_prorrogadas: "text-amber-300 bg-amber-500/10 border-amber-500/20",
+  adiado: "text-axon-gold bg-axon-gold/10 border-axon-gold/20",
+  cancelado: "text-red-400 bg-red-400/10 border-red-400/20",
 };
+
+const STATUS_OPTIONS: Array<{ value: EventoStatus; label: string }> = [
+  { value: "Em Montagem", label: "Rascunho / Em Montagem" },
+  { value: "inscricoes_abertas", label: "Inscrições Abertas" },
+  { value: "inscricoes_prorrogadas", label: "Inscrições Prorrogadas" },
+  { value: "adiado", label: "Adiado" },
+  { value: "cancelado", label: "Cancelado" },
+];
 
 function moeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -259,8 +272,8 @@ function mascaraTelefone(valor: string | null | undefined) {
   return n.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
 }
 
-function secaoProdutoLabel(secao: string | null | undefined) {
-  const valor = (secao ?? "").toLowerCase().trim();
+function secaoProdutoLabel(tipo: string | null | undefined) {
+  const valor = (tipo ?? "").toLowerCase().trim();
   if (valor === "bilheteria") return "Bilheteria";
   return "Cantina";
 }
@@ -370,7 +383,7 @@ function ModalConfigurarJuradosEvento({
 
     const cadastro = (cadastroData ?? []) as JuradoCadastro[];
     const escaladosRaw = (eventoJuradosData ?? []) as EventoJurado[];
-    const cadastroMap = new Map(cadastro.map((j) => [j.id, j]));
+    const cadastroMap = new Map(cadastro.map((j) => [j.id, j] as const));
 
     const escalados = escaladosRaw
       .map((v) => {
@@ -482,7 +495,13 @@ function ModalConfigurarJuradosEvento({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50" onClick={async () => { onClose(); await onSaved(); }}>
+    <div
+      className="fixed inset-0 bg-black/70 z-50"
+      onClick={async () => {
+        onClose();
+        await onSaved();
+      }}
+    >
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
         <div
           className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-5xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
@@ -495,7 +514,13 @@ function ModalConfigurarJuradosEvento({
                 Escale jurados do cadastro central da produtora e configure cachê, status e especialidade para este festival.
               </p>
             </div>
-            <button onClick={async () => { onClose(); await onSaved(); }} className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200">
+            <button
+              onClick={async () => {
+                onClose();
+                await onSaved();
+              }}
+              className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200"
+            >
               <X size={18} />
             </button>
           </div>
@@ -529,9 +554,7 @@ function ModalConfigurarJuradosEvento({
                   <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
                     <Users size={36} className="mx-auto mb-3 opacity-20 text-axon-gold" />
                     <p className="font-medium text-gray-300">Nenhum jurado escalado</p>
-                    <p className="text-sm mt-1 text-gray-500">
-                      Adicione jurados do cadastro central da produtora para este evento.
-                    </p>
+                    <p className="text-sm mt-1 text-gray-500">Adicione jurados do cadastro central da produtora para este evento.</p>
                   </div>
                 ) : (
                   juradosEscalados.map((jurado) => (
@@ -580,7 +603,9 @@ function ModalConfigurarJuradosEvento({
                             value={jurado.cache_valor}
                             onChange={(e) =>
                               setJuradosEscalados((prev) =>
-                                prev.map((item) => (item.vinculo_id === jurado.vinculo_id ? { ...item, cache_valor: Number(e.target.value || 0) } : item))
+                                prev.map((item) =>
+                                  item.vinculo_id === jurado.vinculo_id ? { ...item, cache_valor: Number(e.target.value || 0) } : item
+                                )
                               )
                             }
                             className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
@@ -702,13 +727,13 @@ function ModalConfigurarPdvEvento({
     setLoading(true);
 
     const [{ data: catalogoData }, { data: eventoProdutosData }] = await Promise.all([
-      supabase.from("pdv_produtos").select("id, nome, preco, estoque, ativo, secao").eq("produtora_id", produtoraId).order("nome"),
+      supabase.from("pdv_produtos").select("id, nome, preco, estoque, ativo, tipo").eq("produtora_id", produtoraId).order("nome"),
       supabase.from("evento_produtos").select("id, evento_id, produto_id, preco_evento, estoque_evento, ativo_evento").eq("evento_id", eventoId),
     ]);
 
     const catalogo = (catalogoData ?? []) as ProdutoCatalogo[];
     const vinculadosRaw = (eventoProdutosData ?? []) as EventoProduto[];
-    const catalogoMap = new Map(catalogo.map((p) => [p.id, p]));
+    const catalogoMap = new Map(catalogo.map((p) => [p.id, p] as const));
 
     const vinculados = vinculadosRaw
       .map((v) => {
@@ -721,7 +746,7 @@ function ModalConfigurarPdvEvento({
           preco_base: produto.preco ?? 0,
           estoque_base: produto.estoque ?? 0,
           ativo_base: produto.ativo ?? true,
-          secao: secaoProdutoLabel(produto.secao),
+          tipo: secaoProdutoLabel(produto.tipo),
           preco_evento: v.preco_evento ?? produto.preco ?? 0,
           estoque_evento: v.estoque_evento ?? produto.estoque ?? 0,
           ativo_evento: v.ativo_evento ?? true,
@@ -751,12 +776,12 @@ function ModalConfigurarPdvEvento({
   }, [produtosCatalogo, idsVinculados, search]);
 
   const produtosDisponiveisCantina = useMemo(
-    () => produtosDisponiveis.filter((p) => secaoProdutoLabel(p.secao) === "Cantina"),
+    () => produtosDisponiveis.filter((p) => secaoProdutoLabel(p.tipo) === "Cantina"),
     [produtosDisponiveis]
   );
 
   const produtosDisponiveisBilheteria = useMemo(
-    () => produtosDisponiveis.filter((p) => secaoProdutoLabel(p.secao) === "Bilheteria"),
+    () => produtosDisponiveis.filter((p) => secaoProdutoLabel(p.tipo) === "Bilheteria"),
     [produtosDisponiveis]
   );
 
@@ -787,7 +812,7 @@ function ModalConfigurarPdvEvento({
           preco_base: produto.preco ?? 0,
           estoque_base: produto.estoque ?? 0,
           ativo_base: produto.ativo ?? true,
-          secao: secaoProdutoLabel(produto.secao),
+          tipo: secaoProdutoLabel(produto.tipo),
           preco_evento: vinculo.preco_evento ?? produto.preco ?? 0,
           estoque_evento: vinculo.estoque_evento ?? produto.estoque ?? 0,
           ativo_evento: vinculo.ativo_evento ?? true,
@@ -802,6 +827,7 @@ function ModalConfigurarPdvEvento({
   async function salvarProduto(vinculoId: string) {
     const produto = produtosVinculados.find((item) => item.vinculo_id === vinculoId);
     if (!produto) return;
+
     const supabase = createClient();
     setSavingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
@@ -870,7 +896,13 @@ function ModalConfigurarPdvEvento({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50" onClick={async () => { onClose(); await onSaved(); }}>
+    <div
+      className="fixed inset-0 bg-black/70 z-50"
+      onClick={async () => {
+        onClose();
+        await onSaved();
+      }}
+    >
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
         <div
           className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-6xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
@@ -883,7 +915,13 @@ function ModalConfigurarPdvEvento({
                 Vincule produtos do catálogo central e ajuste preço, estoque e ativação localmente para este festival.
               </p>
             </div>
-            <button onClick={async () => { onClose(); await onSaved(); }} className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200">
+            <button
+              onClick={async () => {
+                onClose();
+                await onSaved();
+              }}
+              className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200"
+            >
               <X size={18} />
             </button>
           </div>
@@ -917,9 +955,7 @@ function ModalConfigurarPdvEvento({
                   <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
                     <ShoppingCart size={36} className="mx-auto mb-3 opacity-20 text-axon-gold" />
                     <p className="font-medium text-gray-300">Nenhum produto vinculado</p>
-                    <p className="text-sm mt-1 text-gray-500">
-                      Vincule produtos do catálogo central para ativar o PDV deste evento.
-                    </p>
+                    <p className="text-sm mt-1 text-gray-500">Vincule produtos do catálogo central para ativar o PDV deste evento.</p>
                   </div>
                 ) : (
                   produtosVinculados.map((produto) => (
@@ -929,7 +965,7 @@ function ModalConfigurarPdvEvento({
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-sm font-semibold text-white">{produto.nome}</p>
                             <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                              {produto.secao}
+                              {produto.tipo}
                             </span>
                           </div>
                           <div className="flex flex-wrap gap-3 mt-1">
@@ -1061,7 +1097,6 @@ export default function PainelEventoPage() {
   const [totalJurados, setTotalJurados] = useState(0);
   const [pdvConfigurado, setPdvConfigurado] = useState(false);
   const [criteriosConfigurados, setCriteriosConfigurados] = useState(false);
-
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [perfilSlug, setPerfilSlug] = useState("danca");
 
@@ -1126,9 +1161,7 @@ export default function PainelEventoPage() {
     const [{ data: ev }, { data: cats }, { data: apres }] = await Promise.all([
       supabase
         .from("eventos")
-        .select(
-          "id, nome, data_inicio, data_fim, local, status, descricao, produtora_id, formato, tipo_premiacao, multilocal, logo_url, banner_url"
-        )
+        .select("id, nome, data_inicio, data_fim, local, status, descricao, produtora_id, formato, tipo_premiacao, multilocal, logo_url, banner_url")
         .eq("id", eventoId)
         .single(),
       supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome"),
@@ -1201,14 +1234,8 @@ export default function PainelEventoPage() {
       setPdvConfigurado(false);
     }
 
-    if (eventoAtual.multilocal) {
-      await carregarLocais();
-    } else {
-      setLocaisEvento([]);
-    }
-
     setLoading(false);
-  }, [eventoId, router, carregarLocais]);
+  }, [eventoId, router]);
 
   useEffect(() => {
     void carregarEvento();
@@ -1231,13 +1258,13 @@ export default function PainelEventoPage() {
       local: form.local ?? "",
       data_inicio: form.data_inicio ?? "",
       data_fim: form.data_fim ?? "",
-      status: (form.status ?? "rascunho") as EventoStatus,
+      status: (form.status ?? "Em Montagem") as EventoStatus,
       descricao: form.descricao ?? null,
       formato: (form.formato ?? "competitivo") as EventoFormato,
       tipo_premiacao: (form.tipo_premiacao ?? "sem_premiacao") as TipoPremiacao,
       multilocal: Boolean(form.multilocal),
-      logo_url: form.logo_url?.trim() ? form.logo_url.trim() : null,
-      banner_url: form.banner_url?.trim() ? form.banner_url.trim() : null,
+      logo_url: evento?.logo_url ?? null,
+      banner_url: evento?.banner_url ?? null,
     };
 
     const { error } = await supabase.from("eventos").update(payload).eq("id", eventoId);
@@ -1280,9 +1307,7 @@ export default function PainelEventoPage() {
       .single();
 
     if (!error && data) {
-      setLocaisEvento((prev) =>
-        [...prev, data as LocalEvento].sort((a, b) => a.nome_local.localeCompare(b.nome_local))
-      );
+      setLocaisEvento((prev) => [...prev, data as LocalEvento].sort((a, b) => a.nome_local.localeCompare(b.nome_local)));
       setNovoLocal({ nome_local: "", cidade: "", estado: "" });
       addToast("sucesso", "Local adicionado.");
     } else {
@@ -1411,6 +1436,8 @@ export default function PainelEventoPage() {
 
     const items = Array.from(apresentacoes);
     const [moved] = items.splice(result.source.index, 1);
+    if (!moved) return;
+
     items.splice(result.destination.index, 0, moved);
 
     const reordenadas = items.map((c, i) => ({ ...c, ordem_apresentacao: i + 1 }));
@@ -1446,10 +1473,7 @@ export default function PainelEventoPage() {
   const categoriasRaiz = categorias.filter((c) => !c.categoria_pai_id);
   const presetAtual = PRESETS[perfilSlug] ?? PRESETS.multidisciplinar;
 
-  const checklistJuradosOk =
-    form.formato === "mostra"
-      ? true
-      : totalJurados > 0 && criteriosConfigurados;
+  const checklistJuradosOk = form.formato === "mostra" ? true : totalJurados > 0 && criteriosConfigurados;
 
   const checklist = [
     {
@@ -1518,8 +1542,8 @@ export default function PainelEventoPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-white">{evento.nome}</h1>
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_CORES[evento.status] ?? "text-gray-400 bg-white/5 border-white/10"}`}>
-                {STATUS_LABELS[evento.status] ?? evento.status}
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_CORES[evento.status]}`}>
+                {STATUS_LABELS[evento.status]}
               </span>
             </div>
             <p className="text-sm text-gray-400 mt-1">
@@ -1560,11 +1584,11 @@ export default function PainelEventoPage() {
                   </p>
                 </div>
 
-                {evento.status === "rascunho" && (
+                {evento.status === "Em Montagem" && (
                   <div className="bg-axon-gold/10 border border-axon-gold/30 rounded-xl p-4 flex items-start gap-3">
                     <AlertCircle size={18} className="text-axon-gold shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-axon-gold font-semibold text-sm">Evento em Rascunho · inscrições bloqueadas</p>
+                      <p className="text-axon-gold font-semibold text-sm">Evento em montagem · inscrições bloqueadas</p>
                       <p className="text-gray-300 text-sm mt-1">
                         As organizações ainda não podem se inscrever. Quando tudo estiver configurado, vá em{" "}
                         <button onClick={() => setAbaAtiva("configuracoes")} className="text-axon-gold underline hover:no-underline">
@@ -1637,24 +1661,14 @@ export default function PainelEventoPage() {
 
                 <div>
                   <h4 className="text-sm font-semibold text-white mb-1">Checklist de Preparação</h4>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Complete esses itens antes de abrir as inscrições para as organizações.
-                  </p>
+                  <p className="text-xs text-gray-500 mb-3">Complete esses itens antes de abrir as inscrições para as organizações.</p>
 
                   <div className="bg-axon-bg border border-axon-border rounded-xl divide-y divide-axon-border">
                     {checklist.map(({ label, descricao, ok, acao, onAcao, acaoLabel }) => (
                       <div key={label} className="flex items-center justify-between px-5 py-4 gap-4">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div
-                            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
-                              ok ? "bg-emerald-500/20" : "bg-white/5"
-                            }`}
-                          >
-                            {ok ? (
-                              <CheckCircle size={14} className="text-emerald-400" />
-                            ) : (
-                              <div className="w-2 h-2 rounded-full bg-gray-600" />
-                            )}
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${ok ? "bg-emerald-500/20" : "bg-white/5"}`}>
+                            {ok ? <CheckCircle size={14} className="text-emerald-400" /> : <div className="w-2 h-2 rounded-full bg-gray-600" />}
                           </div>
 
                           <div className="min-w-0">
@@ -1700,7 +1714,7 @@ export default function PainelEventoPage() {
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-1">Dados do Evento</h3>
                   <p className="text-sm text-gray-400">
-                    Informações básicas, estruturais e visuais do festival. O status controla se as inscrições estão abertas ou não.
+                    Informações básicas e estruturais do festival. O status público automático será calculado pela página pública a partir das datas quando aplicável.
                   </p>
                 </div>
 
@@ -1708,19 +1722,22 @@ export default function PainelEventoPage() {
                   className={`rounded-xl p-4 border text-sm flex items-start gap-2.5 ${
                     form.status === "inscricoes_abertas"
                       ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-                      : form.status === "em_andamento"
-                        ? "bg-axon-gold/10 border-axon-gold/20 text-axon-gold"
-                        : form.status === "encerrado"
-                          ? "bg-red-400/10 border-red-400/20 text-red-300"
-                          : "bg-white/5 border-white/10 text-gray-400"
+                      : form.status === "inscricoes_prorrogadas"
+                        ? "bg-amber-500/10 border-amber-500/20 text-amber-300"
+                        : form.status === "adiado"
+                          ? "bg-axon-gold/10 border-axon-gold/20 text-axon-gold"
+                          : form.status === "cancelado"
+                            ? "bg-red-400/10 border-red-400/20 text-red-300"
+                            : "bg-white/5 border-white/10 text-gray-400"
                   }`}
                 >
                   <Info size={15} className="shrink-0 mt-0.5" />
                   <span>
-                    {form.status === "rascunho" && "Rascunho: o formulário de inscrição está bloqueado para as organizações."}
+                    {form.status === "Em Montagem" && "Rascunho / Em Montagem: o formulário de inscrição permanece bloqueado para as organizações."}
                     {form.status === "inscricoes_abertas" && "Inscrições Abertas: as organizações já podem se inscrever neste evento."}
-                    {form.status === "em_andamento" && "Em Andamento: inscrições encerradas, evento em curso."}
-                    {form.status === "encerrado" && "Encerrado: evento concluído. Os resultados podem ser disponibilizados."}
+                    {form.status === "inscricoes_prorrogadas" && "Inscrições Prorrogadas: o evento segue aceitando inscrições em período estendido."}
+                    {form.status === "adiado" && "Adiado: o evento foi postergado e pode exigir atualização de datas e comunicação pública."}
+                    {form.status === "cancelado" && "Cancelado: o evento foi cancelado e não deve aceitar novas inscrições."}
                   </span>
                 </div>
 
@@ -1749,14 +1766,15 @@ export default function PainelEventoPage() {
                   <div className="space-y-2">
                     <label className="text-sm text-gray-400 font-medium">Status</label>
                     <select
-                      value={form.status ?? "rascunho"}
+                      value={form.status ?? "Em Montagem"}
                       onChange={(e) => setForm({ ...form, status: e.target.value as EventoStatus })}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
                     >
-                      <option value="rascunho">Rascunho</option>
-                      <option value="inscricoes_abertas">Inscrições Abertas</option>
-                      <option value="em_andamento">Em Andamento</option>
-                      <option value="encerrado">Encerrado</option>
+                      {STATUS_OPTIONS.map((status) => (
+                        <option key={status.value} value={status.value}>
+                          {status.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -1826,10 +1844,7 @@ export default function PainelEventoPage() {
                         </p>
                       </div>
 
-                      <Switch
-                        checked={Boolean(form.multilocal)}
-                        onChange={(value) => setForm({ ...form, multilocal: value })}
-                      />
+                      <Switch checked={Boolean(form.multilocal)} onChange={(value) => setForm({ ...form, multilocal: value })} />
                     </div>
                   </div>
 
@@ -1844,34 +1859,6 @@ export default function PainelEventoPage() {
                       placeholder="Texto descritivo do festival, conceito curatorial, diferenciais, regulamento resumido e informações que alimentarão a página pública."
                       onChange={(e) => setForm({ ...form, descricao: e.target.value })}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200 resize-none"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm text-gray-400 font-medium flex items-center gap-2">
-                      <ImageIcon size={14} className="text-axon-gold" />
-                      Logo URL
-                    </label>
-                    <input
-                      type="text"
-                      value={form.logo_url ?? ""}
-                      placeholder="https://..."
-                      onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
-                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm text-gray-400 font-medium flex items-center gap-2">
-                      <Link2 size={14} className="text-axon-gold" />
-                      Banner URL
-                    </label>
-                    <input
-                      type="text"
-                      value={form.banner_url ?? ""}
-                      placeholder="https://..."
-                      onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
-                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
                     />
                   </div>
 
@@ -1977,9 +1964,7 @@ export default function PainelEventoPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-1">Categorias & Taxas</h3>
-                    <p className="text-sm text-gray-400">
-                      Defina as categorias de competição deste evento com suas respectivas taxas de inscrição.
-                    </p>
+                    <p className="text-sm text-gray-400">Defina as categorias de competição deste evento com suas respectivas taxas de inscrição.</p>
                   </div>
 
                   <button
@@ -1997,9 +1982,7 @@ export default function PainelEventoPage() {
                   <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
                     <ListTree size={40} className="mx-auto mb-3 opacity-20 text-axon-gold" />
                     <p className="font-medium text-gray-300">Nenhuma categoria ainda</p>
-                    <p className="text-sm mt-1 text-gray-500">
-                      Crie a primeira categoria para definir as taxas de inscrição do evento.
-                    </p>
+                    <p className="text-sm mt-1 text-gray-500">Crie a primeira categoria para definir as taxas de inscrição do evento.</p>
                     <button
                       onClick={abrirModalNova}
                       className="mt-4 text-sm text-axon-gold hover:text-white border border-axon-gold/30 hover:border-axon-gold hover:bg-axon-gold/10 px-4 py-2 rounded-lg transition-all duration-200"
@@ -2059,28 +2042,21 @@ export default function PainelEventoPage() {
                               <div key={sub.id} className="flex items-center justify-between px-4 py-3 group">
                                 <div className="flex items-center gap-3 pl-4">
                                   <div className="w-px h-4 bg-axon-border" />
-                                  <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <p className="text-sm text-gray-200 font-medium">{sub.nome}</p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-sm text-gray-200 font-medium">{sub.nome}</p>
+                                    <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                      {GENERO_LABELS[sub.genero]}
+                                    </span>
+                                    {sub.faixa_etaria_label && (
                                       <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                        {GENERO_LABELS[sub.genero]}
+                                        {sub.faixa_etaria_label}
                                       </span>
-                                      {sub.faixa_etaria_label && (
-                                        <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                          {sub.faixa_etaria_label}
-                                        </span>
-                                      )}
-                                      {!sub.faixa_etaria_label && sub.faixa_etaria_min != null && sub.faixa_etaria_max != null && (
-                                        <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                          {sub.faixa_etaria_min}-{sub.faixa_etaria_max} anos
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-gray-500 mt-0.5">
-                                      {presetAtual.taxaSolo.replace("R$", "")} {moeda(sub.valor_solo)} ·{" "}
-                                      {presetAtual.taxaDuo.replace("R$", "")} {moeda(sub.valor_duo)} ·{" "}
-                                      {presetAtual.taxaConjunto.replace("R$", "")} {moeda(sub.valor_conjunto)}
-                                    </p>
+                                    )}
+                                    {!sub.faixa_etaria_label && sub.faixa_etaria_min != null && sub.faixa_etaria_max != null && (
+                                      <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                        {sub.faixa_etaria_min}-{sub.faixa_etaria_max} anos
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
 
@@ -2143,7 +2119,7 @@ export default function PainelEventoPage() {
                 </div>
 
                 <Dica>
-                  Arraste e solte as apresentações para reordenar. A ordem salva automaticamente e será usada na geração do programa oficial do evento.
+                  Arraste e solte as apresentações para reordenar. A ordem é salva automaticamente e será usada na geração do programa oficial do evento.
                 </Dica>
 
                 {apresentacoes.length === 0 ? (
@@ -2212,9 +2188,7 @@ export default function PainelEventoPage() {
                     {catEditando ? "Editar Categoria" : formCat.categoria_pai_id ? "Nova Subcategoria" : "Nova Categoria"}
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {formCat.categoria_pai_id
-                      ? presetAtual.explicacaoSub
-                      : "Categoria principal. Você pode adicionar subcategorias depois."}
+                    {formCat.categoria_pai_id ? presetAtual.explicacaoSub : "Categoria principal. Você pode adicionar subcategorias depois."}
                   </p>
                 </div>
                 <button onClick={() => setModalCat(false)} className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200">
@@ -2260,6 +2234,7 @@ export default function PainelEventoPage() {
                     {(["livre", "feminino", "masculino", "misto"] as const).map((g) => (
                       <button
                         key={g}
+                        type="button"
                         onClick={() => setFormCat({ ...formCat, genero: g })}
                         className={`py-2 rounded-lg text-sm font-medium border transition-all duration-200 ${
                           formCat.genero === g
@@ -2318,9 +2293,7 @@ export default function PainelEventoPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400 font-medium">Taxas de Inscrição</label>
-                  <p className="text-xs text-gray-500">
-                    Valor cobrado por modalidade. O terceiro campo é o valor por participante.
-                  </p>
+                  <p className="text-xs text-gray-500">Valor cobrado por modalidade. O terceiro campo é o valor por participante.</p>
 
                   <div className="grid grid-cols-3 gap-3">
                     {(["valor_solo", "valor_duo", "valor_conjunto"] as const).map((campo) => {
