@@ -1,7 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Search,
@@ -25,10 +24,8 @@ import {
   TrendingUp,
   DollarSign,
   ClipboardList,
-  Upload,
   Coffee,
   Ticket,
-  LayoutGrid,
 } from "lucide-react";
 
 type TipoProduto = "cantina" | "bilheteria";
@@ -50,7 +47,6 @@ interface PdvProduto {
   produtora_id: string;
   evento_id: string | null;
   created_at: string;
-  vinculo_id?: string | null;
 }
 
 interface PdvVenda {
@@ -74,28 +70,9 @@ interface ConfigPdv {
   pin_admin: string | null;
 }
 
-interface EventoProdutoRelacionado {
-  id: string;
-  nome: string;
-  descricao: string | null;
-  preco: number;
-  estoque: number | null;
-  tipo: "ingresso" | "consumo";
-  categoria: string | null;
-  ativo: boolean;
-  produtora_id: string;
-  evento_id: string | null;
-  created_at: string;
-}
-
-interface EventoProdutoRow {
-  id: string;
-  evento_id: string;
-  produto_id: string;
-  preco_evento: number | null;
-  estoque_evento: number | null;
-  ativo_evento: boolean | null;
-  pdv_produtos: EventoProdutoRelacionado | EventoProdutoRelacionado[] | null;
+interface ToastState {
+  msg: string;
+  tipo: "ok" | "erro" | "aviso";
 }
 
 const CATEGORIAS_CANTINA: CategoriaCantina[] = ["Bebidas", "Salgados", "Doces", "Lanches", "Outros"];
@@ -129,17 +106,6 @@ function parsePrecoInputToNumber(valor: string): number {
   return Number(apenasDigitos) / 100;
 }
 
-function mapTipoProduto(tipo: "ingresso" | "consumo" | TipoProduto): TipoProduto {
-  if (tipo === "ingresso") return "bilheteria";
-  if (tipo === "consumo") return "cantina";
-  return tipo;
-}
-
-interface ToastState {
-  msg: string;
-  tipo: "ok" | "erro" | "aviso";
-}
-
 interface ConfirmModalProps {
   open: boolean;
   title: string;
@@ -150,16 +116,32 @@ interface ConfirmModalProps {
   destructive?: boolean;
 }
 
-function ConfirmModal({ open, title, message, onConfirm, onCancel, loading, destructive }: ConfirmModalProps) {
+function ConfirmModal({
+  open,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  loading,
+  destructive,
+}: ConfirmModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onCancel}>
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-md p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="text-center">
           <div
             className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${
-              destructive ? "bg-red-500/10 border border-red-500/30" : "bg-axon-gold/10 border border-axon-gold/30"
+              destructive
+                ? "bg-red-500/10 border border-red-500/30"
+                : "bg-axon-gold/10 border border-axon-gold/30"
             }`}
           >
             <AlertCircle size={22} className={destructive ? "text-red-400" : "text-axon-gold"} />
@@ -167,14 +149,19 @@ function ConfirmModal({ open, title, message, onConfirm, onCancel, loading, dest
           <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
           <p className="text-sm text-gray-400 mb-6">{message}</p>
           <div className="flex gap-3">
-            <button onClick={onCancel} className="flex-1 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white transition-colors">
+            <button
+              onClick={onCancel}
+              className="flex-1 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white transition-colors"
+            >
               Cancelar
             </button>
             <button
               onClick={onConfirm}
               disabled={loading}
               className={`flex-1 py-2 rounded-lg font-bold disabled:opacity-50 flex items-center justify-center gap-2 ${
-                destructive ? "bg-red-500 text-white hover:bg-red-600" : "bg-axon-gold text-black hover:bg-axon-gold/80"
+                destructive
+                  ? "bg-red-500 text-white hover:bg-red-600"
+                  : "bg-axon-gold text-black hover:bg-axon-gold/80"
               }`}
             >
               {loading && <Loader2 size={16} className="animate-spin" />}
@@ -190,7 +177,6 @@ function ConfirmModal({ open, title, message, onConfirm, onCancel, loading, dest
 interface ModalProdutoProps {
   open: boolean;
   produto?: PdvProduto | null;
-  eventoId: string | null;
   produtoraId: string;
   tipoInicial?: TipoProduto;
   categoriaInicial?: string;
@@ -201,7 +187,6 @@ interface ModalProdutoProps {
 function ModalProduto({
   open,
   produto,
-  eventoId,
   produtoraId,
   tipoInicial,
   categoriaInicial,
@@ -211,20 +196,22 @@ function ModalProduto({
   const isEdicao = !!produto;
   const [nome, setNome] = useState(() => produto?.nome ?? "");
   const [descricao, setDescricao] = useState(() => produto?.descricao ?? "");
-  const [preco, setPreco] = useState(() => (produto ? formatarPrecoBRLInput(String(Math.round(produto.preco * 100))) : "0,00"));
+  const [preco, setPreco] = useState(() =>
+    produto ? formatarPrecoBRLInput(String(Math.round(produto.preco * 100))) : "0,00"
+  );
   const [estoque, setEstoque] = useState(() => (produto?.estoque != null ? String(produto.estoque) : ""));
   const [tipo, setTipo] = useState<TipoProduto>(() => produto?.tipo ?? tipoInicial ?? "cantina");
   const [categoriaSelect, setCategoriaSelect] = useState<string>(() => {
     const cat = produto?.categoria ?? categoriaInicial ?? "";
     const tipoAtual = produto?.tipo ?? tipoInicial ?? "cantina";
     const lista = tipoAtual === "cantina" ? CATEGORIAS_CANTINA : CATEGORIAS_BILHETERIA;
-    return lista.includes(cat as never) ? cat : "Outros";
+    return lista.includes(cat as CategoriaCantina & CategoriaBilheteria) ? cat : "Outros";
   });
   const [categoriaCustom, setCategoriaCustom] = useState<string>(() => {
     const cat = produto?.categoria ?? categoriaInicial ?? "";
     const tipoAtual = produto?.tipo ?? tipoInicial ?? "cantina";
     const lista = tipoAtual === "cantina" ? CATEGORIAS_CANTINA : CATEGORIAS_BILHETERIA;
-    return cat !== "" && !lista.includes(cat as never) ? cat : "";
+    return cat !== "" && !lista.includes(cat as CategoriaCantina & CategoriaBilheteria) ? cat : "";
   });
   const [ativo, setAtivo] = useState(() => produto?.ativo ?? true);
   const [salvando, setSalvando] = useState(false);
@@ -242,7 +229,7 @@ function ModalProduto({
 
       const lista = produto.tipo === "cantina" ? CATEGORIAS_CANTINA : CATEGORIAS_BILHETERIA;
 
-      if (lista.includes((produto.categoria ?? "") as never)) {
+      if (lista.includes((produto.categoria ?? "") as CategoriaCantina & CategoriaBilheteria)) {
         setCategoriaSelect(produto.categoria ?? "Outros");
         setCategoriaCustom("");
       } else {
@@ -261,7 +248,7 @@ function ModalProduto({
       const cat = categoriaInicial ?? "";
       const lista = (tipoInicial ?? "cantina") === "cantina" ? CATEGORIAS_CANTINA : CATEGORIAS_BILHETERIA;
 
-      if (lista.includes(cat as never)) {
+      if (lista.includes(cat as CategoriaCantina & CategoriaBilheteria)) {
         setCategoriaSelect(cat);
         setCategoriaCustom("");
       } else {
@@ -281,7 +268,9 @@ function ModalProduto({
     setCategoriaCustom("");
   };
 
-  const categoriaFinal = categoriaSelect === "Outros" && categoriaCustom.trim() ? categoriaCustom.trim() : categoriaSelect;
+  const categoriaFinal =
+    categoriaSelect === "Outros" && categoriaCustom.trim() ? categoriaCustom.trim() : categoriaSelect;
+
   const categoriasList = tipo === "cantina" ? CATEGORIAS_CANTINA : CATEGORIAS_BILHETERIA;
 
   async function handleSalvar() {
@@ -328,7 +317,10 @@ function ModalProduto({
     };
 
     if (isEdicao && produto) {
-      const { error: updateGlobalError } = await supabase.from("pdv_produtos").update(payloadGlobal).eq("id", produto.id);
+      const { error: updateGlobalError } = await supabase
+        .from("pdv_produtos")
+        .update(payloadGlobal)
+        .eq("id", produto.id);
 
       if (updateGlobalError) {
         setErro(updateGlobalError.message);
@@ -336,112 +328,21 @@ function ModalProduto({
         return;
       }
 
-      if (eventoId) {
-        const payloadEvento = {
-          evento_id: eventoId,
-          produto_id: produto.id,
-          preco_evento: precoNum,
-          estoque_evento: estoqueNum,
-          ativo_evento: ativo,
-        };
+      const produtoAtualizado: PdvProduto = {
+        ...produto,
+        ...payloadGlobal,
+      };
 
-        if (produto.vinculo_id) {
-          const { error: updateVinculoError } = await supabase
-            .from("evento_produtos")
-            .update(payloadEvento)
-            .eq("id", produto.vinculo_id);
-
-          if (updateVinculoError) {
-            setErro(updateVinculoError.message);
-            setSalvando(false);
-            return;
-          }
-        } else {
-          const { data: vinculoExistente, error: vinculoExistenteError } = await supabase
-            .from("evento_produtos")
-            .select("id")
-            .eq("evento_id", eventoId)
-            .eq("produto_id", produto.id)
-            .maybeSingle();
-
-          if (vinculoExistenteError) {
-            setErro(vinculoExistenteError.message);
-            setSalvando(false);
-            return;
-          }
-
-          if (vinculoExistente?.id) {
-            const { error: updateVinculoExistenteError } = await supabase
-              .from("evento_produtos")
-              .update(payloadEvento)
-              .eq("id", vinculoExistente.id);
-
-            if (updateVinculoExistenteError) {
-              setErro(updateVinculoExistenteError.message);
-              setSalvando(false);
-              return;
-            }
-
-            const produtoAtualizado: PdvProduto = {
-              ...produto,
-              ...payloadGlobal,
-              evento_id: eventoId,
-              vinculo_id: vinculoExistente.id,
-            };
-
-            onSaved(produtoAtualizado);
-            setSalvando(false);
-            return;
-          } else {
-            const { data: novoVinculo, error: insertVinculoError } = await supabase
-              .from("evento_produtos")
-              .insert(payloadEvento)
-              .select("id")
-              .single();
-
-            if (insertVinculoError) {
-              setErro(insertVinculoError.message);
-              setSalvando(false);
-              return;
-            }
-
-            const produtoAtualizado: PdvProduto = {
-              ...produto,
-              ...payloadGlobal,
-              evento_id: eventoId,
-              vinculo_id: novoVinculo?.id ?? null,
-            };
-
-            onSaved(produtoAtualizado);
-            setSalvando(false);
-            return;
-          }
-        }
-
-        const produtoAtualizado: PdvProduto = {
-          ...produto,
-          ...payloadGlobal,
-          evento_id: eventoId,
-          vinculo_id: produto.vinculo_id ?? null,
-        };
-
-        onSaved(produtoAtualizado);
-      } else {
-        const produtoAtualizado: PdvProduto = {
-          ...produto,
-          ...payloadGlobal,
-          evento_id: null,
-          vinculo_id: null,
-        };
-
-        onSaved(produtoAtualizado);
-      }
-
+      onSaved(produtoAtualizado);
       setSalvando(false);
       return;
     }
 
-    const { data: novoProduto, error: insertGlobalError } = await supabase.from("pdv_produtos").insert(payloadGlobal).select("*").single();
+    const { data: novoProduto, error: insertGlobalError } = await supabase
+      .from("pdv_produtos")
+      .insert(payloadGlobal)
+      .select("*")
+      .single();
 
     if (insertGlobalError || !novoProduto) {
       setErro(insertGlobalError?.message ?? "Erro ao criar produto.");
@@ -449,52 +350,21 @@ function ModalProduto({
       return;
     }
 
-    if (eventoId) {
-      const payloadEvento = {
-        evento_id: eventoId,
-        produto_id: novoProduto.id,
-        preco_evento: precoNum,
-        estoque_evento: estoqueNum,
-        ativo_evento: ativo,
-      };
-
-      const { data: novoVinculo, error: insertVinculoError } = await supabase
-        .from("evento_produtos")
-        .insert(payloadEvento)
-        .select("id")
-        .single();
-
-      if (insertVinculoError) {
-        setErro(insertVinculoError.message);
-        setSalvando(false);
-        return;
-      }
-
-      const produtoComVinculo: PdvProduto = {
-        ...(novoProduto as PdvProduto),
-        evento_id: eventoId,
-        vinculo_id: novoVinculo?.id ?? null,
-      };
-
-      onSaved(produtoComVinculo);
-    } else {
-      const produtoGlobal: PdvProduto = {
-        ...(novoProduto as PdvProduto),
-        evento_id: null,
-        vinculo_id: null,
-      };
-
-      onSaved(produtoGlobal);
-    }
-
+    onSaved(novoProduto as PdvProduto);
     setSalvando(false);
   }
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-8" onClick={onClose}>
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 overflow-y-auto py-8"
+      onClick={onClose}
+    >
+      <div
+        className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-lg shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center px-6 py-4 border-b border-axon-border">
           <h2 className="text-lg font-semibold text-white">{isEdicao ? "Editar Produto" : "Novo Produto"}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white" aria-label="Fechar modal">
@@ -560,7 +430,9 @@ function ModalProduto({
                   type="button"
                   onClick={() => handleTipoChange(t)}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors flex items-center justify-center gap-2 ${
-                    tipo === t ? "bg-axon-gold text-black border-axon-gold" : "border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
+                    tipo === t
+                      ? "bg-axon-gold text-black border-axon-gold"
+                      : "border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
                   }`}
                 >
                   {t === "cantina" ? <Coffee size={16} /> : <Ticket size={16} />}
@@ -601,7 +473,11 @@ function ModalProduto({
               onClick={() => setAtivo(!ativo)}
               className={`relative w-10 h-6 rounded-full transition-colors ${ativo ? "bg-axon-gold" : "bg-axon-border"}`}
             >
-              <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${ativo ? "translate-x-5" : "translate-x-1"}`} />
+              <span
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                  ativo ? "translate-x-5" : "translate-x-1"
+                }`}
+              />
             </button>
             <span className="text-sm text-gray-300">Produto {ativo ? "ativo" : "inativo"}</span>
           </div>
@@ -610,7 +486,10 @@ function ModalProduto({
         </div>
 
         <div className="flex gap-3 px-6 py-4 border-t border-axon-border">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2 rounded-lg border border-axon-border text-gray-400 hover:text-white transition-colors"
+          >
             Cancelar
           </button>
           <button
@@ -629,20 +508,20 @@ function ModalProduto({
 
 interface AbaProdutosProps {
   produtos: PdvProduto[];
-  eventoId: string | null;
-  importando: boolean;
-  onImportar: () => void;
   onNovoProduto: (tipo?: TipoProduto, categoria?: string) => void;
   onEditar: (p: PdvProduto) => void;
   onExcluir: (p: PdvProduto) => void;
 }
 
-function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto, onEditar, onExcluir }: AbaProdutosProps) {
+function AbaProdutos({ produtos, onNovoProduto, onEditar, onExcluir }: AbaProdutosProps) {
   const [tipoAtivo, setTipoAtivo] = useState<TipoProduto>("cantina");
-  const [categoriaAtiva, setCategoriaAtiva] = useState<string>("Todos");
+  const [categoriaAtiva, setCategoriaAtiva] = useState<Categoria>("Todos");
   const [busca, setBusca] = useState("");
 
-  const categoriasList: string[] = tipoAtivo === "cantina" ? ["Todos", ...CATEGORIAS_CANTINA] : ["Todos", ...CATEGORIAS_BILHETERIA];
+  const categoriasList: Categoria[] =
+    tipoAtivo === "cantina"
+      ? ["Todos", ...CATEGORIAS_CANTINA]
+      : ["Todos", ...CATEGORIAS_BILHETERIA];
 
   const handleTipoChange = (tipo: TipoProduto) => {
     setTipoAtivo(tipo);
@@ -655,7 +534,9 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
     if (categoriaAtiva !== "Todos") {
       const catProduto = p.categoria ?? "Outros";
       const listaConhecida = tipoAtivo === "cantina" ? CATEGORIAS_CANTINA : CATEGORIAS_BILHETERIA;
-      const catNormalizada = listaConhecida.includes(catProduto as never) ? catProduto : "Outros";
+      const catNormalizada = listaConhecida.includes(catProduto as CategoriaCantina & CategoriaBilheteria)
+        ? catProduto
+        : "Outros";
       if (catNormalizada !== categoriaAtiva) return false;
     }
 
@@ -667,37 +548,6 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
   });
 
   const produtosPorTipo = produtos.filter((p) => p.tipo === tipoAtivo);
-
-  if (eventoId && produtos.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 px-6">
-        <div className="w-20 h-20 rounded-2xl bg-axon-gold/10 border border-axon-gold/20 flex items-center justify-center mb-6">
-          <ShoppingBag size={36} className="text-axon-gold/60" />
-        </div>
-        <h3 className="text-xl font-semibold text-white mb-2">Nenhum produto cadastrado</h3>
-        <p className="text-gray-500 text-sm text-center max-w-md mb-8">
-          Este evento ainda não possui produtos. Você pode importar o cardápio padrão como ponto de partida ou criar seus produtos do zero.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
-          <button
-            onClick={onImportar}
-            disabled={importando}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-axon-gold text-black font-bold hover:bg-axon-gold/80 disabled:opacity-60 transition-colors"
-          >
-            {importando ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
-            Importar Cardápio Padrão
-          </button>
-          <button
-            onClick={() => onNovoProduto()}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-axon-border text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
-          >
-            <Plus size={18} />
-            Cadastrar do Zero
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4">
@@ -746,7 +596,9 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
             key={cat}
             onClick={() => setCategoriaAtiva(cat)}
             className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              categoriaAtiva === cat ? "bg-axon-gold text-black" : "bg-axon-panel border border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
+              categoriaAtiva === cat
+                ? "bg-axon-gold text-black"
+                : "bg-axon-panel border border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
             }`}
           >
             {cat}
@@ -790,7 +642,7 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {produtosFiltrados.map((p) => (
             <div
-              key={`${p.id}-${p.vinculo_id ?? "global"}`}
+              key={p.id}
               className={`bg-axon-panel border rounded-xl p-4 flex flex-col gap-2 transition-colors ${
                 p.ativo ? "border-axon-border hover:border-gray-600" : "border-axon-border/40 opacity-60"
               }`}
@@ -802,10 +654,18 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
                 </div>
 
                 <div className="flex gap-1 shrink-0">
-                  <button onClick={() => onEditar(p)} className="p-1 text-gray-500 hover:text-axon-gold transition-colors" aria-label={`Editar ${p.nome}`}>
+                  <button
+                    onClick={() => onEditar(p)}
+                    className="p-1 text-gray-500 hover:text-axon-gold transition-colors"
+                    aria-label={`Editar ${p.nome}`}
+                  >
                     <Pencil size={13} />
                   </button>
-                  <button onClick={() => onExcluir(p)} className="p-1 text-gray-500 hover:text-red-400 transition-colors" aria-label={`Excluir ${p.nome}`}>
+                  <button
+                    onClick={() => onExcluir(p)}
+                    className="p-1 text-gray-500 hover:text-red-400 transition-colors"
+                    aria-label={`Excluir ${p.nome}`}
+                  >
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -820,7 +680,11 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
                     </span>
                   )}
                   {p.estoque !== null && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${p.estoque > 0 ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full ${
+                        p.estoque > 0 ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"
+                      }`}
+                    >
                       {p.estoque === 0 ? "Esgotado" : `${p.estoque} un`}
                     </span>
                   )}
@@ -835,39 +699,42 @@ function AbaProdutos({ produtos, eventoId, importando, onImportar, onNovoProduto
 }
 
 interface AbaVendasProps {
-  eventoId: string | null;
   produtoraId: string;
 }
 
-function AbaVendas({ eventoId, produtoraId }: AbaVendasProps) {
+function AbaVendas({ produtoraId }: AbaVendasProps) {
   const [vendas, setVendas] = useState<PdvVenda[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [filtroForma, setFiltroForma] = useState<string>("todos");
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
 
   const carregarVendas = useCallback(async () => {
+    if (!produtoraId) {
+      setVendas([]);
+      setCarregando(false);
+      return;
+    }
+
     setCarregando(true);
     const supabase = createClient();
 
-    let query = supabase.from("pdv_vendas").select("*").order("created_at", { ascending: false }).limit(200);
+    const { data } = await supabase
+      .from("pdv_vendas")
+      .select("*")
+      .eq("produtora_id", produtoraId)
+      .order("created_at", { ascending: false })
+      .limit(200);
 
-    if (eventoId) {
-      query = query.eq("evento_id", eventoId);
-    } else {
-      query = query.eq("produtora_id", produtoraId);
-    }
-
-    const { data } = await query;
     setVendas((data ?? []) as PdvVenda[]);
     setCarregando(false);
-  }, [eventoId, produtoraId]);
+  }, [produtoraId]);
 
   useEffect(() => {
-    if (!eventoId && !produtoraId) return;
+    if (!produtoraId) return;
 
     carregarVendas();
     const supabase = createClient();
-    const filterString = eventoId ? `evento_id=eq.${eventoId}` : `produtora_id=eq.${produtoraId}`;
+    const filterString = `produtora_id=eq.${produtoraId}`;
 
     const channel = supabase
       .channel(`pdv_vendas_realtime:${filterString}`)
@@ -893,13 +760,19 @@ function AbaVendas({ eventoId, produtoraId }: AbaVendasProps) {
         channelRef.current = null;
       }
     };
-  }, [carregarVendas, eventoId, produtoraId]);
+  }, [carregarVendas, produtoraId]);
 
-  const vendasFiltradas = filtroForma === "todos" ? vendas : vendas.filter((v) => v.forma_pagamento === filtroForma);
+  const vendasFiltradas =
+    filtroForma === "todos" ? vendas : vendas.filter((v) => v.forma_pagamento === filtroForma);
+
   const totalGeral = vendasFiltradas.reduce((acc, v) => acc + v.total, 0);
   const totalPix = vendas.filter((v) => v.forma_pagamento === "pix").reduce((acc, v) => acc + v.total, 0);
-  const totalDinheiro = vendas.filter((v) => v.forma_pagamento === "dinheiro").reduce((acc, v) => acc + v.total, 0);
-  const totalCartao = vendas.filter((v) => v.forma_pagamento === "cartao").reduce((acc, v) => acc + v.total, 0);
+  const totalDinheiro = vendas
+    .filter((v) => v.forma_pagamento === "dinheiro")
+    .reduce((acc, v) => acc + v.total, 0);
+  const totalCartao = vendas
+    .filter((v) => v.forma_pagamento === "cartao")
+    .reduce((acc, v) => acc + v.total, 0);
 
   const badgeForma = (forma: string) => {
     const map: Record<string, string> = {
@@ -936,7 +809,9 @@ function AbaVendas({ eventoId, produtoraId }: AbaVendasProps) {
               key={f}
               onClick={() => setFiltroForma(f)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                filtroForma === f ? "bg-axon-gold text-black" : "bg-axon-panel border border-axon-border text-gray-400 hover:text-white"
+                filtroForma === f
+                  ? "bg-axon-gold text-black"
+                  : "bg-axon-panel border border-axon-border text-gray-400 hover:text-white"
               }`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -944,7 +819,11 @@ function AbaVendas({ eventoId, produtoraId }: AbaVendasProps) {
           ))}
         </div>
 
-        <button onClick={carregarVendas} className="ml-auto text-gray-500 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-colors" aria-label="Atualizar vendas">
+        <button
+          onClick={carregarVendas}
+          className="ml-auto text-gray-500 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+          aria-label="Atualizar vendas"
+        >
           <RefreshCw size={14} />
         </button>
       </div>
@@ -974,14 +853,27 @@ function AbaVendas({ eventoId, produtoraId }: AbaVendasProps) {
             </thead>
             <tbody>
               {vendasFiltradas.map((v, i) => (
-                <tr key={v.id} className={`border-b border-axon-border/40 hover:bg-white/[0.02] ${i % 2 === 0 ? "" : "bg-white/[0.01]"}`}>
-                  <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">{formatarDataHora(v.created_at)}</td>
+                <tr
+                  key={v.id}
+                  className={`border-b border-axon-border/40 hover:bg-white/[0.02] ${
+                    i % 2 === 0 ? "" : "bg-white/[0.01]"
+                  }`}
+                >
+                  <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                    {formatarDataHora(v.created_at)}
+                  </td>
                   <td className="px-4 py-2.5 text-white font-medium">{v.produto_nome}</td>
                   <td className="px-4 py-2.5 text-center text-gray-300 tabular-nums">{v.quantidade}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{formatarMoeda(v.preco_unitario)}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-axon-gold tabular-nums">{formatarMoeda(v.total)}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">
+                    {formatarMoeda(v.preco_unitario)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-axon-gold tabular-nums">
+                    {formatarMoeda(v.total)}
+                  </td>
                   <td className="px-4 py-2.5">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${badgeForma(v.forma_pagamento)}`}>{v.forma_pagamento.toUpperCase()}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${badgeForma(v.forma_pagamento)}`}>
+                      {v.forma_pagamento.toUpperCase()}
+                    </span>
                   </td>
                   <td className="px-4 py-2.5 text-gray-500 text-xs">{v.operador_nome ?? "—"}</td>
                 </tr>
@@ -992,7 +884,9 @@ function AbaVendas({ eventoId, produtoraId }: AbaVendasProps) {
                 <td colSpan={4} className="px-4 py-3 text-xs text-gray-500 font-medium">
                   {vendasFiltradas.length} venda(s)
                 </td>
-                <td className="px-4 py-3 text-right font-bold text-axon-gold tabular-nums">{formatarMoeda(totalGeral)}</td>
+                <td className="px-4 py-3 text-right font-bold text-axon-gold tabular-nums">
+                  {formatarMoeda(totalGeral)}
+                </td>
                 <td colSpan={2} />
               </tr>
             </tfoot>
@@ -1026,8 +920,24 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
     const carregar = async () => {
       setCarregando(true);
       const supabase = createClient();
-      const { data } = await supabase.from("pdv_config").select("*").eq("produtora_id", produtoraId).maybeSingle();
-      if (data) setConfig(data as ConfigPdv);
+      const { data } = await supabase
+        .from("pdv_config")
+        .select("*")
+        .eq("produtora_id", produtoraId)
+        .maybeSingle();
+
+      if (data) {
+        setConfig(data as ConfigPdv);
+      } else {
+        setConfig({
+          produtora_id: produtoraId,
+          pix_chave: "",
+          pix_nome: "",
+          pix_cidade: "",
+          pin_admin: "",
+        });
+      }
+
       setCarregando(false);
     };
 
@@ -1151,7 +1061,9 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
               <input
                 type={mostrarPin ? "text" : "password"}
                 value={config.pin_admin ?? ""}
-                onChange={(e) => setConfig({ ...config, pin_admin: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                onChange={(e) =>
+                  setConfig({ ...config, pin_admin: e.target.value.replace(/\D/g, "").slice(0, 6) })
+                }
                 className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 pr-9 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-axon-gold/50"
                 placeholder="••••"
                 maxLength={6}
@@ -1201,15 +1113,11 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
   );
 }
 
-function PdvPageInner() {
-  const searchParams = useSearchParams();
-  const eventoId = searchParams.get("eventoId");
-
+export default function PdvPage() {
   const [aba, setAba] = useState<AbaPdv>("produtos");
   const [produtos, setProdutos] = useState<PdvProduto[]>([]);
   const [carregandoProdutos, setCarregandoProdutos] = useState(true);
   const [produtoraId, setProdutoraId] = useState("");
-  const [importando, setImportando] = useState(false);
   const [modalProdutoOpen, setModalProdutoOpen] = useState(false);
   const [editandoProduto, setEditandoProduto] = useState<PdvProduto | null>(null);
   const [tipoInicialModal, setTipoInicialModal] = useState<TipoProduto | undefined>(undefined);
@@ -1253,52 +1161,11 @@ function PdvPageInner() {
     setCarregandoProdutos(true);
     const supabase = createClient();
 
-    if (!eventoId) {
-      const { data, error } = await supabase
-        .from("pdv_produtos")
-        .select("*")
-        .eq("produtora_id", produtoraId)
-        .order("nome");
-
-      if (error) {
-        setProdutos([]);
-        setCarregandoProdutos(false);
-        mostrarToast(error.message, "erro");
-        return;
-      }
-
-      setProdutos((data ?? []) as PdvProduto[]);
-      setCarregandoProdutos(false);
-      return;
-    }
-
     const { data, error } = await supabase
-      .from("evento_produtos")
-      .select(
-        `
-          id,
-          evento_id,
-          produto_id,
-          preco_evento,
-          estoque_evento,
-          ativo_evento,
-          pdv_produtos (
-            id,
-            nome,
-            descricao,
-            preco,
-            estoque,
-            tipo,
-            categoria,
-            ativo,
-            produtora_id,
-            evento_id,
-            created_at
-          )
-        `
-      )
-      .eq("evento_id", eventoId)
-      .order("id", { ascending: true });
+      .from("pdv_produtos")
+      .select("*")
+      .eq("produtora_id", produtoraId)
+      .order("nome");
 
     if (error) {
       setProdutos([]);
@@ -1307,107 +1174,14 @@ function PdvPageInner() {
       return;
     }
 
-    const rows = (data ?? []) as unknown as EventoProdutoRow[];
-
-    const produtosMapeados: PdvProduto[] = rows
-      .flatMap((row) => {
-        const pdvProd = Array.isArray(row.pdv_produtos) ? row.pdv_produtos[0] : row.pdv_produtos;
-        if (!pdvProd || pdvProd.produtora_id !== produtoraId) return [];
-
-        return [
-          {
-            id: pdvProd.id,
-            nome: pdvProd.nome,
-            descricao: pdvProd.descricao,
-            preco: row.preco_evento ?? pdvProd.preco,
-            estoque: row.estoque_evento ?? pdvProd.estoque,
-            tipo: mapTipoProduto(pdvProd.tipo),
-            categoria: pdvProd.categoria,
-            ativo: row.ativo_evento ?? pdvProd.ativo,
-            produtora_id: pdvProd.produtora_id,
-            evento_id: row.evento_id,
-            created_at: pdvProd.created_at,
-            vinculo_id: row.id,
-          },
-        ];
-      })
-      .sort((a, b) => a.nome.localeCompare(b.nome));
-
-    setProdutos(produtosMapeados);
+    setProdutos((data ?? []) as PdvProduto[]);
     setCarregandoProdutos(false);
-  }, [eventoId, produtoraId, mostrarToast]);
+  }, [produtoraId, mostrarToast]);
 
   useEffect(() => {
     if (!produtoraId) return;
     carregarProdutos();
   }, [carregarProdutos, produtoraId]);
-
-  const importarCardapioPadrao = useCallback(async () => {
-    if (!eventoId || !produtoraId) return;
-
-    setImportando(true);
-    const supabase = createClient();
-
-    const { data: padroes, error: padroesError } = await supabase
-      .from("pdv_produtos")
-      .select("*")
-      .eq("produtora_id", produtoraId)
-      .order("nome");
-
-    if (padroesError) {
-      mostrarToast(padroesError.message, "erro");
-      setImportando(false);
-      return;
-    }
-
-    if (!padroes || padroes.length === 0) {
-      mostrarToast("Nenhum produto no catálogo global encontrado.", "aviso");
-      setImportando(false);
-      return;
-    }
-
-    const { data: existentes, error: existentesError } = await supabase
-      .from("evento_produtos")
-      .select("produto_id")
-      .eq("evento_id", eventoId);
-
-    if (existentesError) {
-      mostrarToast(existentesError.message, "erro");
-      setImportando(false);
-      return;
-    }
-
-    const idsJaVinculados = new Set((existentes ?? []).map((item: { produto_id: string }) => item.produto_id));
-
-    const vinculosParaCriar = (padroes as PdvProduto[])
-      .filter((produto) => !idsJaVinculados.has(produto.id))
-      .map((produto) => ({
-        evento_id: eventoId,
-        produto_id: produto.id,
-        preco_evento: produto.preco,
-        estoque_evento: produto.estoque,
-        ativo_evento: produto.ativo,
-      }));
-
-    if (vinculosParaCriar.length === 0) {
-      mostrarToast("Todos os produtos do catálogo global já estão vinculados a este evento.", "aviso");
-      setImportando(false);
-      await carregarProdutos();
-      return;
-    }
-
-    const { error: insertError } = await supabase.from("evento_produtos").insert(vinculosParaCriar);
-
-    if (insertError) {
-      mostrarToast(insertError.message, "erro");
-      setImportando(false);
-      return;
-    }
-
-    await carregarProdutos();
-    mostrarToast(`${vinculosParaCriar.length} produto(s) importado(s) com sucesso.`, "ok");
-    setImportando(false);
-  }, [eventoId, produtoraId, carregarProdutos, mostrarToast]);
 
   const handleNovoProduto = useCallback((tipo?: TipoProduto, categoria?: string) => {
     setEditandoProduto(null);
@@ -1434,46 +1208,16 @@ function PdvPageInner() {
     setDeletando(true);
     const supabase = createClient();
 
-    if (eventoId) {
-      const alvoVinculoId = excluindoProduto.vinculo_id;
+    const { error } = await supabase.from("pdv_produtos").delete().eq("id", excluindoProduto.id);
 
-      if (alvoVinculoId) {
-        const { error } = await supabase.from("evento_produtos").delete().eq("id", alvoVinculoId);
-
-        if (error) {
-          mostrarToast(error.message, "erro");
-          setDeletando(false);
-          return;
-        }
-      } else {
-        const { error } = await supabase
-          .from("evento_produtos")
-          .delete()
-          .eq("evento_id", eventoId)
-          .eq("produto_id", excluindoProduto.id);
-
-        if (error) {
-          mostrarToast(error.message, "erro");
-          setDeletando(false);
-          return;
-        }
-      }
-
-      setProdutos((prev) => prev.filter((p) => !(p.id === excluindoProduto.id && p.vinculo_id === excluindoProduto.vinculo_id)));
-      mostrarToast("Produto desvinculado do evento.", "ok");
-    } else {
-      const { error } = await supabase.from("pdv_produtos").delete().eq("id", excluindoProduto.id);
-
-      if (error) {
-        mostrarToast(error.message, "erro");
-        setDeletando(false);
-        return;
-      }
-
-      setProdutos((prev) => prev.filter((p) => p.id !== excluindoProduto.id));
-      mostrarToast("Produto excluído do catálogo global.", "ok");
+    if (error) {
+      mostrarToast(error.message, "erro");
+      setDeletando(false);
+      return;
     }
 
+    setProdutos((prev) => prev.filter((p) => p.id !== excluindoProduto.id));
+    mostrarToast("Produto excluído do catálogo.", "ok");
     setDeletando(false);
     setConfirmExcluirOpen(false);
     setExcluindoProduto(null);
@@ -1482,10 +1226,7 @@ function PdvPageInner() {
   const handleProdutoSalvo = useCallback(
     (produto: PdvProduto) => {
       setProdutos((prev) => {
-        const idx = prev.findIndex((p) => {
-          if (eventoId) return p.id === produto.id && (p.vinculo_id ?? null) === (produto.vinculo_id ?? null);
-          return p.id === produto.id;
-        });
+        const idx = prev.findIndex((p) => p.id === produto.id);
 
         if (idx >= 0) {
           const novo = [...prev];
@@ -1500,7 +1241,7 @@ function PdvPageInner() {
       setModalProdutoOpen(false);
       setEditandoProduto(null);
     },
-    [editandoProduto, eventoId, mostrarToast]
+    [editandoProduto, mostrarToast]
   );
 
   const ABAS: { key: AbaPdv; label: string; icon: typeof Package }[] = [
@@ -1524,19 +1265,10 @@ function PdvPageInner() {
               <div className="w-9 h-9 rounded-lg bg-axon-gold/10 border border-axon-gold/20 flex items-center justify-center">
                 <ShoppingBag size={18} className="text-axon-gold" />
               </div>
-              <h1 className="text-2xl font-semibold text-white">PDV Administrativo</h1>
+              <h1 className="text-2xl font-semibold text-white">Catálogo de Produtos</h1>
             </div>
-            <p className="text-sm text-gray-500 ml-12">
-              {eventoId ? "Gestão de produtos e vendas do evento" : "Catálogo global da produtora"}
-            </p>
+            <p className="text-sm text-gray-500 ml-12">Gerencie o catálogo central da produtora, vendas e configurações do PDV.</p>
           </div>
-
-          {eventoId && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-axon-panel border border-axon-border text-xs text-gray-400">
-              <LayoutGrid size={12} />
-              <span className="font-mono">{eventoId.slice(0, 8)}…</span>
-            </div>
-          )}
         </div>
 
         <div className="flex border-b border-axon-border">
@@ -1563,16 +1295,13 @@ function PdvPageInner() {
             ) : (
               <AbaProdutos
                 produtos={produtos}
-                eventoId={eventoId}
-                importando={importando}
-                onImportar={importarCardapioPadrao}
                 onNovoProduto={handleNovoProduto}
                 onEditar={handleEditarProduto}
                 onExcluir={handleExcluir}
               />
             ))}
 
-          {aba === "vendas" && produtoraId && <AbaVendas eventoId={eventoId} produtoraId={produtoraId} />}
+          {aba === "vendas" && produtoraId && <AbaVendas produtoraId={produtoraId} />}
           {aba === "configuracoes" && produtoraId && <AbaConfiguracoes produtoraId={produtoraId} />}
         </div>
       </div>
@@ -1580,7 +1309,6 @@ function PdvPageInner() {
       <ModalProduto
         open={modalProdutoOpen}
         produto={editandoProduto}
-        eventoId={eventoId}
         produtoraId={produtoraId}
         tipoInicial={tipoInicialModal}
         categoriaInicial={categoriaInicialModal}
@@ -1593,12 +1321,8 @@ function PdvPageInner() {
 
       <ConfirmModal
         open={confirmExcluirOpen}
-        title={eventoId ? "Desvincular produto" : "Excluir produto"}
-        message={
-          eventoId
-            ? `Deseja remover "${excluindoProduto?.nome}" apenas deste evento? O produto continuará existindo no catálogo global.`
-            : `Deseja excluir permanentemente "${excluindoProduto?.nome}" do catálogo global? Esta ação não pode ser desfeita.`
-        }
+        title="Excluir produto"
+        message={`Deseja excluir permanentemente "${excluindoProduto?.nome}" do catálogo central? Esta ação não pode ser desfeita.`}
         onConfirm={confirmarExclusao}
         onCancel={() => {
           setConfirmExcluirOpen(false);
@@ -1609,7 +1333,9 @@ function PdvPageInner() {
       />
 
       {toast && (
-        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold shadow-lg transition-all ${toastColors[toast.tipo]}`}>
+        <div
+          className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold shadow-lg transition-all ${toastColors[toast.tipo]}`}
+        >
           {toast.tipo === "ok" && <CheckCircle2 size={16} />}
           {toast.tipo === "erro" && <AlertCircle size={16} />}
           {toast.tipo === "aviso" && <AlertCircle size={16} />}
@@ -1617,19 +1343,5 @@ function PdvPageInner() {
         </div>
       )}
     </>
-  );
-}
-
-export default function PdvPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="animate-spin text-axon-gold" size={28} />
-        </div>
-      }
-    >
-      <PdvPageInner />
-    </Suspense>
   );
 }
