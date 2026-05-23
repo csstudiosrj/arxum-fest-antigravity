@@ -39,74 +39,104 @@ const PRESETS: Record<
   {
     placeholderNovo: string;
     dica: React.ReactNode;
-    placeholderNome: string;
+    placeholderNomePrincipal: string;
+    placeholderNomeSubcategoria: string;
     taxaSolo: string;
     taxaDuo: string;
     taxaConjunto: string;
+    explicacaoPrincipal: string;
     explicacaoSub: string;
   }
 > = {
-  danca: {
-    placeholderNovo: "Ex: Festival de Dança ARXUM 2026",
+  default: {
+    placeholderNovo: "Ex: Festival 2026",
     dica: (
       <>
-        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Ballet</em>) e, dentro delas,
-        subcategorias por faixa etária ou gênero (ex: <em>Ballet Infantil Feminino</em>). As taxas de
-        inscrição são definidas por categoria. Solo, Duo e Conjunto têm valores diferentes.
+        <strong>Como funciona:</strong> As Categorias Principais funcionam como rótulos de agrupamento para organizar
+        suas subcategorias. Elas não cobram taxas de inscrição diretamente.
       </>
     ),
-    placeholderNome: "Ex: Ballet Clássico, Jazz Adulto, Contemporâneo...",
+    placeholderNomePrincipal: "Ex: Categoria Geral, Bloco Principal, Módulo Geral...",
+    placeholderNomeSubcategoria: "Ex: Nível Iniciante, Divisão A, Subcategoria 1...",
     taxaSolo: "Solo R$",
     taxaDuo: "Duo R$",
-    taxaConjunto: "Conjunto/pax R$",
+    taxaConjunto: "Conjunto R$",
+    explicacaoPrincipal:
+      "Categoria Principal usada para organizar o evento. Ela funciona como agrupadora e não cobra taxa diretamente.",
     explicacaoSub:
-      "Subcategoria vinculada a uma categoria-pai. Herda o estilo, mas tem faixa etária e gênero próprios.",
+      "Subcategoria vinculada a uma Categoria Principal. É aqui que você define gênero, faixa etária e taxas.",
+  },
+  danca: {
+    placeholderNovo: "Ex: Festival 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> As Categorias Principais funcionam como rótulos de agrupamento para organizar
+        suas subcategorias. Elas não cobram taxas de inscrição diretamente.
+      </>
+    ),
+    placeholderNomePrincipal: "Ex: Categoria Geral, Bloco Principal, Módulo Geral...",
+    placeholderNomeSubcategoria: "Ex: Nível Iniciante, Divisão A, Subcategoria 1...",
+    taxaSolo: "Solo R$",
+    taxaDuo: "Duo R$",
+    taxaConjunto: "Conjunto R$",
+    explicacaoPrincipal:
+      "Categoria Principal usada para organizar o evento. Ela funciona como agrupadora e não cobra taxa diretamente.",
+    explicacaoSub:
+      "Subcategoria vinculada a uma Categoria Principal. É aqui que você define gênero, faixa etária e taxas.",
   },
   musica: {
-    placeholderNovo: "Ex: Festival de Música ARXUM 2026",
+    placeholderNovo: "Ex: Festival 2026",
     dica: (
       <>
-        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>MPB, Rock</em>) e, dentro delas,
-        subcategorias por formato (ex: <em>Solo Vocal, Banda Instrumental</em>). As taxas de inscrição
-        são definidas por categoria.
+        <strong>Como funciona:</strong> As Categorias Principais funcionam como rótulos de agrupamento para organizar
+        suas subcategorias. Elas não cobram taxas de inscrição diretamente.
       </>
     ),
-    placeholderNome: "Ex: MPB, Rock, Solo Vocal, Música Clássica...",
-    taxaSolo: "Solo R$",
-    taxaDuo: "Duo/Dupla R$",
-    taxaConjunto: "Banda/Grupo R$",
-    explicacaoSub:
-      "Subcategoria vinculada a uma categoria-pai. Herda o estilo musical, mas tem formato e características próprias.",
-  },
-  teatro: {
-    placeholderNovo: "Ex: Mostra de Teatro ARXUM 2026",
-    dica: (
-      <>
-        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Comédia, Drama</em>) e, dentro delas,
-        subcategorias (ex: <em>Cena Curta, Monólogo</em>). As taxas de inscrição são definidas por categoria.
-      </>
-    ),
-    placeholderNome: "Ex: Comédia, Drama, Monólogo, Teatro Musical...",
-    taxaSolo: "Monólogo R$",
-    taxaDuo: "Cena em Dupla R$",
-    taxaConjunto: "Elenco/Grupo R$",
-    explicacaoSub:
-      "Subcategoria vinculada a uma categoria-pai. Herda o gênero teatral, mas tem duração ou elenco específicos.",
-  },
-  multidisciplinar: {
-    placeholderNovo: "Ex: Festival Multicultural ARXUM 2026",
-    dica: (
-      <>
-        <strong>Como funciona:</strong> Crie categorias-pai por linguagem artística (ex: <em>Dança, Música, Teatro</em>)
-        e, dentro delas, subcategorias por modalidade, faixa etária ou formação. As taxas podem variar por categoria.
-      </>
-    ),
-    placeholderNome: "Ex: Dança Contemporânea, Solo Vocal, Cena Curta...",
+    placeholderNomePrincipal: "Ex: Categoria Geral, Bloco Principal, Módulo Geral...",
+    placeholderNomeSubcategoria: "Ex: Nível Iniciante, Divisão A, Subcategoria 1...",
     taxaSolo: "Solo R$",
     taxaDuo: "Duo R$",
-    taxaConjunto: "Grupo/pax R$",
+    taxaConjunto: "Conjunto R$",
+    explicacaoPrincipal:
+      "Categoria Principal usada para organizar o evento. Ela funciona como agrupadora e não cobra taxa diretamente.",
     explicacaoSub:
-      "Subcategoria vinculada a uma categoria-pai. Use para organizar melhor as modalidades e faixas do evento.",
+      "Subcategoria vinculada a uma Categoria Principal. É aqui que você define gênero, faixa etária e taxas.",
+  },
+  teatro: {
+    placeholderNovo: "Ex: Festival 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> As Categorias Principais funcionam como rótulos de agrupamento para organizar
+        suas subcategorias. Elas não cobram taxas de inscrição diretamente.
+      </>
+    ),
+    placeholderNomePrincipal: "Ex: Categoria Geral, Bloco Principal, Módulo Geral...",
+    placeholderNomeSubcategoria: "Ex: Nível Iniciante, Divisão A, Subcategoria 1...",
+    taxaSolo: "Solo R$",
+    taxaDuo: "Duo R$",
+    taxaConjunto: "Conjunto R$",
+    explicacaoPrincipal:
+      "Categoria Principal usada para organizar o evento. Ela funciona como agrupadora e não cobra taxa diretamente.",
+    explicacaoSub:
+      "Subcategoria vinculada a uma Categoria Principal. É aqui que você define gênero, faixa etária e taxas.",
+  },
+  multidisciplinar: {
+    placeholderNovo: "Ex: Festival 2026",
+    dica: (
+      <>
+        <strong>Como funciona:</strong> As Categorias Principais funcionam como rótulos de agrupamento para organizar
+        suas subcategorias. Elas não cobram taxas de inscrição diretamente.
+      </>
+    ),
+    placeholderNomePrincipal: "Ex: Categoria Geral, Bloco Principal, Módulo Geral...",
+    placeholderNomeSubcategoria: "Ex: Nível Iniciante, Divisão A, Subcategoria 1...",
+    taxaSolo: "Solo R$",
+    taxaDuo: "Duo R$",
+    taxaConjunto: "Conjunto R$",
+    explicacaoPrincipal:
+      "Categoria Principal usada para organizar o evento. Ela funciona como agrupadora e não cobra taxa diretamente.",
+    explicacaoSub:
+      "Subcategoria vinculada a uma Categoria Principal. É aqui que você define gênero, faixa etária e taxas.",
   },
 };
 
@@ -230,6 +260,18 @@ type LocalEvento = {
   estado: string | null;
 };
 
+type FormCategoria = {
+  nome: string;
+  valor_solo: number;
+  valor_duo: number;
+  valor_conjunto: number;
+  genero: string;
+  faixa_etaria_min: string;
+  faixa_etaria_max: string;
+  faixa_etaria_label: string;
+  categoria_pai_id: string;
+};
+
 const GENERO_LABELS: Record<string, string> = {
   livre: "Livre",
   masculino: "Masculino",
@@ -276,6 +318,20 @@ function secaoProdutoLabel(tipo: string | null | undefined) {
   const valor = (tipo ?? "").toLowerCase().trim();
   if (valor === "bilheteria") return "Bilheteria";
   return "Cantina";
+}
+
+function criarEstadoInicialCategoria(): FormCategoria {
+  return {
+    nome: "",
+    valor_solo: 0,
+    valor_duo: 0,
+    valor_conjunto: 0,
+    genero: "livre",
+    faixa_etaria_min: "",
+    faixa_etaria_max: "",
+    faixa_etaria_label: "",
+    categoria_pai_id: "",
+  };
 }
 
 let toastId = 0;
@@ -355,12 +411,14 @@ function ModalConfigurarJuradosEvento({
   produtoraId,
   onClose,
   onSaved,
+  addToast,
 }: {
   open: boolean;
   eventoId: string;
   produtoraId: string;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
+  addToast: (tipo: Toast["tipo"], mensagem: string) => void;
 }) {
   const [tab, setTab] = useState<"escalados" | "adicionar">("escalados");
   const [loading, setLoading] = useState(true);
@@ -427,37 +485,47 @@ function ModalConfigurarJuradosEvento({
     const supabase = createClient();
     setAddingIds((prev) => ({ ...prev, [jurado.id]: true }));
 
-    const { data, error } = await supabase
-      .from("evento_jurados")
-      .insert({
-        evento_id: eventoId,
-        jurado_id: jurado.id,
-        cache_valor: 0,
-        cache_status: "pendente",
-        especialidade: null,
-      })
-      .select("id, evento_id, jurado_id, cache_valor, cache_status, especialidade")
-      .single();
-
-    if (!error && data) {
-      const vinculo = data as EventoJurado;
-      setJuradosEscalados((prev) => [
-        ...prev,
-        {
-          vinculo_id: vinculo.id,
+    try {
+      const { data, error } = await supabase
+        .from("evento_jurados")
+        .insert({
+          evento_id: eventoId,
           jurado_id: jurado.id,
-          nome: jurado.nome,
-          email: jurado.email,
-          telefone: jurado.telefone ?? null,
-          cache_valor: vinculo.cache_valor ?? 0,
-          cache_status: vinculo.cache_status === "pago" ? "pago" : "pendente",
-          especialidade: vinculo.especialidade ?? "",
-        },
-      ]);
-      await onSaved();
-    }
+          cache_valor: 0,
+          cache_status: "pendente",
+          especialidade: null,
+        })
+        .select("id, evento_id, jurado_id, cache_valor, cache_status, especialidade")
+        .single();
 
-    setAddingIds((prev) => ({ ...prev, [jurado.id]: false }));
+      if (error) {
+        addToast("erro", `Erro ao adicionar jurado: ${error.message}`);
+        return;
+      }
+
+      if (data) {
+        const vinculo = data as EventoJurado;
+        setJuradosEscalados((prev) => [
+          ...prev,
+          {
+            vinculo_id: vinculo.id,
+            jurado_id: jurado.id,
+            nome: jurado.nome,
+            email: jurado.email,
+            telefone: jurado.telefone ?? null,
+            cache_valor: vinculo.cache_valor ?? 0,
+            cache_status: vinculo.cache_status === "pago" ? "pago" : "pendente",
+            especialidade: vinculo.especialidade ?? "",
+          },
+        ]);
+        addToast("sucesso", "Jurado adicionado com sucesso!");
+        await onSaved();
+      }
+    } catch (error) {
+      addToast("erro", `Erro ao adicionar jurado: ${error instanceof Error ? error.message : "Erro inesperado"}`);
+    } finally {
+      setAddingIds((prev) => ({ ...prev, [jurado.id]: false }));
+    }
   }
 
   async function salvarJurado(vinculoId: string) {
@@ -467,29 +535,54 @@ function ModalConfigurarJuradosEvento({
     const supabase = createClient();
     setSavingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
-    await supabase
-      .from("evento_jurados")
-      .update({
-        cache_valor: Number(jurado.cache_valor ?? 0),
-        cache_status: jurado.cache_status,
-        especialidade: jurado.especialidade.trim() || null,
-      })
-      .eq("id", vinculoId)
-      .eq("evento_id", eventoId);
+    try {
+      const { error } = await supabase
+        .from("evento_jurados")
+        .update({
+          cache_valor: Number(jurado.cache_valor ?? 0),
+          cache_status: jurado.cache_status,
+          especialidade: jurado.especialidade.trim() || null,
+        })
+        .eq("id", vinculoId)
+        .eq("evento_id", eventoId);
 
-    setSavingIds((prev) => ({ ...prev, [vinculoId]: false }));
-    await onSaved();
+      if (error) {
+        addToast("erro", `Erro ao salvar configuração do jurado: ${error.message}`);
+        return;
+      }
+
+      addToast("sucesso", "Configuração do jurado salva com sucesso!");
+      await onSaved();
+    } catch (error) {
+      addToast(
+        "erro",
+        `Erro ao salvar configuração do jurado: ${error instanceof Error ? error.message : "Erro inesperado"}`
+      );
+    } finally {
+      setSavingIds((prev) => ({ ...prev, [vinculoId]: false }));
+    }
   }
 
   async function removerJurado(vinculoId: string) {
     const supabase = createClient();
     setRemovingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
-    await supabase.from("evento_jurados").delete().eq("id", vinculoId).eq("evento_id", eventoId);
+    try {
+      const { error } = await supabase.from("evento_jurados").delete().eq("id", vinculoId).eq("evento_id", eventoId);
 
-    setJuradosEscalados((prev) => prev.filter((item) => item.vinculo_id !== vinculoId));
-    setRemovingIds((prev) => ({ ...prev, [vinculoId]: false }));
-    await onSaved();
+      if (error) {
+        addToast("erro", `Erro ao remover jurado: ${error.message}`);
+        return;
+      }
+
+      setJuradosEscalados((prev) => prev.filter((item) => item.vinculo_id !== vinculoId));
+      addToast("sucesso", "Jurado removido com sucesso!");
+      await onSaved();
+    } catch (error) {
+      addToast("erro", `Erro ao remover jurado: ${error instanceof Error ? error.message : "Erro inesperado"}`);
+    } finally {
+      setRemovingIds((prev) => ({ ...prev, [vinculoId]: false }));
+    }
   }
 
   if (!open) return null;
@@ -589,7 +682,7 @@ function ModalConfigurarJuradosEvento({
                                 prev.map((item) => (item.vinculo_id === jurado.vinculo_id ? { ...item, especialidade: e.target.value } : item))
                               )
                             }
-                            placeholder="Ex: Dança, Técnica, Interpretação"
+                            placeholder="Ex: Técnica, Avaliação, Curadoria"
                             className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
                           />
                         </div>
@@ -1098,24 +1191,14 @@ export default function PainelEventoPage() {
   const [pdvConfigurado, setPdvConfigurado] = useState(false);
   const [criteriosConfigurados, setCriteriosConfigurados] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [perfilSlug, setPerfilSlug] = useState("danca");
+  const [perfilSlug, setPerfilSlug] = useState("default");
 
   const [modalCat, setModalCat] = useState(false);
   const [catEditando, setCatEditando] = useState<Categoria | null>(null);
   const [modalJuradosOpen, setModalJuradosOpen] = useState(false);
   const [modalPdvOpen, setModalPdvOpen] = useState(false);
 
-  const [formCat, setFormCat] = useState({
-    nome: "",
-    valor_solo: 0,
-    valor_duo: 0,
-    valor_conjunto: 0,
-    genero: "livre",
-    faixa_etaria_min: "",
-    faixa_etaria_max: "",
-    faixa_etaria_label: "",
-    categoria_pai_id: "",
-  });
+  const [formCat, setFormCat] = useState<FormCategoria>(criarEstadoInicialCategoria());
 
   const [locaisEvento, setLocaisEvento] = useState<LocalEvento[]>([]);
   const [loadingLocais, setLoadingLocais] = useState(false);
@@ -1193,14 +1276,14 @@ export default function PainelEventoPage() {
     }
 
     const todasCats = (cats ?? []) as Categoria[];
-    const pais = todasCats
+    const principais = todasCats
       .filter((c) => !c.categoria_pai_id)
-      .map((pai) => ({
-        ...pai,
-        subcategorias: todasCats.filter((c) => c.categoria_pai_id === pai.id),
+      .map((principal) => ({
+        ...principal,
+        subcategorias: todasCats.filter((c) => c.categoria_pai_id === principal.id),
       }));
 
-    setCategorias(pais);
+    setCategorias(principais);
     setApresentacoes((apres ?? []) as Apresentacao[]);
 
     const total = (apres ?? []).length;
@@ -1338,29 +1421,19 @@ export default function PainelEventoPage() {
     const { data } = await supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome");
 
     const todasCats = (data ?? []) as Categoria[];
-    const pais = todasCats
+    const principais = todasCats
       .filter((c) => !c.categoria_pai_id)
-      .map((pai) => ({
-        ...pai,
-        subcategorias: todasCats.filter((c) => c.categoria_pai_id === pai.id),
+      .map((principal) => ({
+        ...principal,
+        subcategorias: todasCats.filter((c) => c.categoria_pai_id === principal.id),
       }));
 
-    setCategorias(pais);
+    setCategorias(principais);
   }
 
   function abrirModalNova() {
     setCatEditando(null);
-    setFormCat({
-      nome: "",
-      valor_solo: 0,
-      valor_duo: 0,
-      valor_conjunto: 0,
-      genero: "livre",
-      faixa_etaria_min: "",
-      faixa_etaria_max: "",
-      faixa_etaria_label: "",
-      categoria_pai_id: "",
-    });
+    setFormCat(criarEstadoInicialCategoria());
     setModalCat(true);
   }
 
@@ -1384,15 +1457,17 @@ export default function PainelEventoPage() {
     const supabase = createClient();
     if (!formCat.nome.trim()) return;
 
+    const ehCategoriaPrincipal = !formCat.categoria_pai_id;
+
     const payload = {
-      nome: formCat.nome,
-      valor_solo: Number(formCat.valor_solo),
-      valor_duo: Number(formCat.valor_duo),
-      valor_conjunto: Number(formCat.valor_conjunto),
-      genero: formCat.genero,
-      faixa_etaria_min: formCat.faixa_etaria_min ? Number(formCat.faixa_etaria_min) : null,
-      faixa_etaria_max: formCat.faixa_etaria_max ? Number(formCat.faixa_etaria_max) : null,
-      faixa_etaria_label: formCat.faixa_etaria_label || null,
+      nome: formCat.nome.trim(),
+      valor_solo: ehCategoriaPrincipal ? 0 : Number(formCat.valor_solo),
+      valor_duo: ehCategoriaPrincipal ? 0 : Number(formCat.valor_duo),
+      valor_conjunto: ehCategoriaPrincipal ? 0 : Number(formCat.valor_conjunto),
+      genero: ehCategoriaPrincipal ? "livre" : formCat.genero,
+      faixa_etaria_min: ehCategoriaPrincipal ? null : formCat.faixa_etaria_min ? Number(formCat.faixa_etaria_min) : null,
+      faixa_etaria_max: ehCategoriaPrincipal ? null : formCat.faixa_etaria_max ? Number(formCat.faixa_etaria_max) : null,
+      faixa_etaria_label: ehCategoriaPrincipal ? null : formCat.faixa_etaria_label || null,
       categoria_pai_id: formCat.categoria_pai_id || null,
       evento_id: eventoId,
     };
@@ -1403,7 +1478,7 @@ export default function PainelEventoPage() {
         addToast("sucesso", `${formCat.nome} atualizada!`);
         void recarregarCategorias();
       } else {
-        addToast("erro", "Erro ao atualizar categoria.");
+        addToast("erro", `Erro ao atualizar categoria: ${error.message}`);
       }
     } else {
       const { error } = await supabase.from("categorias").insert(payload);
@@ -1411,7 +1486,7 @@ export default function PainelEventoPage() {
         addToast("sucesso", `${formCat.nome} criada!`);
         void recarregarCategorias();
       } else {
-        addToast("erro", "Erro ao criar categoria.");
+        addToast("erro", `Erro ao criar categoria: ${error.message}`);
       }
     }
 
@@ -1470,8 +1545,9 @@ export default function PainelEventoPage() {
 
   if (!evento) return null;
 
-  const categoriasRaiz = categorias.filter((c) => !c.categoria_pai_id);
-  const presetAtual = PRESETS[perfilSlug] ?? PRESETS.multidisciplinar;
+  const categoriasPrincipais = categorias.filter((c) => !c.categoria_pai_id);
+  const presetAtual = PRESETS[perfilSlug] ?? PRESETS.default;
+  const formCatEhPrincipal = !formCat.categoria_pai_id;
 
   const checklistJuradosOk = form.formato === "mostra" ? true : totalJurados > 0 && criteriosConfigurados;
 
@@ -1486,7 +1562,7 @@ export default function PainelEventoPage() {
     },
     {
       label: "Ao menos 1 categoria criada",
-      descricao: "Categorias definem as taxas e faixas etárias aceitas.",
+      descricao: "Categorias organizam a estrutura competitiva do evento.",
       ok: categorias.length > 0,
       acao: "categorias" as const,
       onAcao: null as null | (() => void),
@@ -1520,6 +1596,7 @@ export default function PainelEventoPage() {
         produtoraId={evento.produtora_id ?? ""}
         onClose={() => setModalJuradosOpen(false)}
         onSaved={handleModalJuradosSaved}
+        addToast={addToast}
       />
 
       <ModalConfigurarPdvEvento
@@ -1757,7 +1834,7 @@ export default function PainelEventoPage() {
                     <input
                       type="text"
                       value={form.local ?? ""}
-                      placeholder="Ex: Teatro Municipal, São Paulo - SP"
+                      placeholder="Ex: Espaço principal do evento"
                       onChange={(e) => setForm({ ...form, local: e.target.value })}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
                     />
@@ -1856,7 +1933,7 @@ export default function PainelEventoPage() {
                     <textarea
                       rows={5}
                       value={form.descricao ?? ""}
-                      placeholder="Texto descritivo do festival, conceito curatorial, diferenciais, regulamento resumido e informações que alimentarão a página pública."
+                      placeholder="Texto descritivo do festival, proposta, diferenciais, regulamento resumido e informações públicas."
                       onChange={(e) => setForm({ ...form, descricao: e.target.value })}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200 resize-none"
                     />
@@ -1870,7 +1947,7 @@ export default function PainelEventoPage() {
                           Múltiplos Locais / Palcos
                         </h4>
                         <p className="text-xs text-gray-500 mt-1">
-                          Gerencie os palcos, teatros e cidades vinculados a este festival. Esta lista é carregada em tempo real do Supabase.
+                          Gerencie os palcos, espaços ou cidades vinculados a este festival. Esta lista é carregada em tempo real do Supabase.
                         </p>
                       </div>
 
@@ -1964,7 +2041,7 @@ export default function PainelEventoPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-1">Categorias & Taxas</h3>
-                    <p className="text-sm text-gray-400">Defina as categorias de competição deste evento com suas respectivas taxas de inscrição.</p>
+                    <p className="text-sm text-gray-400">Defina a estrutura de Categorias Principais e subcategorias do evento.</p>
                   </div>
 
                   <button
@@ -1982,7 +2059,7 @@ export default function PainelEventoPage() {
                   <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
                     <ListTree size={40} className="mx-auto mb-3 opacity-20 text-axon-gold" />
                     <p className="font-medium text-gray-300">Nenhuma categoria ainda</p>
-                    <p className="text-sm mt-1 text-gray-500">Crie a primeira categoria para definir as taxas de inscrição do evento.</p>
+                    <p className="text-sm mt-1 text-gray-500">Crie a primeira categoria para organizar a estrutura do evento.</p>
                     <button
                       onClick={abrirModalNova}
                       className="mt-4 text-sm text-axon-gold hover:text-white border border-axon-gold/30 hover:border-axon-gold hover:bg-axon-gold/10 px-4 py-2 rounded-lg transition-all duration-200"
@@ -1998,26 +2075,7 @@ export default function PainelEventoPage() {
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-white font-semibold">{cat.nome}</p>
-                              <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                {GENERO_LABELS[cat.genero]}
-                              </span>
-                              {cat.faixa_etaria_label && (
-                                <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                  {cat.faixa_etaria_label}
-                                </span>
-                              )}
-                              {!cat.faixa_etaria_label && cat.faixa_etaria_min != null && cat.faixa_etaria_max != null && (
-                                <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                  {cat.faixa_etaria_min}-{cat.faixa_etaria_max} anos
-                                </span>
-                              )}
                             </div>
-
-                            <p className="text-sm text-gray-400 mt-1.5">
-                              {presetAtual.taxaSolo.replace("R$", "")} <span className="text-white">{moeda(cat.valor_solo)}</span> ·{" "}
-                              {presetAtual.taxaDuo.replace("R$", "")} <span className="text-white">{moeda(cat.valor_duo)}</span> ·{" "}
-                              {presetAtual.taxaConjunto.replace("R$", "")} <span className="text-white">{moeda(cat.valor_conjunto)}</span>
-                            </p>
                           </div>
 
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2040,23 +2098,31 @@ export default function PainelEventoPage() {
                           <div className="border-t border-axon-border divide-y divide-axon-border bg-black/10">
                             {cat.subcategorias.map((sub) => (
                               <div key={sub.id} className="flex items-center justify-between px-4 py-3 group">
-                                <div className="flex items-center gap-3 pl-4">
-                                  <div className="w-px h-4 bg-axon-border" />
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <p className="text-sm text-gray-200 font-medium">{sub.nome}</p>
-                                    <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                      {GENERO_LABELS[sub.genero]}
-                                    </span>
-                                    {sub.faixa_etaria_label && (
+                                <div className="flex items-center gap-3 pl-4 min-w-0 flex-1">
+                                  <div className="w-px h-4 bg-axon-border shrink-0" />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="text-sm text-gray-200 font-medium">{sub.nome}</p>
                                       <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                        {sub.faixa_etaria_label}
+                                        {GENERO_LABELS[sub.genero]}
                                       </span>
-                                    )}
-                                    {!sub.faixa_etaria_label && sub.faixa_etaria_min != null && sub.faixa_etaria_max != null && (
-                                      <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                        {sub.faixa_etaria_min}-{sub.faixa_etaria_max} anos
-                                      </span>
-                                    )}
+                                      {sub.faixa_etaria_label && (
+                                        <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                          {sub.faixa_etaria_label}
+                                        </span>
+                                      )}
+                                      {!sub.faixa_etaria_label && sub.faixa_etaria_min != null && sub.faixa_etaria_max != null && (
+                                        <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                          {sub.faixa_etaria_min}-{sub.faixa_etaria_max} anos
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <p className="text-sm text-gray-400 mt-1.5">
+                                      {presetAtual.taxaSolo.replace("R$", "")} <span className="text-white">{moeda(sub.valor_solo)}</span> ·{" "}
+                                      {presetAtual.taxaDuo.replace("R$", "")} <span className="text-white">{moeda(sub.valor_duo)}</span> ·{" "}
+                                      {presetAtual.taxaConjunto.replace("R$", "")} <span className="text-white">{moeda(sub.valor_conjunto)}</span>
+                                    </p>
                                   </div>
                                 </div>
 
@@ -2084,14 +2150,7 @@ export default function PainelEventoPage() {
                             onClick={() => {
                               setCatEditando(null);
                               setFormCat({
-                                nome: "",
-                                valor_solo: 0,
-                                valor_duo: 0,
-                                valor_conjunto: 0,
-                                genero: "livre",
-                                faixa_etaria_min: "",
-                                faixa_etaria_max: "",
-                                faixa_etaria_label: "",
+                                ...criarEstadoInicialCategoria(),
                                 categoria_pai_id: cat.id,
                               });
                               setModalCat(true);
@@ -2185,10 +2244,10 @@ export default function PainelEventoPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-white">
-                    {catEditando ? "Editar Categoria" : formCat.categoria_pai_id ? "Nova Subcategoria" : "Nova Categoria"}
+                    {catEditando ? "Editar Categoria" : formCatEhPrincipal ? "Nova Categoria Principal" : "Nova Subcategoria"}
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {formCat.categoria_pai_id ? presetAtual.explicacaoSub : "Categoria principal. Você pode adicionar subcategorias depois."}
+                    {formCatEhPrincipal ? presetAtual.explicacaoPrincipal : presetAtual.explicacaoSub}
                   </p>
                 </div>
                 <button onClick={() => setModalCat(false)} className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200">
@@ -2197,128 +2256,148 @@ export default function PainelEventoPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-4">
-                {!formCat.categoria_pai_id && !catEditando?.categoria_pai_id && (
-                  <div className="space-y-2">
-                    <label className="text-sm text-gray-400 font-medium">
-                      Categoria Pai <span className="text-gray-600 font-normal">opcional</span>
-                    </label>
-                    <select
-                      value={formCat.categoria_pai_id}
-                      onChange={(e) => setFormCat({ ...formCat, categoria_pai_id: e.target.value })}
-                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
-                    >
-                      <option value="">Nenhuma categoria raiz</option>
-                      {categoriasRaiz.map((c) => (
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-400 font-medium">
+                    Categoria Principal <span className="text-gray-600 font-normal">opcional</span>
+                  </label>
+                  <select
+                    value={formCat.categoria_pai_id}
+                    onChange={(e) =>
+                      setFormCat((prev) => ({
+                        ...prev,
+                        categoria_pai_id: e.target.value,
+                        ...(e.target.value
+                          ? {}
+                          : {
+                              valor_solo: 0,
+                              valor_duo: 0,
+                              valor_conjunto: 0,
+                              genero: "livre",
+                              faixa_etaria_min: "",
+                              faixa_etaria_max: "",
+                              faixa_etaria_label: "",
+                            }),
+                      }))
+                    }
+                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                  >
+                    <option value="">Nenhuma categoria principal (criar como categoria principal)</option>
+                    {categoriasPrincipais
+                      .filter((c) => c.id !== catEditando?.id)
+                      .map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.nome}
                         </option>
                       ))}
-                    </select>
-                  </div>
-                )}
+                  </select>
+                </div>
 
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400 font-medium">Nome</label>
                   <input
                     type="text"
-                    placeholder={presetAtual.placeholderNome}
+                    placeholder={formCatEhPrincipal ? presetAtual.placeholderNomePrincipal : presetAtual.placeholderNomeSubcategoria}
                     value={formCat.nome}
                     onChange={(e) => setFormCat({ ...formCat, nome: e.target.value })}
                     className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm text-gray-400 font-medium">Gênero</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {(["livre", "feminino", "masculino", "misto"] as const).map((g) => (
-                      <button
-                        key={g}
-                        type="button"
-                        onClick={() => setFormCat({ ...formCat, genero: g })}
-                        className={`py-2 rounded-lg text-sm font-medium border transition-all duration-200 ${
-                          formCat.genero === g
-                            ? "bg-axon-gold text-black border-axon-gold shadow-md shadow-axon-gold/20"
-                            : "bg-axon-bg border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
-                        }`}
-                      >
-                        {GENERO_LABELS[g]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm text-gray-400 font-medium">
-                    Faixa Etária <span className="text-gray-600 font-normal">opcional</span>
-                  </label>
-
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-xs text-gray-500">Label</label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Infantil"
-                        value={formCat.faixa_etaria_label}
-                        onChange={(e) => setFormCat({ ...formCat, faixa_etaria_label: e.target.value })}
-                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
-                      />
+                {!formCatEhPrincipal && (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm text-gray-400 font-medium">Gênero</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {(["livre", "feminino", "masculino", "misto"] as const).map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            onClick={() => setFormCat({ ...formCat, genero: g })}
+                            className={`py-2 rounded-lg text-sm font-medium border transition-all duration-200 ${
+                              formCat.genero === g
+                                ? "bg-axon-gold text-black border-axon-gold shadow-md shadow-axon-gold/20"
+                                : "bg-axon-bg border-axon-border text-gray-400 hover:text-white hover:border-gray-500"
+                            }`}
+                          >
+                            {GENERO_LABELS[g]}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs text-gray-500">Idade mínima</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="6"
-                        value={formCat.faixa_etaria_min}
-                        onChange={(e) => setFormCat({ ...formCat, faixa_etaria_min: e.target.value })}
-                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
-                      />
-                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm text-gray-400 font-medium">
+                        Faixa Etária <span className="text-gray-600 font-normal">opcional</span>
+                      </label>
 
-                    <div className="space-y-1">
-                      <label className="text-xs text-gray-500">Idade máxima</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="12"
-                        value={formCat.faixa_etaria_max}
-                        onChange={(e) => setFormCat({ ...formCat, faixa_etaria_max: e.target.value })}
-                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm text-gray-400 font-medium">Taxas de Inscrição</label>
-                  <p className="text-xs text-gray-500">Valor cobrado por modalidade. O terceiro campo é o valor por participante.</p>
-
-                  <div className="grid grid-cols-3 gap-3">
-                    {(["valor_solo", "valor_duo", "valor_conjunto"] as const).map((campo) => {
-                      const labelTaxa =
-                        campo === "valor_solo"
-                          ? presetAtual.taxaSolo
-                          : campo === "valor_duo"
-                            ? presetAtual.taxaDuo
-                            : presetAtual.taxaConjunto;
-
-                      return (
-                        <div key={campo} className="space-y-1">
-                          <label className="text-xs text-gray-500">{labelTaxa}</label>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-xs text-gray-500">Label</label>
                           <input
-                            type="number"
-                            min="0"
-                            value={formCat[campo]}
-                            onChange={(e) => setFormCat({ ...formCat, [campo]: Number(e.target.value) })}
+                            type="text"
+                            placeholder="Ex: Faixa A"
+                            value={formCat.faixa_etaria_label}
+                            onChange={(e) => setFormCat({ ...formCat, faixa_etaria_label: e.target.value })}
                             className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
                           />
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs text-gray-500">Idade mínima</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={formCat.faixa_etaria_min}
+                            onChange={(e) => setFormCat({ ...formCat, faixa_etaria_min: e.target.value })}
+                            className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs text-gray-500">Idade máxima</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="99"
+                            value={formCat.faixa_etaria_max}
+                            onChange={(e) => setFormCat({ ...formCat, faixa_etaria_max: e.target.value })}
+                            className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm text-gray-400 font-medium">Taxas de Inscrição</label>
+                      <p className="text-xs text-gray-500">Valor cobrado por modalidade. O terceiro campo é o valor por conjunto ou grupo.</p>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        {(["valor_solo", "valor_duo", "valor_conjunto"] as const).map((campo) => {
+                          const labelTaxa =
+                            campo === "valor_solo"
+                              ? presetAtual.taxaSolo
+                              : campo === "valor_duo"
+                                ? presetAtual.taxaDuo
+                                : presetAtual.taxaConjunto;
+
+                          return (
+                            <div key={campo} className="space-y-1">
+                              <label className="text-xs text-gray-500">{labelTaxa}</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={formCat[campo]}
+                                onChange={(e) => setFormCat({ ...formCat, [campo]: Number(e.target.value) })}
+                                className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="flex gap-3 justify-end pt-2">
