@@ -114,6 +114,55 @@ export const ourFileRouter = {
         tamanho: file.size,
       };
     }),
+
+  imageUploader: f({
+    image: {
+      maxFileSize: "8MB",
+      maxFileCount: 1,
+    },
+  })
+    .middleware(async () => {
+      const supabase = await createClient();
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new UploadThingError("Não autorizado");
+      }
+
+      const { data: usuario } = await supabase
+        .from("usuarios")
+        .select("id, produtora_id, role")
+        .eq("id", user.id)
+        .single();
+
+      if (!usuario) {
+        throw new UploadThingError("Usuário não encontrado");
+      }
+
+      // Permite o upload se o usuário pertencer a uma produtora ou for super admin
+      if (!usuario.produtora_id && usuario.role !== "super_admin") {
+        throw new UploadThingError("Sem permissão para upload de mídias do festival");
+      }
+
+      return {
+        userId: user.id,
+        produtoraId: usuario.produtora_id ?? null,
+        tipo: "marketing_imagem",
+      };
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      return {
+        uploadedBy: metadata.userId,
+        produtoraId: metadata.produtoraId,
+        tipo: metadata.tipo,
+        url: file.ufsUrl,
+        nome: file.name,
+        tamanho: file.size,
+      };
+    }),
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;
