@@ -492,7 +492,7 @@ function ModalJurado({ termo, eventoId, produtoraId, jurado, onClose, onSaved }:
                 {editando
                   ? modoPoolGlobal
                     ? "Neste modo você pode editar diretamente os dados globais do jurado. Os campos privados só serão bloqueados se o e-mail informado colidir com outro cadastro protegido."
-                    : `Revise os dados deste jurado e ajuste especialidade e cachê conforme necessário para o evento.`
+                    : `Revise os dados deste jurado e ajuste especialidade e cache conforme necessário para o evento.`
                   : modoPoolGlobal
                     ? "Preencha os dados do jurado. Ele receberá um e-mail com o link para criar a senha e entrar no portal do jurado. Nenhum vínculo com evento será criado agora."
                     : `Preencha os dados do jurado. Ele receberá um e-mail com o link para criar a senha e acessar o painel de avaliação das ${termo.apresentacao.toLowerCase()}s.`}
@@ -1299,12 +1299,12 @@ function JuradosPageInner() {
     return av ? String(av.nota) : "—";
   }
 
-  const tabsDisponiveis = modoPoolGlobal
-    ? [{ id: "jurados", label: "Jurados" as const }]
+  const tabsDisponiveis: { id: "jurados" | "notas" | "observacoes"; label: string }[] = modoPoolGlobal
+    ? [{ id: "jurados", label: "Jurados" }]
     : [
-        { id: "jurados", label: "Jurados" as const },
-        { id: "notas", label: "Apuração de Notas" as const },
-        { id: "observacoes", label: "Observações" as const },
+        { id: "jurados", label: "Jurados" },
+        { id: "notas", label: "Apuração de Notas" },
+        { id: "observacoes", label: "Observações" },
       ];
 
   return (
@@ -1369,13 +1369,11 @@ function JuradosPageInner() {
         <Dica>
           {modoPoolGlobal ? (
             <>
-              Jurados cadastrados aqui entram no{" "}
-              <strong>pool global</strong> da produtora e podem ser vinculados a eventos depois.
+              Jurados cadastrados aqui entram no <strong>pool global</strong> da produtora e podem ser vinculados a eventos depois.
             </>
           ) : (
             <>
-              Jurados adicionados aqui recebem acesso ao{" "}
-              <strong>portal do jurado</strong> onde avaliam as{" "}
+              Jurados adicionados aqui recebem acesso ao <strong>portal do jurado</strong> onde avaliam as{" "}
               {termo.apresentacao.toLowerCase()}s em tempo real. O cache é o valor combinado
               pela participação no evento.
             </>
@@ -1418,7 +1416,7 @@ function JuradosPageInner() {
           {tabsDisponiveis.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setAbaAtiva(tab.id)}
+              onClick={() => setAbaAtiva(tab.id as "jurados" | "notas" | "observacoes")}
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap ${
                 abaAtiva === tab.id
                   ? "border-axon-gold text-axon-gold"
