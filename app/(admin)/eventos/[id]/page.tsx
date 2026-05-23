@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { createClient } from "@/lib/supabase/client";
-import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import {
   ChevronLeft,
   Settings,
@@ -29,6 +29,12 @@ import {
   Search,
   Ticket,
   Coffee,
+  MapPin,
+  Image as ImageIcon,
+  Type,
+  Trophy,
+  Globe,
+  Link2,
 } from "lucide-react";
 
 const PRESETS: Record<
@@ -47,55 +53,69 @@ const PRESETS: Record<
     placeholderNovo: "Ex: Festival de Dança ARXUM 2026",
     dica: (
       <>
-        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Ballet</em>) e, dentro delas, subcategorias por faixa etária ou gênero (ex: <em>Ballet Infantil Feminino</em>). As taxas de inscrição são definidas por categoria. Solo, Duo e Conjunto têm valores diferentes.
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Ballet</em>) e, dentro delas,
+        subcategorias por faixa etária ou gênero (ex: <em>Ballet Infantil Feminino</em>). As taxas de
+        inscrição são definidas por categoria. Solo, Duo e Conjunto têm valores diferentes.
       </>
     ),
     placeholderNome: "Ex: Ballet Clássico, Jazz Adulto, Contemporâneo...",
-    taxaSolo: "Solo (R$)",
-    taxaDuo: "Duo (R$)",
-    taxaConjunto: "Conjunto/pax (R$)",
-    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o estilo, mas tem faixa etária e gênero próprios.",
+    taxaSolo: "Solo R$",
+    taxaDuo: "Duo R$",
+    taxaConjunto: "Conjunto/pax R$",
+    explicacaoSub:
+      "Subcategoria vinculada a uma categoria-pai. Herda o estilo, mas tem faixa etária e gênero próprios.",
   },
   musica: {
     placeholderNovo: "Ex: Festival de Música ARXUM 2026",
     dica: (
       <>
-        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>MPB, Rock</em>) e, dentro delas, subcategorias por formato (ex: <em>Solo Vocal, Banda Instrumental</em>). As taxas de inscrição são definidas por categoria.
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>MPB, Rock</em>) e, dentro delas,
+        subcategorias por formato (ex: <em>Solo Vocal, Banda Instrumental</em>). As taxas de inscrição
+        são definidas por categoria.
       </>
     ),
     placeholderNome: "Ex: MPB, Rock, Solo Vocal, Música Clássica...",
-    taxaSolo: "Solo (R$)",
-    taxaDuo: "Duo/Dupla (R$)",
-    taxaConjunto: "Banda/Grupo (R$)",
-    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o estilo musical, mas tem formato e características próprias.",
+    taxaSolo: "Solo R$",
+    taxaDuo: "Duo/Dupla R$",
+    taxaConjunto: "Banda/Grupo R$",
+    explicacaoSub:
+      "Subcategoria vinculada a uma categoria-pai. Herda o estilo musical, mas tem formato e características próprias.",
   },
   teatro: {
     placeholderNovo: "Ex: Mostra de Teatro ARXUM 2026",
     dica: (
       <>
-        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Comédia, Drama</em>) e, dentro delas, subcategorias (ex: <em>Cena Curta, Monólogo</em>). As taxas de inscrição são definidas por categoria.
+        <strong>Como funciona:</strong> Crie categorias-pai (ex: <em>Comédia, Drama</em>) e, dentro delas,
+        subcategorias (ex: <em>Cena Curta, Monólogo</em>). As taxas de inscrição são definidas por categoria.
       </>
     ),
     placeholderNome: "Ex: Comédia, Drama, Monólogo, Teatro Musical...",
-    taxaSolo: "Monólogo (R$)",
-    taxaDuo: "Cena em Dupla (R$)",
-    taxaConjunto: "Elenco/Grupo (R$)",
-    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Herda o gênero teatral, mas tem duração ou elenco específicos.",
+    taxaSolo: "Monólogo R$",
+    taxaDuo: "Cena em Dupla R$",
+    taxaConjunto: "Elenco/Grupo R$",
+    explicacaoSub:
+      "Subcategoria vinculada a uma categoria-pai. Herda o gênero teatral, mas tem duração ou elenco específicos.",
   },
   multidisciplinar: {
     placeholderNovo: "Ex: Festival Multicultural ARXUM 2026",
     dica: (
       <>
-        <strong>Como funciona:</strong> Crie categorias-pai por linguagem artística (ex: <em>Dança, Música, Teatro</em>) e, dentro delas, subcategorias por modalidade, faixa etária ou formação. As taxas podem variar por categoria.
+        <strong>Como funciona:</strong> Crie categorias-pai por linguagem artística (ex: <em>Dança, Música, Teatro</em>)
+        e, dentro delas, subcategorias por modalidade, faixa etária ou formação. As taxas podem variar por categoria.
       </>
     ),
     placeholderNome: "Ex: Dança Contemporânea, Solo Vocal, Cena Curta...",
-    taxaSolo: "Solo (R$)",
-    taxaDuo: "Duo (R$)",
-    taxaConjunto: "Grupo/pax (R$)",
-    explicacaoSub: "Subcategoria vinculada a uma categoria-pai. Use para organizar melhor as modalidades e faixas do evento.",
+    taxaSolo: "Solo R$",
+    taxaDuo: "Duo R$",
+    taxaConjunto: "Grupo/pax R$",
+    explicacaoSub:
+      "Subcategoria vinculada a uma categoria-pai. Use para organizar melhor as modalidades e faixas do evento.",
   },
 };
+
+type EventoStatus = "rascunho" | "inscricoes_abertas" | "em_andamento" | "encerrado";
+type EventoFormato = "competitivo" | "mostra" | "misto";
+type TipoPremiacao = "sem_premiacao" | "apenas_trofeus_e_medalhas" | "com_premiacao_dinheiro";
 
 type Evento = {
   id: string;
@@ -103,9 +123,14 @@ type Evento = {
   data_inicio: string;
   data_fim: string;
   local: string;
-  status: string;
+  status: EventoStatus;
   descricao: string | null;
   produtora_id: string | null;
+  formato: EventoFormato | null;
+  tipo_premiacao: TipoPremiacao | null;
+  multilocal: boolean | null;
+  logo_url: string | null;
+  banner_url: string | null;
 };
 
 type Categoria = {
@@ -125,7 +150,7 @@ type Categoria = {
 type Apresentacao = {
   id: string;
   nome: string;
-  tipo: string;
+  tipo: string | null;
   ordem_apresentacao: number | null;
   status_pagamento?: string | null;
 };
@@ -192,6 +217,14 @@ type ProdutoVinculado = {
   preco_evento: number;
   estoque_evento: number;
   ativo_evento: boolean;
+};
+
+type LocalEvento = {
+  id: string;
+  evento_id: string;
+  nome_local: string;
+  cidade: string | null;
+  estado: string | null;
 };
 
 const GENERO_LABELS: Record<string, string> = {
@@ -274,12 +307,33 @@ function Dica({ children }: { children: React.ReactNode }) {
   );
 }
 
-interface ModalConfigurarJuradosEventoProps {
-  open: boolean;
-  eventoId: string;
-  produtoraId: string;
-  onClose: () => void;
-  onSaved: () => Promise<void> | void;
+function Switch({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-200 border ${
+        checked ? "bg-axon-gold/20 border-axon-gold/40" : "bg-axon-bg border-axon-border"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+    >
+      <span
+        className={`inline-block h-5 w-5 transform rounded-full transition-transform duration-200 ${
+          checked ? "translate-x-6 bg-axon-gold" : "translate-x-1 bg-gray-500"
+        }`}
+      />
+    </button>
+  );
 }
 
 function ModalConfigurarJuradosEvento({
@@ -288,7 +342,13 @@ function ModalConfigurarJuradosEvento({
   produtoraId,
   onClose,
   onSaved,
-}: ModalConfigurarJuradosEventoProps) {
+}: {
+  open: boolean;
+  eventoId: string;
+  produtoraId: string;
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
   const [tab, setTab] = useState<"escalados" | "adicionar">("escalados");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -304,16 +364,8 @@ function ModalConfigurarJuradosEvento({
     setLoading(true);
 
     const [{ data: cadastroData }, { data: eventoJuradosData }] = await Promise.all([
-      supabase
-        .from("usuarios")
-        .select("id, nome, email, telefone")
-        .eq("role", "jurado")
-        .eq("produtora_id", produtoraId)
-        .order("nome"),
-      supabase
-        .from("evento_jurados")
-        .select("id, evento_id, jurado_id, cache_valor, cache_status, especialidade")
-        .eq("evento_id", eventoId),
+      supabase.from("usuarios").select("id, nome, email, telefone").eq("role", "jurado").eq("produtora_id", produtoraId).order("nome"),
+      supabase.from("evento_jurados").select("id, evento_id, jurado_id, cache_valor, cache_status, especialidade").eq("evento_id", eventoId),
     ]);
 
     const cadastro = (cadastroData ?? []) as JuradoCadastro[];
@@ -405,7 +457,7 @@ function ModalConfigurarJuradosEvento({
     await supabase
       .from("evento_jurados")
       .update({
-        cache_valor: Number(jurado.cache_valor) || 0,
+        cache_valor: Number(jurado.cache_valor ?? 0),
         cache_status: jurado.cache_status,
         especialidade: jurado.especialidade.trim() || null,
       })
@@ -430,16 +482,12 @@ function ModalConfigurarJuradosEvento({
   if (!open) return null;
 
   return (
-    <>
-      <div
-        className="fixed inset-0 bg-black/70 z-50"
-        onClick={async () => {
-          onClose();
-          await onSaved();
-        }}
-      />
+    <div className="fixed inset-0 bg-black/70 z-50" onClick={async () => { onClose(); await onSaved(); }}>
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-        <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-5xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+        <div
+          className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-5xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
             <div>
               <h3 className="text-lg font-semibold text-white">Configurar Jurados do Evento</h3>
@@ -447,13 +495,7 @@ function ModalConfigurarJuradosEvento({
                 Escale jurados do cadastro central da produtora e configure cachê, status e especialidade para este festival.
               </p>
             </div>
-            <button
-              onClick={async () => {
-                onClose();
-                await onSaved();
-              }}
-              className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200"
-            >
+            <button onClick={async () => { onClose(); await onSaved(); }} className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200">
               <X size={18} />
             </button>
           </div>
@@ -467,9 +509,7 @@ function ModalConfigurarJuradosEvento({
                 key={id}
                 onClick={() => setTab(id as "escalados" | "adicionar")}
                 className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-all duration-200 ${
-                  tab === id
-                    ? "border-axon-gold text-axon-gold"
-                    : "border-transparent text-gray-400 hover:text-white hover:border-gray-600"
+                  tab === id ? "border-axon-gold text-axon-gold" : "border-transparent text-gray-400 hover:text-white hover:border-gray-600"
                 }`}
               >
                 <Icon size={16} />
@@ -483,186 +523,155 @@ function ModalConfigurarJuradosEvento({
               <div className="flex items-center justify-center py-16">
                 <Loader2 size={24} className="animate-spin text-axon-gold" />
               </div>
-            ) : (
-              <>
-                {tab === "escalados" && (
-                  <div className="space-y-4">
-                    {juradosEscalados.length === 0 ? (
-                      <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
-                        <Users size={36} className="mx-auto mb-3 opacity-20 text-axon-gold" />
-                        <p className="font-medium text-gray-300">Nenhum jurado escalado</p>
-                        <p className="text-sm mt-1 text-gray-500">
-                          Adicione jurados do cadastro central da produtora para este evento.
-                        </p>
-                      </div>
-                    ) : (
-                      juradosEscalados.map((jurado) => (
-                        <div key={jurado.vinculo_id} className="bg-axon-bg border border-axon-border rounded-xl p-4 space-y-4">
-                          <div className="flex items-start justify-between gap-4 flex-wrap">
-                            <div>
-                              <p className="text-sm font-semibold text-white">{jurado.nome}</p>
-                              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-3 mt-1">
-                                <p className="text-xs text-gray-500 break-all">{jurado.email}</p>
-                                {jurado.telefone && (
-                                  <p className="text-xs text-gray-600">{mascaraTelefone(jurado.telefone)}</p>
-                                )}
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={() => void removerJurado(jurado.vinculo_id)}
-                              disabled={!!removingIds[jurado.vinculo_id]}
-                              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-all duration-200 disabled:opacity-50"
-                            >
-                              {removingIds[jurado.vinculo_id] ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                              Remover
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="space-y-2">
-                              <label className="text-sm text-gray-400 font-medium">Especialidade</label>
-                              <input
-                                type="text"
-                                value={jurado.especialidade}
-                                onChange={(e) =>
-                                  setJuradosEscalados((prev) =>
-                                    prev.map((item) =>
-                                      item.vinculo_id === jurado.vinculo_id
-                                        ? { ...item, especialidade: e.target.value }
-                                        : item
-                                    )
-                                  )
-                                }
-                                placeholder="Ex: Dança, Técnica, Interpretação"
-                                className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="text-sm text-gray-400 font-medium">Cachê</label>
-                              <input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={jurado.cache_valor}
-                                onChange={(e) =>
-                                  setJuradosEscalados((prev) =>
-                                    prev.map((item) =>
-                                      item.vinculo_id === jurado.vinculo_id
-                                        ? { ...item, cache_valor: Number(e.target.value) || 0 }
-                                        : item
-                                    )
-                                  )
-                                }
-                                className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="text-sm text-gray-400 font-medium">Status do cachê</label>
-                              <select
-                                value={jurado.cache_status}
-                                onChange={(e) =>
-                                  setJuradosEscalados((prev) =>
-                                    prev.map((item) =>
-                                      item.vinculo_id === jurado.vinculo_id
-                                        ? { ...item, cache_status: e.target.value as "pago" | "pendente" }
-                                        : item
-                                    )
-                                  )
-                                }
-                                className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
-                              >
-                                <option value="pendente">Pendente</option>
-                                <option value="pago">Pago</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          <div className="flex justify-end">
-                            <button
-                              onClick={() => void salvarJurado(jurado.vinculo_id)}
-                              disabled={!!savingIds[jurado.vinculo_id]}
-                              className="flex items-center gap-2 bg-axon-gold text-black font-bold px-4 py-2.5 rounded-lg hover:bg-axon-gold/80 transition-all duration-200 text-sm disabled:opacity-50"
-                            >
-                              {savingIds[jurado.vinculo_id] ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                              Salvar configuração
-                            </button>
+            ) : tab === "escalados" ? (
+              <div className="space-y-4">
+                {juradosEscalados.length === 0 ? (
+                  <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
+                    <Users size={36} className="mx-auto mb-3 opacity-20 text-axon-gold" />
+                    <p className="font-medium text-gray-300">Nenhum jurado escalado</p>
+                    <p className="text-sm mt-1 text-gray-500">
+                      Adicione jurados do cadastro central da produtora para este evento.
+                    </p>
+                  </div>
+                ) : (
+                  juradosEscalados.map((jurado) => (
+                    <div key={jurado.vinculo_id} className="bg-axon-bg border border-axon-border rounded-xl p-4 space-y-4">
+                      <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{jurado.nome}</p>
+                          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-3 mt-1">
+                            <p className="text-xs text-gray-500 break-all">{jurado.email}</p>
+                            {jurado.telefone && <p className="text-xs text-gray-600">{mascaraTelefone(jurado.telefone)}</p>}
                           </div>
                         </div>
-                      ))
-                    )}
-                  </div>
-                )}
 
-                {tab === "adicionar" && (
-                  <div className="space-y-4">
-                    <div className="relative">
-                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                      <input
-                        type="text"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Buscar por nome ou e-mail"
-                        className="w-full bg-axon-bg border border-axon-border rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
-                      />
-                    </div>
-
-                    {juradosDisponiveis.length === 0 ? (
-                      <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
-                        <Users size={36} className="mx-auto mb-3 opacity-20 text-axon-gold" />
-                        <p className="font-medium text-gray-300">Nenhum jurado disponível</p>
-                        <p className="text-sm mt-1 text-gray-500">
-                          Todos os jurados do cadastro central já foram escalados neste evento ou não correspondem à busca.
-                        </p>
+                        <button
+                          onClick={() => void removerJurado(jurado.vinculo_id)}
+                          disabled={!!removingIds[jurado.vinculo_id]}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-all duration-200 disabled:opacity-50"
+                        >
+                          {removingIds[jurado.vinculo_id] ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          Remover
+                        </button>
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {juradosDisponiveis.map((jurado) => (
-                          <div
-                            key={jurado.id}
-                            className="bg-axon-bg border border-axon-border rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap"
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-sm text-gray-400 font-medium">Especialidade</label>
+                          <input
+                            type="text"
+                            value={jurado.especialidade}
+                            onChange={(e) =>
+                              setJuradosEscalados((prev) =>
+                                prev.map((item) => (item.vinculo_id === jurado.vinculo_id ? { ...item, especialidade: e.target.value } : item))
+                              )
+                            }
+                            placeholder="Ex: Dança, Técnica, Interpretação"
+                            className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm text-gray-400 font-medium">Cachê</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={jurado.cache_valor}
+                            onChange={(e) =>
+                              setJuradosEscalados((prev) =>
+                                prev.map((item) => (item.vinculo_id === jurado.vinculo_id ? { ...item, cache_valor: Number(e.target.value || 0) } : item))
+                              )
+                            }
+                            className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm text-gray-400 font-medium">Status do cachê</label>
+                          <select
+                            value={jurado.cache_status}
+                            onChange={(e) =>
+                              setJuradosEscalados((prev) =>
+                                prev.map((item) =>
+                                  item.vinculo_id === jurado.vinculo_id ? { ...item, cache_status: e.target.value as "pago" | "pendente" } : item
+                                )
+                              )
+                            }
+                            className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
                           >
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-white">{jurado.nome}</p>
-                              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-3 mt-1">
-                                <p className="text-xs text-gray-500 break-all">{jurado.email}</p>
-                                {jurado.telefone && (
-                                  <p className="text-xs text-gray-600">{mascaraTelefone(jurado.telefone)}</p>
-                                )}
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={() => void adicionarJurado(jurado)}
-                              disabled={!!addingIds[jurado.id]}
-                              className="flex items-center gap-2 bg-axon-gold text-black font-bold px-4 py-2.5 rounded-lg hover:bg-axon-gold/80 transition-all duration-200 text-sm disabled:opacity-50"
-                            >
-                              {addingIds[jurado.id] ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-                              Escalar
-                            </button>
-                          </div>
-                        ))}
+                            <option value="pendente">Pendente</option>
+                            <option value="pago">Pago</option>
+                          </select>
+                        </div>
                       </div>
-                    )}
+
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => void salvarJurado(jurado.vinculo_id)}
+                          disabled={!!savingIds[jurado.vinculo_id]}
+                          className="flex items-center gap-2 bg-axon-gold text-black font-bold px-4 py-2.5 rounded-lg hover:bg-axon-gold/80 transition-all duration-200 text-sm disabled:opacity-50"
+                        >
+                          {savingIds[jurado.vinculo_id] ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                          Salvar configuração
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="relative">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar por nome ou e-mail"
+                    className="w-full bg-axon-bg border border-axon-border rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                  />
+                </div>
+
+                {juradosDisponiveis.length === 0 ? (
+                  <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
+                    <Users size={36} className="mx-auto mb-3 opacity-20 text-axon-gold" />
+                    <p className="font-medium text-gray-300">Nenhum jurado disponível</p>
+                    <p className="text-sm mt-1 text-gray-500">
+                      Todos os jurados do cadastro central já foram escalados neste evento ou não correspondem à busca.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {juradosDisponiveis.map((jurado) => (
+                      <div key={jurado.id} className="bg-axon-bg border border-axon-border rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-white">{jurado.nome}</p>
+                          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-3 mt-1">
+                            <p className="text-xs text-gray-500 break-all">{jurado.email}</p>
+                            {jurado.telefone && <p className="text-xs text-gray-600">{mascaraTelefone(jurado.telefone)}</p>}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => void adicionarJurado(jurado)}
+                          disabled={!!addingIds[jurado.id]}
+                          className="flex items-center gap-2 bg-axon-gold text-black font-bold px-4 py-2.5 rounded-lg hover:bg-axon-gold/80 transition-all duration-200 text-sm disabled:opacity-50"
+                        >
+                          {addingIds[jurado.id] ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                          Escalar
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
-              </>
+              </div>
             )}
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
-}
-
-interface ModalConfigurarPdvEventoProps {
-  open: boolean;
-  eventoId: string;
-  produtoraId: string;
-  onClose: () => void;
-  onSaved: () => Promise<void> | void;
 }
 
 function ModalConfigurarPdvEvento({
@@ -671,7 +680,13 @@ function ModalConfigurarPdvEvento({
   produtoraId,
   onClose,
   onSaved,
-}: ModalConfigurarPdvEventoProps) {
+}: {
+  open: boolean;
+  eventoId: string;
+  produtoraId: string;
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
   const [tab, setTab] = useState<"vinculados" | "catalogo">("vinculados");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -687,15 +702,8 @@ function ModalConfigurarPdvEvento({
     setLoading(true);
 
     const [{ data: catalogoData }, { data: eventoProdutosData }] = await Promise.all([
-      supabase
-        .from("pdv_produtos")
-        .select("id, nome, preco, estoque, ativo, secao")
-        .eq("produtora_id", produtoraId)
-        .order("nome"),
-      supabase
-        .from("evento_produtos")
-        .select("id, evento_id, produto_id, preco_evento, estoque_evento, ativo_evento")
-        .eq("evento_id", eventoId),
+      supabase.from("pdv_produtos").select("id, nome, preco, estoque, ativo, secao").eq("produtora_id", produtoraId).order("nome"),
+      supabase.from("evento_produtos").select("id, evento_id, produto_id, preco_evento, estoque_evento, ativo_evento").eq("evento_id", eventoId),
     ]);
 
     const catalogo = (catalogoData ?? []) as ProdutoCatalogo[];
@@ -794,15 +802,14 @@ function ModalConfigurarPdvEvento({
   async function salvarProduto(vinculoId: string) {
     const produto = produtosVinculados.find((item) => item.vinculo_id === vinculoId);
     if (!produto) return;
-
     const supabase = createClient();
     setSavingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
     await supabase
       .from("evento_produtos")
       .update({
-        preco_evento: Number(produto.preco_evento) || 0,
-        estoque_evento: Number(produto.estoque_evento) || 0,
+        preco_evento: Number(produto.preco_evento ?? 0),
+        estoque_evento: Number(produto.estoque_evento ?? 0),
         ativo_evento: produto.ativo_evento,
       })
       .eq("id", vinculoId)
@@ -817,7 +824,6 @@ function ModalConfigurarPdvEvento({
     setRemovingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
     await supabase.from("evento_produtos").delete().eq("id", vinculoId).eq("evento_id", eventoId);
-
     setProdutosVinculados((prev) => prev.filter((item) => item.vinculo_id !== vinculoId));
     setRemovingIds((prev) => ({ ...prev, [vinculoId]: false }));
     await onSaved();
@@ -837,15 +843,12 @@ function ModalConfigurarPdvEvento({
           </div>
         ) : (
           itens.map((produto) => (
-            <div
-              key={produto.id}
-              className="bg-axon-bg border border-axon-border rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap"
-            >
+            <div key={produto.id} className="bg-axon-bg border border-axon-border rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-white">{produto.nome}</p>
                 <div className="flex flex-wrap gap-3 mt-1">
-                  <p className="text-xs text-gray-500">Preço base: {moeda(produto.preco ?? 0)}</p>
-                  <p className="text-xs text-gray-600">Estoque base: {produto.estoque ?? 0}</p>
+                  <p className="text-xs text-gray-500">Preço base {moeda(produto.preco ?? 0)}</p>
+                  <p className="text-xs text-gray-600">Estoque base {produto.estoque ?? 0}</p>
                 </div>
               </div>
 
@@ -867,16 +870,12 @@ function ModalConfigurarPdvEvento({
   if (!open) return null;
 
   return (
-    <>
-      <div
-        className="fixed inset-0 bg-black/70 z-50"
-        onClick={async () => {
-          onClose();
-          await onSaved();
-        }}
-      />
+    <div className="fixed inset-0 bg-black/70 z-50" onClick={async () => { onClose(); await onSaved(); }}>
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-        <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-6xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+        <div
+          className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-6xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border">
             <div>
               <h3 className="text-lg font-semibold text-white">Configurar PDV do Evento</h3>
@@ -884,13 +883,7 @@ function ModalConfigurarPdvEvento({
                 Vincule produtos do catálogo central e ajuste preço, estoque e ativação localmente para este festival.
               </p>
             </div>
-            <button
-              onClick={async () => {
-                onClose();
-                await onSaved();
-              }}
-              className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200"
-            >
+            <button onClick={async () => { onClose(); await onSaved(); }} className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200">
               <X size={18} />
             </button>
           </div>
@@ -904,9 +897,7 @@ function ModalConfigurarPdvEvento({
                 key={id}
                 onClick={() => setTab(id as "vinculados" | "catalogo")}
                 className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-all duration-200 ${
-                  tab === id
-                    ? "border-axon-gold text-axon-gold"
-                    : "border-transparent text-gray-400 hover:text-white hover:border-gray-600"
+                  tab === id ? "border-axon-gold text-axon-gold" : "border-transparent text-gray-400 hover:text-white hover:border-gray-600"
                 }`}
               >
                 <Icon size={16} />
@@ -920,155 +911,134 @@ function ModalConfigurarPdvEvento({
               <div className="flex items-center justify-center py-16">
                 <Loader2 size={24} className="animate-spin text-axon-gold" />
               </div>
-            ) : (
-              <>
-                {tab === "vinculados" && (
-                  <div className="space-y-4">
-                    {produtosVinculados.length === 0 ? (
-                      <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
-                        <ShoppingCart size={36} className="mx-auto mb-3 opacity-20 text-axon-gold" />
-                        <p className="font-medium text-gray-300">Nenhum produto vinculado</p>
-                        <p className="text-sm mt-1 text-gray-500">
-                          Vincule produtos do catálogo central para ativar o PDV deste evento.
-                        </p>
-                      </div>
-                    ) : (
-                      produtosVinculados.map((produto) => (
-                        <div key={produto.vinculo_id} className="bg-axon-bg border border-axon-border rounded-xl p-4 space-y-4">
-                          <div className="flex items-start justify-between gap-4 flex-wrap">
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-sm font-semibold text-white">{produto.nome}</p>
-                                <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                  {produto.secao}
-                                </span>
-                              </div>
-                              <div className="flex flex-wrap gap-3 mt-1">
-                                <p className="text-xs text-gray-500">Preço base: {moeda(produto.preco_base)}</p>
-                                <p className="text-xs text-gray-600">Estoque base: {produto.estoque_base}</p>
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={() => void removerProduto(produto.vinculo_id)}
-                              disabled={!!removingIds[produto.vinculo_id]}
-                              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-all duration-200 disabled:opacity-50"
-                            >
-                              {removingIds[produto.vinculo_id] ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                              Remover
-                            </button>
+            ) : tab === "vinculados" ? (
+              <div className="space-y-4">
+                {produtosVinculados.length === 0 ? (
+                  <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
+                    <ShoppingCart size={36} className="mx-auto mb-3 opacity-20 text-axon-gold" />
+                    <p className="font-medium text-gray-300">Nenhum produto vinculado</p>
+                    <p className="text-sm mt-1 text-gray-500">
+                      Vincule produtos do catálogo central para ativar o PDV deste evento.
+                    </p>
+                  </div>
+                ) : (
+                  produtosVinculados.map((produto) => (
+                    <div key={produto.vinculo_id} className="bg-axon-bg border border-axon-border rounded-xl p-4 space-y-4">
+                      <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-white">{produto.nome}</p>
+                            <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                              {produto.secao}
+                            </span>
                           </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="space-y-2">
-                              <label className="text-sm text-gray-400 font-medium">Preço no evento</label>
-                              <input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={produto.preco_evento}
-                                onChange={(e) =>
-                                  setProdutosVinculados((prev) =>
-                                    prev.map((item) =>
-                                      item.vinculo_id === produto.vinculo_id
-                                        ? { ...item, preco_evento: Number(e.target.value) || 0 }
-                                        : item
-                                    )
-                                  )
-                                }
-                                className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="text-sm text-gray-400 font-medium">Estoque no evento</label>
-                              <input
-                                type="number"
-                                min={0}
-                                step="1"
-                                value={produto.estoque_evento}
-                                onChange={(e) =>
-                                  setProdutosVinculados((prev) =>
-                                    prev.map((item) =>
-                                      item.vinculo_id === produto.vinculo_id
-                                        ? { ...item, estoque_evento: Number(e.target.value) || 0 }
-                                        : item
-                                    )
-                                  )
-                                }
-                                className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="text-sm text-gray-400 font-medium">Ativo no evento</label>
-                              <select
-                                value={produto.ativo_evento ? "true" : "false"}
-                                onChange={(e) =>
-                                  setProdutosVinculados((prev) =>
-                                    prev.map((item) =>
-                                      item.vinculo_id === produto.vinculo_id
-                                        ? { ...item, ativo_evento: e.target.value === "true" }
-                                        : item
-                                    )
-                                  )
-                                }
-                                className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
-                              >
-                                <option value="true">Ativo</option>
-                                <option value="false">Inativo</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          <div className="flex justify-end">
-                            <button
-                              onClick={() => void salvarProduto(produto.vinculo_id)}
-                              disabled={!!savingIds[produto.vinculo_id]}
-                              className="flex items-center gap-2 bg-axon-gold text-black font-bold px-4 py-2.5 rounded-lg hover:bg-axon-gold/80 transition-all duration-200 text-sm disabled:opacity-50"
-                            >
-                              {savingIds[produto.vinculo_id] ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                              Salvar configuração
-                            </button>
+                          <div className="flex flex-wrap gap-3 mt-1">
+                            <p className="text-xs text-gray-500">Preço base {moeda(produto.preco_base)}</p>
+                            <p className="text-xs text-gray-600">Estoque base {produto.estoque_base}</p>
                           </div>
                         </div>
-                      ))
-                    )}
-                  </div>
-                )}
 
-                {tab === "catalogo" && (
-                  <div className="space-y-6">
-                    <div className="relative">
-                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                      <input
-                        type="text"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Buscar produto por nome"
-                        className="w-full bg-axon-bg border border-axon-border rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
-                      />
+                        <button
+                          onClick={() => void removerProduto(produto.vinculo_id)}
+                          disabled={!!removingIds[produto.vinculo_id]}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-all duration-200 disabled:opacity-50"
+                        >
+                          {removingIds[produto.vinculo_id] ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          Remover
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-sm text-gray-400 font-medium">Preço no evento</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={produto.preco_evento}
+                            onChange={(e) =>
+                              setProdutosVinculados((prev) =>
+                                prev.map((item) =>
+                                  item.vinculo_id === produto.vinculo_id ? { ...item, preco_evento: Number(e.target.value || 0) } : item
+                                )
+                              )
+                            }
+                            className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm text-gray-400 font-medium">Estoque no evento</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={produto.estoque_evento}
+                            onChange={(e) =>
+                              setProdutosVinculados((prev) =>
+                                prev.map((item) =>
+                                  item.vinculo_id === produto.vinculo_id ? { ...item, estoque_evento: Number(e.target.value || 0) } : item
+                                )
+                              )
+                            }
+                            className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm text-gray-400 font-medium">Ativo no evento</label>
+                          <select
+                            value={produto.ativo_evento ? "true" : "false"}
+                            onChange={(e) =>
+                              setProdutosVinculados((prev) =>
+                                prev.map((item) =>
+                                  item.vinculo_id === produto.vinculo_id ? { ...item, ativo_evento: e.target.value === "true" } : item
+                                )
+                              )
+                            }
+                            className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                          >
+                            <option value="true">Ativo</option>
+                            <option value="false">Inativo</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => void salvarProduto(produto.vinculo_id)}
+                          disabled={!!savingIds[produto.vinculo_id]}
+                          className="flex items-center gap-2 bg-axon-gold text-black font-bold px-4 py-2.5 rounded-lg hover:bg-axon-gold/80 transition-all duration-200 text-sm disabled:opacity-50"
+                        >
+                          {savingIds[produto.vinculo_id] ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                          Salvar configuração
+                        </button>
+                      </div>
                     </div>
-
-                    {renderListaCatalogo(
-                      "Cantina",
-                      <Coffee size={16} className="text-axon-gold" />,
-                      produtosDisponiveisCantina
-                    )}
-
-                    {renderListaCatalogo(
-                      "Bilheteria",
-                      <Ticket size={16} className="text-emerald-400" />,
-                      produtosDisponiveisBilheteria
-                    )}
-                  </div>
+                  ))
                 )}
-              </>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="relative">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar produto por nome"
+                    className="w-full bg-axon-bg border border-axon-border rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                  />
+                </div>
+
+                {renderListaCatalogo("Cantina", <Coffee size={16} className="text-axon-gold" />, produtosDisponiveisCantina)}
+                {renderListaCatalogo("Bilheteria", <Ticket size={16} className="text-emerald-400" />, produtosDisponiveisBilheteria)}
+              </div>
             )}
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1077,11 +1047,13 @@ export default function PainelEventoPage() {
   const router = useRouter();
   const eventoId = params.id as string;
 
-  const [abaAtiva, setAbaAtiva] = useState("visao-geral");
+  const [abaAtiva, setAbaAtiva] = useState<"visao-geral" | "configuracoes" | "categorias" | "lineup">("visao-geral");
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
+
   const [evento, setEvento] = useState<Evento | null>(null);
   const [form, setForm] = useState<Partial<Evento>>({});
+
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [apresentacoes, setApresentacoes] = useState<Apresentacao[]>([]);
   const [totalInscritos, setTotalInscritos] = useState(0);
@@ -1089,12 +1061,15 @@ export default function PainelEventoPage() {
   const [totalJurados, setTotalJurados] = useState(0);
   const [pdvConfigurado, setPdvConfigurado] = useState(false);
   const [criteriosConfigurados, setCriteriosConfigurados] = useState(false);
+
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [perfilSlug, setPerfilSlug] = useState("danca");
+
   const [modalCat, setModalCat] = useState(false);
   const [catEditando, setCatEditando] = useState<Categoria | null>(null);
   const [modalJuradosOpen, setModalJuradosOpen] = useState(false);
   const [modalPdvOpen, setModalPdvOpen] = useState(false);
+
   const [formCat, setFormCat] = useState({
     nome: "",
     valor_solo: 0,
@@ -1105,6 +1080,16 @@ export default function PainelEventoPage() {
     faixa_etaria_max: "",
     faixa_etaria_label: "",
     categoria_pai_id: "",
+  });
+
+  const [locaisEvento, setLocaisEvento] = useState<LocalEvento[]>([]);
+  const [loadingLocais, setLoadingLocais] = useState(false);
+  const [salvandoLocal, setSalvandoLocal] = useState(false);
+  const [removendoLocalId, setRemovendoLocalId] = useState<string | null>(null);
+  const [novoLocal, setNovoLocal] = useState({
+    nome_local: "",
+    cidade: "",
+    estado: "",
   });
 
   const addToast = useCallback((tipo: Toast["tipo"], mensagem: string) => {
@@ -1119,12 +1104,33 @@ export default function PainelEventoPage() {
     setToasts((p) => p.filter((t) => t.id !== id));
   }, []);
 
+  const carregarLocais = useCallback(async () => {
+    if (!eventoId) return;
+    const supabase = createClient();
+    setLoadingLocais(true);
+
+    const { data } = await supabase
+      .from("locais_evento")
+      .select("id, evento_id, nome_local, cidade, estado")
+      .eq("evento_id", eventoId)
+      .order("nome_local");
+
+    setLocaisEvento((data ?? []) as LocalEvento[]);
+    setLoadingLocais(false);
+  }, [eventoId]);
+
   const carregarEvento = useCallback(async () => {
     const supabase = createClient();
     setLoading(true);
 
     const [{ data: ev }, { data: cats }, { data: apres }] = await Promise.all([
-      supabase.from("eventos").select("*").eq("id", eventoId).single(),
+      supabase
+        .from("eventos")
+        .select(
+          "id, nome, data_inicio, data_fim, local, status, descricao, produtora_id, formato, tipo_premiacao, multilocal, logo_url, banner_url"
+        )
+        .eq("id", eventoId)
+        .single(),
       supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome"),
       supabase
         .from("apresentacoes")
@@ -1138,22 +1144,19 @@ export default function PainelEventoPage() {
       return;
     }
 
-    setEvento(ev as Evento);
-    setForm(ev as Evento);
-
     const eventoAtual = ev as Evento;
+    setEvento(eventoAtual);
+    setForm(eventoAtual);
 
     if (eventoAtual.produtora_id) {
       const { data: config } = await supabase
         .from("tenant_config")
-        .select("perfis_festival:perfil_id ( slug )")
+        .select("perfis_festival->perfil_id->slug")
         .eq("produtora_id", eventoAtual.produtora_id)
         .maybeSingle();
 
-      const slugConfig = (config as { perfis_festival?: { slug?: string } | null } | null)?.perfis_festival?.slug;
-      if (slugConfig) {
-        setPerfilSlug(slugConfig);
-      }
+      const slugConfig = (config as { perfis_festival?: { slug?: string | null } | null } | null)?.perfis_festival?.slug;
+      if (slugConfig) setPerfilSlug(slugConfig);
     }
 
     const todasCats = (cats ?? []) as Categoria[];
@@ -1169,26 +1172,19 @@ export default function PainelEventoPage() {
 
     const total = (apres ?? []).length;
     const pendentes = (apres ?? []).filter((a) => a.status_pagamento === "Pendente").length;
+
     setTotalInscritos(total);
     setTotalPendentes(pendentes);
 
     try {
-      const { count } = await supabase
-        .from("evento_jurados")
-        .select("id", { count: "exact", head: true })
-        .eq("evento_id", eventoId);
-
+      const { count } = await supabase.from("evento_jurados").select("id", { count: "exact", head: true }).eq("evento_id", eventoId);
       setTotalJurados(count ?? 0);
     } catch {
       setTotalJurados(0);
     }
 
     try {
-      const { count } = await supabase
-        .from("criterios_avaliacao")
-        .select("id", { count: "exact", head: true })
-        .eq("evento_id", eventoId);
-
+      const { count } = await supabase.from("criterios_avaliacao").select("id", { count: "exact", head: true }).eq("evento_id", eventoId);
       setCriteriosConfigurados((count ?? 0) > 0);
     } catch {
       setCriteriosConfigurados(false);
@@ -1196,52 +1192,120 @@ export default function PainelEventoPage() {
 
     try {
       const [{ count: pdvCount }, { count: produtosCount }] = await Promise.all([
-        supabase
-          .from("pdv_config")
-          .select("id", { count: "exact", head: true })
-          .eq("evento_id", eventoId),
-        supabase
-          .from("evento_produtos")
-          .select("id", { count: "exact", head: true })
-          .eq("evento_id", eventoId),
+        supabase.from("pdv_config").select("id", { count: "exact", head: true }).eq("evento_id", eventoId),
+        supabase.from("evento_produtos").select("id", { count: "exact", head: true }).eq("evento_id", eventoId),
       ]);
 
-      setPdvConfigurado((pdvCount ?? 0) > 0 && (produtosCount ?? 0) > 0);
+      setPdvConfigurado((pdvCount ?? 0) > 0 || (produtosCount ?? 0) > 0);
     } catch {
       setPdvConfigurado(false);
     }
 
+    if (eventoAtual.multilocal) {
+      await carregarLocais();
+    } else {
+      setLocaisEvento([]);
+    }
+
     setLoading(false);
-  }, [eventoId, router]);
+  }, [eventoId, router, carregarLocais]);
 
   useEffect(() => {
     void carregarEvento();
   }, [carregarEvento]);
 
+  useEffect(() => {
+    if (form.multilocal) {
+      void carregarLocais();
+    } else {
+      setLocaisEvento([]);
+    }
+  }, [form.multilocal, carregarLocais]);
+
   async function salvarEvento() {
     const supabase = createClient();
     setSalvando(true);
 
-    const { error } = await supabase
-      .from("eventos")
-      .update({
-        nome: form.nome,
-        local: form.local,
-        data_inicio: form.data_inicio,
-        data_fim: form.data_fim,
-        status: form.status,
-        descricao: form.descricao,
-      })
-      .eq("id", eventoId);
+    const payload = {
+      nome: form.nome ?? "",
+      local: form.local ?? "",
+      data_inicio: form.data_inicio ?? "",
+      data_fim: form.data_fim ?? "",
+      status: (form.status ?? "rascunho") as EventoStatus,
+      descricao: form.descricao ?? null,
+      formato: (form.formato ?? "competitivo") as EventoFormato,
+      tipo_premiacao: (form.tipo_premiacao ?? "sem_premiacao") as TipoPremiacao,
+      multilocal: Boolean(form.multilocal),
+      logo_url: form.logo_url?.trim() ? form.logo_url.trim() : null,
+      banner_url: form.banner_url?.trim() ? form.banner_url.trim() : null,
+    };
+
+    const { error } = await supabase.from("eventos").update(payload).eq("id", eventoId);
 
     if (!error) {
-      setEvento({ ...(evento as Evento), ...(form as Evento) });
+      const atualizado = { ...(evento as Evento), ...payload } as Evento;
+      setEvento(atualizado);
+      setForm(atualizado);
       addToast("sucesso", "Evento salvo com sucesso!");
+      if (payload.multilocal) {
+        await carregarLocais();
+      } else {
+        setLocaisEvento([]);
+      }
     } else {
       addToast("erro", "Erro ao salvar. Tente novamente.");
     }
 
     setSalvando(false);
+  }
+
+  async function adicionarLocalEvento() {
+    if (!novoLocal.nome_local.trim()) {
+      addToast("info", "Informe o nome do local.");
+      return;
+    }
+
+    const supabase = createClient();
+    setSalvandoLocal(true);
+
+    const { data, error } = await supabase
+      .from("locais_evento")
+      .insert({
+        evento_id: eventoId,
+        nome_local: novoLocal.nome_local.trim(),
+        cidade: novoLocal.cidade.trim() || null,
+        estado: novoLocal.estado.trim() || null,
+      })
+      .select("id, evento_id, nome_local, cidade, estado")
+      .single();
+
+    if (!error && data) {
+      setLocaisEvento((prev) =>
+        [...prev, data as LocalEvento].sort((a, b) => a.nome_local.localeCompare(b.nome_local))
+      );
+      setNovoLocal({ nome_local: "", cidade: "", estado: "" });
+      addToast("sucesso", "Local adicionado.");
+    } else {
+      addToast("erro", "Erro ao adicionar local.");
+    }
+
+    setSalvandoLocal(false);
+  }
+
+  async function removerLocalEvento(id: string) {
+    const supabase = createClient();
+    setRemovendoLocalId(id);
+
+    const { error } = await supabase.from("locais_evento").delete().eq("id", id).eq("evento_id", eventoId);
+
+    if (!error) {
+      setLocaisEvento((prev) => prev.filter((local) => local.id !== id));
+      addToast("sucesso", "Local removido.");
+    } else {
+      addToast("erro", "Erro ao remover local.");
+    }
+
+    setRemovendoLocalId(null);
   }
 
   async function recarregarCategorias() {
@@ -1293,7 +1357,6 @@ export default function PainelEventoPage() {
 
   async function salvarCategoria() {
     const supabase = createClient();
-
     if (!formCat.nome.trim()) return;
 
     const payload = {
@@ -1311,18 +1374,16 @@ export default function PainelEventoPage() {
 
     if (catEditando) {
       const { error } = await supabase.from("categorias").update(payload).eq("id", catEditando.id);
-
       if (!error) {
-        addToast("sucesso", `"${formCat.nome}" atualizada!`);
+        addToast("sucesso", `${formCat.nome} atualizada!`);
         void recarregarCategorias();
       } else {
         addToast("erro", "Erro ao atualizar categoria.");
       }
     } else {
       const { error } = await supabase.from("categorias").insert(payload);
-
       if (!error) {
-        addToast("sucesso", `"${formCat.nome}" criada!`);
+        addToast("sucesso", `${formCat.nome} criada!`);
         void recarregarCategorias();
       } else {
         addToast("erro", "Erro ao criar categoria.");
@@ -1337,7 +1398,7 @@ export default function PainelEventoPage() {
     const { error } = await supabase.from("categorias").delete().eq("id", id);
 
     if (!error) {
-      addToast("sucesso", `"${nome}" removida.`);
+      addToast("sucesso", `${nome} removida.`);
       void recarregarCategorias();
     } else {
       addToast("erro", "Erro ao remover categoria.");
@@ -1346,7 +1407,6 @@ export default function PainelEventoPage() {
 
   async function onDragEnd(result: DropResult) {
     const supabase = createClient();
-
     if (!result.destination) return;
 
     const items = Array.from(apresentacoes);
@@ -1384,7 +1444,47 @@ export default function PainelEventoPage() {
   if (!evento) return null;
 
   const categoriasRaiz = categorias.filter((c) => !c.categoria_pai_id);
-  const presetAtual = PRESETS[perfilSlug] || PRESETS.multidisciplinar;
+  const presetAtual = PRESETS[perfilSlug] ?? PRESETS.multidisciplinar;
+
+  const checklistJuradosOk =
+    form.formato === "mostra"
+      ? true
+      : totalJurados > 0 && criteriosConfigurados;
+
+  const checklist = [
+    {
+      label: "Dados básicos preenchidos",
+      descricao: "Nome, local e datas do evento.",
+      ok: !!evento.nome && !!evento.local && !!evento.data_inicio,
+      acao: "configuracoes" as const,
+      onAcao: null as null | (() => void),
+      acaoLabel: evento.nome && evento.local && evento.data_inicio ? "Editar →" : "Preencher",
+    },
+    {
+      label: "Ao menos 1 categoria criada",
+      descricao: "Categorias definem as taxas e faixas etárias aceitas.",
+      ok: categorias.length > 0,
+      acao: "categorias" as const,
+      onAcao: null as null | (() => void),
+      acaoLabel: categorias.length > 0 ? "Gerenciar →" : "Criar categoria",
+    },
+    {
+      label: form.formato === "mostra" ? "Jurados configurados (opcional em mostra)" : "Jurados configurados",
+      descricao: form.formato === "mostra" ? "Em formato mostra, jurados não são obrigatórios." : "Escala e módulo de avaliação do evento.",
+      ok: checklistJuradosOk,
+      acao: null,
+      onAcao: () => setModalJuradosOpen(true),
+      acaoLabel: checklistJuradosOk ? "Gerenciar →" : "Configurar",
+    },
+    {
+      label: "PDV / Bilheteria configurados",
+      descricao: "Ponto de venda no dia do evento.",
+      ok: pdvConfigurado,
+      acao: null,
+      onAcao: () => setModalPdvOpen(true),
+      acaoLabel: pdvConfigurado ? "Gerenciar →" : "Configurar",
+    },
+  ];
 
   return (
     <>
@@ -1418,19 +1518,13 @@ export default function PainelEventoPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-white">{evento.nome}</h1>
-              <span
-                className={`text-xs font-medium px-2.5 py-1 rounded-full border ${
-                  STATUS_CORES[evento.status] ?? "text-gray-400 bg-white/5 border-white/10"
-                }`}
-              >
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_CORES[evento.status] ?? "text-gray-400 bg-white/5 border-white/10"}`}>
                 {STATUS_LABELS[evento.status] ?? evento.status}
               </span>
             </div>
-
             <p className="text-sm text-gray-400 mt-1">
-              {new Date(evento.data_inicio).toLocaleDateString("pt-BR")} até{" "}
-              {new Date(evento.data_fim).toLocaleDateString("pt-BR")}
-              {evento.local ? ` • ${evento.local}` : ""}
+              {new Date(evento.data_inicio).toLocaleDateString("pt-BR")} até {new Date(evento.data_fim).toLocaleDateString("pt-BR")}
+              {evento.local ? ` · ${evento.local}` : ""}
             </p>
           </div>
         </div>
@@ -1445,11 +1539,9 @@ export default function PainelEventoPage() {
             ].map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
-                onClick={() => setAbaAtiva(id)}
+                onClick={() => setAbaAtiva(id as "visao-geral" | "configuracoes" | "categorias" | "lineup")}
                 className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-all duration-200 ${
-                  abaAtiva === id
-                    ? "border-axon-gold text-axon-gold"
-                    : "border-transparent text-gray-400 hover:text-white hover:border-gray-600"
+                  abaAtiva === id ? "border-axon-gold text-axon-gold" : "border-transparent text-gray-400 hover:text-white hover:border-gray-600"
                 }`}
               >
                 <Icon size={16} />
@@ -1472,13 +1564,10 @@ export default function PainelEventoPage() {
                   <div className="bg-axon-gold/10 border border-axon-gold/30 rounded-xl p-4 flex items-start gap-3">
                     <AlertCircle size={18} className="text-axon-gold shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-axon-gold font-semibold text-sm">Evento em Rascunho — inscrições bloqueadas</p>
+                      <p className="text-axon-gold font-semibold text-sm">Evento em Rascunho · inscrições bloqueadas</p>
                       <p className="text-gray-300 text-sm mt-1">
                         As organizações ainda não podem se inscrever. Quando tudo estiver configurado, vá em{" "}
-                        <button
-                          onClick={() => setAbaAtiva("configuracoes")}
-                          className="text-axon-gold underline hover:no-underline"
-                        >
+                        <button onClick={() => setAbaAtiva("configuracoes")} className="text-axon-gold underline hover:no-underline">
                           Configurações
                         </button>{" "}
                         e mude o status para <strong>Inscrições Abertas</strong>.
@@ -1512,7 +1601,7 @@ export default function PainelEventoPage() {
                       onClick: () => setModalJuradosOpen(true),
                     },
                     {
-                      label: "PDV & Bilheteria",
+                      label: "PDV / Bilheteria",
                       valor: pdvConfigurado ? "Ativo" : "Inativo",
                       icon: ShoppingCart,
                       cor: pdvConfigurado ? "text-emerald-400" : "text-gray-500",
@@ -1553,43 +1642,14 @@ export default function PainelEventoPage() {
                   </p>
 
                   <div className="bg-axon-bg border border-axon-border rounded-xl divide-y divide-axon-border">
-                    {[
-                      {
-                        label: "Dados básicos preenchidos",
-                        descricao: "Nome, local e datas do evento",
-                        ok: !!(evento.nome && evento.local && evento.data_inicio),
-                        acao: "configuracoes",
-                        onAcao: null as null | (() => void),
-                        acaoLabel: "Preencher →",
-                      },
-                      {
-                        label: "Ao menos 1 categoria criada",
-                        descricao: "Categorias definem as taxas e faixas etárias aceitas",
-                        ok: categorias.length > 0,
-                        acao: "categorias",
-                        onAcao: null as null | (() => void),
-                        acaoLabel: "Criar categoria →",
-                      },
-                      {
-                        label: "Jurados configurados",
-                        descricao: "Escala e módulo de avaliação do evento",
-                        ok: totalJurados > 0 || criteriosConfigurados,
-                        acao: null,
-                        onAcao: () => setModalJuradosOpen(true),
-                        acaoLabel: "Configurar →",
-                      },
-                      {
-                        label: "PDV & Bilheteria configurados",
-                        descricao: "Ponto de venda no dia do evento",
-                        ok: pdvConfigurado,
-                        acao: null,
-                        onAcao: () => setModalPdvOpen(true),
-                        acaoLabel: "Configurar →",
-                      },
-                    ].map(({ label, descricao, ok, acao, onAcao, acaoLabel }) => (
+                    {checklist.map(({ label, descricao, ok, acao, onAcao, acaoLabel }) => (
                       <div key={label} className="flex items-center justify-between px-5 py-4 gap-4">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${ok ? "bg-emerald-500/20" : "bg-white/5"}`}>
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                              ok ? "bg-emerald-500/20" : "bg-white/5"
+                            }`}
+                          >
                             {ok ? (
                               <CheckCircle size={14} className="text-emerald-400" />
                             ) : (
@@ -1603,25 +1663,29 @@ export default function PainelEventoPage() {
                           </div>
                         </div>
 
-                        {!ok && acao && acaoLabel && (
+                        {acao ? (
                           <button
                             onClick={() => setAbaAtiva(acao)}
-                            className="text-xs text-axon-gold hover:text-white hover:bg-axon-gold/10 px-3 py-1.5 rounded-lg border border-axon-gold/30 transition-all duration-200 whitespace-nowrap"
+                            className={`text-xs px-3 py-1.5 rounded-lg border transition-all duration-200 whitespace-nowrap ${
+                              ok
+                                ? "text-gray-300 border-white/10 hover:text-white hover:border-gray-500 hover:bg-white/5"
+                                : "text-axon-gold hover:text-white hover:bg-axon-gold/10 border-axon-gold/30"
+                            }`}
                           >
                             {acaoLabel}
                           </button>
-                        )}
-
-                        {!ok && onAcao && acaoLabel && (
+                        ) : onAcao ? (
                           <button
                             onClick={onAcao}
-                            className="text-xs text-axon-gold hover:text-white hover:bg-axon-gold/10 px-3 py-1.5 rounded-lg border border-axon-gold/30 transition-all duration-200 whitespace-nowrap"
+                            className={`text-xs px-3 py-1.5 rounded-lg border transition-all duration-200 whitespace-nowrap ${
+                              ok
+                                ? "text-gray-300 border-white/10 hover:text-white hover:border-gray-500 hover:bg-white/5"
+                                : "text-axon-gold hover:text-white hover:bg-axon-gold/10 border-axon-gold/30"
+                            }`}
                           >
                             {acaoLabel}
                           </button>
-                        )}
-
-                        {!ok && !acao && !onAcao && (
+                        ) : (
                           <span className="text-xs text-gray-600 bg-white/5 px-2.5 py-1 rounded-full">Em breve</span>
                         )}
                       </div>
@@ -1636,7 +1700,7 @@ export default function PainelEventoPage() {
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-1">Dados do Evento</h3>
                   <p className="text-sm text-gray-400">
-                    Informações básicas do festival. O status controla se as inscrições estão abertas ou não.
+                    Informações básicas, estruturais e visuais do festival. O status controla se as inscrições estão abertas ou não.
                   </p>
                 </div>
 
@@ -1653,10 +1717,10 @@ export default function PainelEventoPage() {
                 >
                   <Info size={15} className="shrink-0 mt-0.5" />
                   <span>
-                    {form.status === "rascunho" && "Rascunho — o formulário de inscrição está bloqueado para as organizações."}
-                    {form.status === "inscricoes_abertas" && "Inscrições Abertas — as organizações já podem se inscrever neste evento."}
-                    {form.status === "em_andamento" && "Em Andamento — inscrições encerradas, evento em curso."}
-                    {form.status === "encerrado" && "Encerrado — evento concluído. Os resultados podem ser disponibilizados."}
+                    {form.status === "rascunho" && "Rascunho: o formulário de inscrição está bloqueado para as organizações."}
+                    {form.status === "inscricoes_abertas" && "Inscrições Abertas: as organizações já podem se inscrever neste evento."}
+                    {form.status === "em_andamento" && "Em Andamento: inscrições encerradas, evento em curso."}
+                    {form.status === "encerrado" && "Encerrado: evento concluído. Os resultados podem ser disponibilizados."}
                   </span>
                 </div>
 
@@ -1672,7 +1736,7 @@ export default function PainelEventoPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm text-gray-400 font-medium">Local</label>
+                    <label className="text-sm text-gray-400 font-medium">Local principal</label>
                     <input
                       type="text"
                       value={form.local ?? ""}
@@ -1685,8 +1749,8 @@ export default function PainelEventoPage() {
                   <div className="space-y-2">
                     <label className="text-sm text-gray-400 font-medium">Status</label>
                     <select
-                      value={form.status ?? ""}
-                      onChange={(e) => setForm({ ...form, status: e.target.value })}
+                      value={form.status ?? "rascunho"}
+                      onChange={(e) => setForm({ ...form, status: e.target.value as EventoStatus })}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
                     >
                       <option value="rascunho">Rascunho</option>
@@ -1716,16 +1780,183 @@ export default function PainelEventoPage() {
                     />
                   </div>
 
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400 font-medium flex items-center gap-2">
+                      <ListTree size={14} className="text-axon-gold" />
+                      Formato
+                    </label>
+                    <select
+                      value={form.formato ?? "competitivo"}
+                      onChange={(e) => setForm({ ...form, formato: e.target.value as EventoFormato })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
+                    >
+                      <option value="competitivo">Competitivo</option>
+                      <option value="mostra">Mostra</option>
+                      <option value="misto">Misto</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400 font-medium flex items-center gap-2">
+                      <Trophy size={14} className="text-axon-gold" />
+                      Tipo de premiação
+                    </label>
+                    <select
+                      value={form.tipo_premiacao ?? "sem_premiacao"}
+                      onChange={(e) => setForm({ ...form, tipo_premiacao: e.target.value as TipoPremiacao })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
+                    >
+                      <option value="sem_premiacao">Sem premiação</option>
+                      <option value="apenas_trofeus_e_medalhas">Apenas troféus e medalhas</option>
+                      <option value="com_premiacao_dinheiro">Com premiação em dinheiro</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-3 md:col-span-2">
+                    <label className="text-sm text-gray-400 font-medium flex items-center gap-2">
+                      <Globe size={14} className="text-axon-gold" />
+                      Festival multilocal
+                    </label>
+
+                    <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-axon-border bg-axon-bg">
+                      <div>
+                        <p className="text-sm font-medium text-white">Ativar múltiplos locais / palcos</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Quando ativado, você poderá cadastrar palcos, teatros ou cidades adicionais vinculados a este evento.
+                        </p>
+                      </div>
+
+                      <Switch
+                        checked={Boolean(form.multilocal)}
+                        onChange={(value) => setForm({ ...form, multilocal: value })}
+                      />
+                    </div>
+                  </div>
+
                   <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm text-gray-400 font-medium">Descrição / Observações</label>
+                    <label className="text-sm text-gray-400 font-medium flex items-center gap-2">
+                      <Info size={14} className="text-axon-gold" />
+                      Descrição / conteúdo público
+                    </label>
                     <textarea
-                      rows={3}
+                      rows={5}
                       value={form.descricao ?? ""}
-                      placeholder="Informações adicionais sobre o evento, regras gerais, etc."
+                      placeholder="Texto descritivo do festival, conceito curatorial, diferenciais, regulamento resumido e informações que alimentarão a página pública."
                       onChange={(e) => setForm({ ...form, descricao: e.target.value })}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200 resize-none"
                     />
                   </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400 font-medium flex items-center gap-2">
+                      <ImageIcon size={14} className="text-axon-gold" />
+                      Logo URL
+                    </label>
+                    <input
+                      type="text"
+                      value={form.logo_url ?? ""}
+                      placeholder="https://..."
+                      onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400 font-medium flex items-center gap-2">
+                      <Link2 size={14} className="text-axon-gold" />
+                      Banner URL
+                    </label>
+                    <input
+                      type="text"
+                      value={form.banner_url ?? ""}
+                      placeholder="https://..."
+                      onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
+                    />
+                  </div>
+
+                  {form.multilocal && (
+                    <div className="md:col-span-2 space-y-4 border border-axon-border rounded-xl p-5 bg-axon-bg">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                          <MapPin size={15} className="text-axon-gold" />
+                          Múltiplos Locais / Palcos
+                        </h4>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Gerencie os palcos, teatros e cidades vinculados a este festival. Esta lista é carregada em tempo real do Supabase.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_120px_auto] gap-3">
+                        <input
+                          type="text"
+                          value={novoLocal.nome_local}
+                          onChange={(e) => setNovoLocal((prev) => ({ ...prev, nome_local: e.target.value }))}
+                          placeholder="Nome do local / palco"
+                          className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                        />
+                        <input
+                          type="text"
+                          value={novoLocal.cidade}
+                          onChange={(e) => setNovoLocal((prev) => ({ ...prev, cidade: e.target.value }))}
+                          placeholder="Cidade"
+                          className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                        />
+                        <input
+                          type="text"
+                          maxLength={2}
+                          value={novoLocal.estado}
+                          onChange={(e) => setNovoLocal((prev) => ({ ...prev, estado: e.target.value.toUpperCase() }))}
+                          placeholder="UF"
+                          className="w-full bg-axon-panel border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200 uppercase"
+                        />
+                        <button
+                          onClick={() => void adicionarLocalEvento()}
+                          disabled={salvandoLocal}
+                          className="flex items-center justify-center gap-2 bg-axon-gold text-black font-bold px-4 py-2.5 rounded-lg hover:bg-axon-gold/80 transition-all duration-200 text-sm disabled:opacity-50"
+                        >
+                          {salvandoLocal ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                          Adicionar
+                        </button>
+                      </div>
+
+                      {loadingLocais ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 size={20} className="animate-spin text-axon-gold" />
+                        </div>
+                      ) : locaisEvento.length === 0 ? (
+                        <div className="text-center py-8 border border-dashed border-axon-border rounded-xl text-gray-500">
+                          <MapPin size={28} className="mx-auto mb-2 opacity-20 text-axon-gold" />
+                          <p className="text-sm text-gray-400">Nenhum local adicional cadastrado.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {locaisEvento.map((local) => (
+                            <div
+                              key={local.id}
+                              className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border border-axon-border bg-axon-panel"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-white">{local.nome_local}</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {[local.cidade, local.estado].filter(Boolean).join(" · ") || "Sem cidade / estado informados"}
+                                </p>
+                              </div>
+
+                              <button
+                                onClick={() => void removerLocalEvento(local.id)}
+                                disabled={removendoLocalId === local.id}
+                                className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all duration-200 disabled:opacity-50"
+                                title="Remover local"
+                              >
+                                {removendoLocalId === local.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end pt-2">
@@ -1779,10 +2010,7 @@ export default function PainelEventoPage() {
                 ) : (
                   <div className="space-y-3">
                     {categorias.map((cat) => (
-                      <div
-                        key={cat.id}
-                        className="bg-axon-bg border border-axon-border rounded-xl overflow-hidden hover:border-gray-600 transition-colors"
-                      >
+                      <div key={cat.id} className="bg-axon-bg border border-axon-border rounded-xl overflow-hidden hover:border-gray-600 transition-colors">
                         <div className="flex items-center justify-between p-4 group">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1793,19 +2021,19 @@ export default function PainelEventoPage() {
                               {cat.faixa_etaria_label && (
                                 <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
                                   {cat.faixa_etaria_label}
-                                  {cat.faixa_etaria_min && cat.faixa_etaria_max
-                                    ? ` (${cat.faixa_etaria_min}–${cat.faixa_etaria_max} anos)`
-                                    : ""}
+                                </span>
+                              )}
+                              {!cat.faixa_etaria_label && cat.faixa_etaria_min != null && cat.faixa_etaria_max != null && (
+                                <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                  {cat.faixa_etaria_min}-{cat.faixa_etaria_max} anos
                                 </span>
                               )}
                             </div>
 
                             <p className="text-sm text-gray-400 mt-1.5">
-                              {presetAtual.taxaSolo.replace(" (R$)", "")}: <span className="text-white">{moeda(cat.valor_solo)}</span>
-                              {" · "}
-                              {presetAtual.taxaDuo.replace(" (R$)", "")}: <span className="text-white">{moeda(cat.valor_duo)}</span>
-                              {" · "}
-                              {presetAtual.taxaConjunto.replace(" (R$)", "")}: <span className="text-white">{moeda(cat.valor_conjunto)}/pax</span>
+                              {presetAtual.taxaSolo.replace("R$", "")} <span className="text-white">{moeda(cat.valor_solo)}</span> ·{" "}
+                              {presetAtual.taxaDuo.replace("R$", "")} <span className="text-white">{moeda(cat.valor_duo)}</span> ·{" "}
+                              {presetAtual.taxaConjunto.replace("R$", "")} <span className="text-white">{moeda(cat.valor_conjunto)}</span>
                             </p>
                           </div>
 
@@ -1840,16 +2068,18 @@ export default function PainelEventoPage() {
                                       {sub.faixa_etaria_label && (
                                         <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
                                           {sub.faixa_etaria_label}
-                                          {sub.faixa_etaria_min && sub.faixa_etaria_max
-                                            ? ` (${sub.faixa_etaria_min}–${sub.faixa_etaria_max} anos)`
-                                            : ""}
+                                        </span>
+                                      )}
+                                      {!sub.faixa_etaria_label && sub.faixa_etaria_min != null && sub.faixa_etaria_max != null && (
+                                        <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                          {sub.faixa_etaria_min}-{sub.faixa_etaria_max} anos
                                         </span>
                                       )}
                                     </div>
                                     <p className="text-xs text-gray-500 mt-0.5">
-                                      {presetAtual.taxaSolo.replace(" (R$)", "")}: {moeda(sub.valor_solo)} ·{" "}
-                                      {presetAtual.taxaDuo.replace(" (R$)", "")}: {moeda(sub.valor_duo)} ·{" "}
-                                      {presetAtual.taxaConjunto.replace(" (R$)", "")}: {moeda(sub.valor_conjunto)}/pax
+                                      {presetAtual.taxaSolo.replace("R$", "")} {moeda(sub.valor_solo)} ·{" "}
+                                      {presetAtual.taxaDuo.replace("R$", "")} {moeda(sub.valor_duo)} ·{" "}
+                                      {presetAtual.taxaConjunto.replace("R$", "")} {moeda(sub.valor_conjunto)}
                                     </p>
                                   </div>
                                 </div>
@@ -1890,9 +2120,9 @@ export default function PainelEventoPage() {
                               });
                               setModalCat(true);
                             }}
-                            className="text-xs text-gray-500 hover:text-axon-gold transition-all duration-200 flex items-center gap-1.5 py-1 px-2 rounded-lg hover:bg-axon-gold/5"
+                            className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm hover:border-axon-gold hover:bg-axon-gold/5 transition-all duration-200 flex items-center justify-center gap-2"
                           >
-                            <Plus size={12} />
+                            <Plus size={14} />
                             Adicionar subcategoria
                           </button>
                         </div>
@@ -1921,7 +2151,7 @@ export default function PainelEventoPage() {
                     <CalendarDays size={40} className="mx-auto mb-3 opacity-20 text-axon-gold" />
                     <p className="font-medium text-gray-300">Nenhuma apresentação ainda</p>
                     <p className="text-sm mt-1 text-gray-500">
-                      As apresentações aparecerão aqui após as organizações se inscreverem e as inscrições forem aprovadas.
+                      As apresentações aparecerão aqui após as organizações se inscreverem e as inscrições serem aprovadas.
                     </p>
                   </div>
                 ) : (
@@ -1951,7 +2181,7 @@ export default function PainelEventoPage() {
 
                                   <div className="flex-1">
                                     <p className="text-white text-sm font-medium">{ap.nome}</p>
-                                    <p className="text-xs text-gray-400 mt-0.5">{ap.tipo || "Tipo não informado"}</p>
+                                    <p className="text-xs text-gray-400 mt-0.5">{ap.tipo ?? "Tipo não informado"}</p>
                                   </div>
                                 </div>
                               )}
@@ -1965,70 +2195,17 @@ export default function PainelEventoPage() {
                 )}
               </div>
             )}
-
-            {abaAtiva === "jurados" && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-1">Jurados do Evento</h3>
-                  <p className="text-sm text-gray-400">
-                    Gerencie os jurados escalados para este evento e organize a configuração de avaliação.
-                  </p>
-                </div>
-
-                {totalJurados === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 border border-dashed border-axon-border rounded-xl text-gray-600 px-6 text-center">
-                    <Users size={36} className="mb-3 opacity-20 text-axon-gold" />
-                    <p className="font-medium text-gray-300">Nenhum jurado escalado</p>
-                    <p className="text-sm mt-1 text-gray-500 max-w-lg">
-                      Este evento ainda não possui jurados vinculados. Você pode configurar jurados diretamente neste evento ou acessar o cadastro central.
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full max-w-md">
-                      <button
-                        onClick={() => setModalJuradosOpen(true)}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 disabled:opacity-50 transition-all duration-200"
-                      >
-                        <Plus size={15} />
-                        Configurar Jurados do Evento
-                      </button>
-                      <Link
-                        href="/jurados"
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-axon-border text-sm text-gray-300 hover:text-white hover:border-gray-500 transition-all duration-200"
-                      >
-                        <Plus size={15} />
-                        Ir para o Cadastro de Jurados
-                      </Link>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-axon-bg border border-axon-border rounded-xl p-5">
-                    <div className="flex items-center justify-between gap-4 flex-wrap">
-                      <div>
-                        <p className="text-sm font-semibold text-white">Jurados configurados</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Este evento já possui {totalJurados} {totalJurados === 1 ? "jurado vinculado" : "jurados vinculados"}.
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => setModalJuradosOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-axon-gold text-black text-sm font-bold hover:bg-axon-gold/80 transition-all duration-200"
-                      >
-                        <Pencil size={15} />
-                        Gerenciar Jurados
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>
 
       {modalCat && (
-        <>
-          <div className="fixed inset-0 bg-black/70 z-50" onClick={() => setModalCat(false)} />
+        <div className="fixed inset-0 bg-black/70 z-50" onClick={() => setModalCat(false)}>
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-            <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto"
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-white">
@@ -2040,10 +2217,7 @@ export default function PainelEventoPage() {
                       : "Categoria principal. Você pode adicionar subcategorias depois."}
                   </p>
                 </div>
-                <button
-                  onClick={() => setModalCat(false)}
-                  className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200"
-                >
+                <button onClick={() => setModalCat(false)} className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200">
                   <X size={18} />
                 </button>
               </div>
@@ -2052,14 +2226,14 @@ export default function PainelEventoPage() {
                 {!formCat.categoria_pai_id && !catEditando?.categoria_pai_id && (
                   <div className="space-y-2">
                     <label className="text-sm text-gray-400 font-medium">
-                      Categoria Pai <span className="text-gray-600 font-normal">(opcional)</span>
+                      Categoria Pai <span className="text-gray-600 font-normal">opcional</span>
                     </label>
                     <select
                       value={formCat.categoria_pai_id}
                       onChange={(e) => setFormCat({ ...formCat, categoria_pai_id: e.target.value })}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
                     >
-                      <option value="">Nenhuma (categoria raiz)</option>
+                      <option value="">Nenhuma categoria raiz</option>
                       {categoriasRaiz.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.nome}
@@ -2070,7 +2244,7 @@ export default function PainelEventoPage() {
                 )}
 
                 <div className="space-y-2">
-                  <label className="text-sm text-gray-400 font-medium">Nome *</label>
+                  <label className="text-sm text-gray-400 font-medium">Nome</label>
                   <input
                     type="text"
                     placeholder={presetAtual.placeholderNome}
@@ -2101,8 +2275,9 @@ export default function PainelEventoPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400 font-medium">
-                    Faixa Etária <span className="text-gray-600 font-normal">(opcional)</span>
+                    Faixa Etária <span className="text-gray-600 font-normal">opcional</span>
                   </label>
+
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1">
                       <label className="text-xs text-gray-500">Label</label>
@@ -2119,7 +2294,7 @@ export default function PainelEventoPage() {
                       <label className="text-xs text-gray-500">Idade mínima</label>
                       <input
                         type="number"
-                        min={0}
+                        min="0"
                         placeholder="6"
                         value={formCat.faixa_etaria_min}
                         onChange={(e) => setFormCat({ ...formCat, faixa_etaria_min: e.target.value })}
@@ -2131,7 +2306,7 @@ export default function PainelEventoPage() {
                       <label className="text-xs text-gray-500">Idade máxima</label>
                       <input
                         type="number"
-                        min={0}
+                        min="0"
                         placeholder="12"
                         value={formCat.faixa_etaria_max}
                         onChange={(e) => setFormCat({ ...formCat, faixa_etaria_max: e.target.value })}
@@ -2143,7 +2318,10 @@ export default function PainelEventoPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm text-gray-400 font-medium">Taxas de Inscrição</label>
-                  <p className="text-xs text-gray-500">Valor cobrado por modalidade. O terceiro campo é o valor por participante.</p>
+                  <p className="text-xs text-gray-500">
+                    Valor cobrado por modalidade. O terceiro campo é o valor por participante.
+                  </p>
+
                   <div className="grid grid-cols-3 gap-3">
                     {(["valor_solo", "valor_duo", "valor_conjunto"] as const).map((campo) => {
                       const labelTaxa =
@@ -2158,7 +2336,7 @@ export default function PainelEventoPage() {
                           <label className="text-xs text-gray-500">{labelTaxa}</label>
                           <input
                             type="number"
-                            min={0}
+                            min="0"
                             value={formCat[campo]}
                             onChange={(e) => setFormCat({ ...formCat, [campo]: Number(e.target.value) })}
                             className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
@@ -2177,7 +2355,6 @@ export default function PainelEventoPage() {
                 >
                   Cancelar
                 </button>
-
                 <button
                   onClick={() => void salvarCategoria()}
                   disabled={!formCat.nome.trim()}
@@ -2189,7 +2366,7 @@ export default function PainelEventoPage() {
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
     </>
   );
