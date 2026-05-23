@@ -230,15 +230,22 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
 
     const { data: usuarioCriado, error: usuarioError } = await supabase
       .from("usuarios")
-      .select("id")
+      .select("id, produtora_id")
       .eq("email", email.trim().toLowerCase())
-      .eq("produtora_id", produtoraId)
       .single();
 
     if (usuarioError || !usuarioCriado) {
       setErro("Usuário convidado, mas não foi possível localizar o cadastro criado.");
       setSalvando(false);
       return;
+    }
+
+    // Se o usuário foi criado no Auth mas o banco ainda não vinculou a produtora, vinculamos aqui
+    if (!usuarioCriado.produtora_id) {
+      await supabase
+        .from("usuarios")
+        .update({ produtora_id: produtoraId })
+        .eq("id", usuarioCriado.id);
     }
 
     setSalvando(false);
