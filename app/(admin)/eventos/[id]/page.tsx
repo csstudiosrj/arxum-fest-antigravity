@@ -548,7 +548,7 @@ function ModalConfigurarJuradosEvento({
         .single();
 
       if (error) {
-        addToast("erro", `Erro ao salvar configuração do jurado: ${error.message}`);
+        addToast("erro", "Erro do Banco: " + error.message);
         return;
       }
 
@@ -557,7 +557,7 @@ function ModalConfigurarJuradosEvento({
     } catch (error) {
       addToast(
         "erro",
-        `Erro ao salvar configuração do jurado: ${error instanceof Error ? error.message : "Erro inesperado"}`
+        "Erro do Banco: " + (error instanceof Error ? error.message : "Erro inesperado")
       );
     } finally {
       setSavingIds((prev) => ({ ...prev, [vinculoId]: false }));
@@ -1304,14 +1304,29 @@ export default function PainelEventoPage() {
     setForm(eventoAtual);
 
     if (eventoAtual.produtora_id) {
-      const { data: config } = await supabase
-        .from("tenant_config")
-        .select("perfis_festival->perfil_id->slug")
-        .eq("produtora_id", eventoAtual.produtora_id)
-        .maybeSingle();
+      try {
+        const { data: config } = await supabase
+          .from("tenant_config")
+          .select("*")
+          .eq("produtora_id", eventoAtual.produtora_id)
+          .maybeSingle();
 
-      const slugConfig = (config as { perfis_festival?: { slug?: string | null } | null } | null)?.perfis_festival?.slug;
-      if (slugConfig) setPerfilSlug(slugConfig);
+        const slug = (() => {
+          if (!config) return null;
+          return (config as any).settings?.perfis_festival?.slug
+            || (config as any).settings?.perfil_festival?.slug
+            || (config as any).perfil_slug
+            || (config as any).slug;
+        })();
+
+        if (slug && typeof slug === 'string') {
+          setPerfilSlug(slug);
+        } else {
+          setPerfilSlug("default");
+        }
+      } catch {
+        setPerfilSlug("default");
+      }
     }
 
     const todasCats = (cats ?? []) as Categoria[];
@@ -1683,6 +1698,7 @@ export default function PainelEventoPage() {
         <div className="flex items-center gap-4">
           <Link
             href="/eventos"
+            prefetch={false}
             className="w-10 h-10 bg-axon-panel border border-axon-border rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:border-axon-gold hover:bg-axon-gold/10 transition-all duration-200"
           >
             <ChevronLeft size={20} />
