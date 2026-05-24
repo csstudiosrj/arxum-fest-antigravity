@@ -1358,14 +1358,16 @@ export default function PainelEventoPage() {
         setCriteriosConfigurados(false);
       }
 
-      // PDV config / produtos
+      // PDV config baseado estritamente em produtos vinculados (evita Erro 400 de pdv_config)
       try {
-        const [{ count: pdvCount }, { count: produtosCount }] = await Promise.all([
-          supabase.from("pdv_config").select("evento_id", { count: "exact", head: true }).eq("evento_id", eventoId),
-          supabase.from("evento_produtos").select("id", { count: "exact", head: true }).eq("evento_id", eventoId),
-        ]);
-        setPdvConfigurado((pdvCount ?? 0) > 0 || (produtosCount ?? 0) > 0);
-      } catch {
+        const { count: produtosCount } = await supabase
+          .from("evento_produtos")
+          .select("id", { count: "exact", head: true })
+          .eq("evento_id", eventoId);
+
+        setPdvConfigurado((produtosCount ?? 0) > 0);
+      } catch (err) {
+        console.error("Erro ao checar produtos do PDV:", err);
         setPdvConfigurado(false);
       }
     } finally {
@@ -1634,7 +1636,7 @@ export default function PainelEventoPage() {
 
   const presetAtual = PRESETS[perfilSlug] ?? PRESETS.default;
   const categoriasPrincipais = categorias.filter((c) => !c.categoria_pai_id);
-  const checklistJuradosOk = form.formato === "mostra" ? true : totalJurados > 0 && criteriosConfigurados;
+  const checklistJuradosOk = form.formato === "mostra" ? true : totalJurados > 0;
 
   const checklist = [
     {
