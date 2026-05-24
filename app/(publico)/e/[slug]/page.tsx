@@ -19,12 +19,15 @@ import {
   Info,
   Lock,
   CheckCircle2,
+  ShoppingBag,
+  Download,
+  Shield,
+  Instagram,
+  Camera,
+  Video,
+  BadgeCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-
-/* ─────────────────────────────────────────────
-   TYPES
-───────────────────────────────────────────── */
 
 type EventoStatus =
   | "rascunho"
@@ -42,6 +45,8 @@ type TipoPremiacao =
   | "com_premiacao_dinheiro"
   | null;
 
+type FonteFamilia = "sans" | "serif" | "mono" | "montserrat" | null;
+
 interface Evento {
   id: string;
   nome: string;
@@ -57,7 +62,8 @@ interface Evento {
   multilocal: boolean | null;
   cor_primaria: string | null;
   cor_secundaria: string | null;
-  fonte_familia: string | null;
+  fonte_familia: FonteFamilia;
+  tema_escuro: boolean;
 }
 
 interface JuradoPublico {
@@ -65,6 +71,7 @@ interface JuradoPublico {
   nome: string;
   foto_url: string | null;
   especialidade: string | null;
+  mini_bio: string | null;
 }
 
 interface LocalEvento {
@@ -106,6 +113,7 @@ interface EventoRow {
   cor_primaria: string | null;
   cor_secundaria: string | null;
   fonte_familia: string | null;
+  tema_escuro: boolean | null;
 }
 
 interface EventoJuradoUsuarioRow {
@@ -116,12 +124,14 @@ interface EventoJuradoUsuarioRow {
         nome: string;
         foto_url: string | null;
         especialidade: string | null;
+        mini_bio: string | null;
       }
     | {
         id: string;
         nome: string;
         foto_url: string | null;
         especialidade: string | null;
+        mini_bio: string | null;
       }[]
     | null;
 }
@@ -156,10 +166,6 @@ interface DadosEventoPublico {
   termos: TermoDocumento[];
   categoriasPremiacao: CategoriaPremiacao[];
 }
-
-/* ─────────────────────────────────────────────
-   HELPERS
-───────────────────────────────────────────── */
 
 function formatarData(iso: string | null): string {
   if (!iso) return "";
@@ -226,6 +232,25 @@ function normalizarTipoPremiacao(tipo: string | null): TipoPremiacao {
   }
 }
 
+function normalizarFonteFamilia(fonte: string | null): FonteFamilia {
+  switch (fonte) {
+    case "sans":
+    case "serif":
+    case "mono":
+    case "montserrat":
+      return fonte;
+    default:
+      return null;
+  }
+}
+
+function getFontClass(fonte: FonteFamilia) {
+  if (fonte === "serif") return "font-serif";
+  if (fonte === "mono") return "font-mono";
+  if (fonte === "montserrat") return "font-[Montserrat,sans-serif]";
+  return "font-sans";
+}
+
 function normalizarEvento(row: EventoRow): Evento {
   return {
     id: row.id,
@@ -242,7 +267,8 @@ function normalizarEvento(row: EventoRow): Evento {
     multilocal: row.multilocal,
     cor_primaria: row.cor_primaria,
     cor_secundaria: row.cor_secundaria,
-    fonte_familia: row.fonte_familia,
+    fonte_familia: normalizarFonteFamilia(row.fonte_familia),
+    tema_escuro: row.tema_escuro ?? true,
   };
 }
 
@@ -291,32 +317,99 @@ function statusLabel(status: Evento["status"]): {
   }
 }
 
-/* ─────────────────────────────────────────────
-   COMPONENTES
-───────────────────────────────────────────── */
+function getThemeClasses(temaEscuro: boolean) {
+  if (temaEscuro) {
+    return {
+      pageBg: "#0e0d0b",
+      pageClass: "bg-[#0e0d0b] text-white",
+      heading: "text-white",
+      text: "text-gray-300",
+      softText: "text-gray-400",
+      faintText: "text-gray-500",
+      card: "bg-white/[0.03] border-white/10",
+      cardHover: "hover:bg-white/[0.05]",
+      cardSoft: "bg-white/[0.04] border-white/10",
+      badgeSurface: "bg-white/[0.06]",
+      footerBorder: "border-white/[0.07]",
+      disabledButton: "border-white/10 bg-white/10 text-gray-500",
+      accordionSummaryHover: "hover:bg-white/[0.04]",
+      prose: "text-gray-300",
+      juradoName: "text-white",
+      juradoBio: "text-gray-400",
+      infoLabel: "text-gray-500",
+      inputSurface: "bg-white/[0.03]",
+      instagramTile: "bg-white/[0.04]",
+      overlayTo: "#0e0d0b",
+    };
+  }
+
+  return {
+    pageBg: "#fcfbf9",
+    pageClass: "bg-[#fcfbf9] text-zinc-900",
+    heading: "text-zinc-900",
+    text: "text-zinc-700",
+    softText: "text-zinc-600",
+    faintText: "text-zinc-500",
+    card: "bg-white border-zinc-200",
+    cardHover: "hover:bg-zinc-50",
+    cardSoft: "bg-white border-zinc-200",
+    badgeSurface: "bg-zinc-100",
+    footerBorder: "border-zinc-200",
+    disabledButton: "border-zinc-200 bg-zinc-100 text-zinc-500",
+    accordionSummaryHover: "hover:bg-zinc-50",
+    prose: "text-zinc-700",
+    juradoName: "text-zinc-900",
+    juradoBio: "text-zinc-600",
+    infoLabel: "text-zinc-500",
+    inputSurface: "bg-white",
+    instagramTile: "bg-zinc-50",
+    overlayTo: "#fcfbf9",
+  };
+}
+
+function SectionHeader({
+  titulo,
+  corPrimaria,
+  headingClass,
+}: {
+  titulo: string;
+  corPrimaria: string;
+  headingClass: string;
+}) {
+  return (
+    <div className="mb-5 flex items-center gap-3">
+      <div className="h-6 w-1 rounded-full" style={{ background: corPrimaria }} />
+      <h2 className={`text-lg font-bold ${headingClass}`}>{titulo}</h2>
+    </div>
+  );
+}
 
 function AccordionItem({
   titulo,
   conteudo,
   corPrimaria,
+  tema,
 }: {
   titulo: string;
   conteudo: string;
   corPrimaria: string | null;
+  tema: ReturnType<typeof getThemeClasses>;
 }) {
   const cor = corPrimaria ?? "#d4af37";
 
   return (
-    <details className="group border border-white/10 rounded-xl overflow-hidden bg-white/[0.03] backdrop-blur-sm">
-      <summary className="flex items-center justify-between px-6 py-4 cursor-pointer list-none select-none hover:bg-white/[0.04] transition-colors">
-        <span className="text-sm font-semibold text-white">{titulo}</span>
+    <details className={`group overflow-hidden rounded-xl border backdrop-blur-sm ${tema.card}`}>
+      <summary
+        className={`flex cursor-pointer list-none items-center justify-between px-6 py-4 select-none transition-colors ${tema.accordionSummaryHover}`}
+      >
+        <span className={`text-sm font-semibold ${tema.heading}`}>{titulo}</span>
         <ChevronDown
           size={16}
-          className="text-gray-400 transition-transform duration-300 group-open:rotate-180 shrink-0"
+          className={`shrink-0 ${tema.softText} transition-transform duration-300 group-open:rotate-180`}
         />
       </summary>
       <div
-        className="px-6 pb-5 pt-2 text-sm text-gray-300 leading-relaxed prose prose-invert prose-sm max-w-none"
+        className={`max-w-none px-6 pt-2 pb-5 text-sm leading-relaxed ${tema.prose}`}
         style={{ borderTop: `1px solid ${cor}22` }}
         dangerouslySetInnerHTML={{ __html: conteudo.replace(/\n/g, "<br/>") }}
       />
@@ -327,9 +420,11 @@ function AccordionItem({
 function AvatarJurado({
   jurado,
   corPrimaria,
+  tema,
 }: {
   jurado: JuradoPublico;
   corPrimaria: string | null;
+  tema: ReturnType<typeof getThemeClasses>;
 }) {
   const cor = corPrimaria ?? "#d4af37";
   const iniciais = jurado.nome
@@ -341,23 +436,23 @@ function AvatarJurado({
     .toUpperCase();
 
   return (
-    <div className="flex flex-col items-center gap-3 text-center group">
+    <div className="group flex flex-col items-center gap-3 text-center">
       <div
-        className="relative w-20 h-20 rounded-full overflow-hidden shrink-0 ring-2 ring-offset-2 ring-offset-transparent transition-all duration-300"
+        className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full ring-2 ring-offset-2 ring-offset-transparent transition-all duration-300"
         style={{ borderColor: `${cor}44` }}
       >
         {jurado.foto_url ? (
           <img
             src={jurado.foto_url}
             alt={jurado.nome}
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
             loading="lazy"
             width={80}
             height={80}
           />
         ) : (
           <div
-            className="w-full h-full flex items-center justify-center text-lg font-bold"
+            className="flex h-full w-full items-center justify-center text-lg font-bold"
             style={{
               background: `linear-gradient(135deg, ${cor}33, ${cor}11)`,
               color: cor,
@@ -369,10 +464,15 @@ function AvatarJurado({
         )}
       </div>
       <div>
-        <p className="text-sm font-semibold text-white leading-tight">{jurado.nome}</p>
+        <p className={`text-sm leading-tight font-semibold ${tema.juradoName}`}>{jurado.nome}</p>
         {jurado.especialidade && (
-          <p className="text-xs text-gray-400 mt-0.5 max-w-[140px] mx-auto leading-snug">
+          <p className={`mx-auto mt-0.5 max-w-[180px] text-xs leading-snug ${tema.softText}`}>
             {jurado.especialidade}
+          </p>
+        )}
+        {jurado.mini_bio && (
+          <p className={`mx-auto mt-2 max-w-[220px] text-[11px] leading-relaxed ${tema.juradoBio}`}>
+            {jurado.mini_bio}
           </p>
         )}
       </div>
@@ -380,17 +480,25 @@ function AvatarJurado({
   );
 }
 
-function CardLocal({ local }: { local: LocalEvento }) {
+function CardLocal({
+  local,
+  tema,
+}: {
+  local: LocalEvento;
+  tema: ReturnType<typeof getThemeClasses>;
+}) {
   return (
-    <div className="flex items-start gap-3 p-4 bg-white/[0.04] border border-white/10 rounded-xl backdrop-blur-sm hover:bg-white/[0.07] transition-colors">
-      <div className="p-2 rounded-lg bg-white/[0.06] shrink-0">
-        <Building2 size={16} className="text-gray-300" />
+    <div
+      className={`flex items-start gap-3 rounded-xl border p-4 backdrop-blur-sm transition-colors ${tema.card} ${tema.cardHover}`}
+    >
+      <div className={`shrink-0 rounded-lg p-2 ${tema.badgeSurface}`}>
+        <Building2 size={16} className={tema.softText} />
       </div>
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-white">{local.nome}</p>
-        {local.endereco && <p className="text-xs text-gray-400 mt-0.5">{local.endereco}</p>}
+        <p className={`text-sm font-semibold ${tema.heading}`}>{local.nome}</p>
+        {local.endereco && <p className={`mt-0.5 text-xs ${tema.softText}`}>{local.endereco}</p>}
         {(local.cidade || local.estado) && (
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className={`mt-0.5 text-xs ${tema.faintText}`}>
             {[local.cidade, local.estado].filter(Boolean).join(", ")}
           </p>
         )}
@@ -403,10 +511,12 @@ function CardPremiacao({
   categorias,
   corPrimaria,
   corSecundaria,
+  tema,
 }: {
   categorias: CategoriaPremiacao[];
   corPrimaria: string | null;
   corSecundaria: string | null;
+  tema: ReturnType<typeof getThemeClasses>;
 }) {
   const cor = corPrimaria ?? "#d4af37";
   const corSec = corSecundaria ?? "#b8860b";
@@ -421,36 +531,36 @@ function CardPremiacao({
 
   return (
     <div
-      className="relative overflow-hidden rounded-2xl p-6 border"
+      className="relative overflow-hidden rounded-2xl border p-6"
       style={{
         background: `linear-gradient(135deg, ${cor}18 0%, ${corSec}0d 100%)`,
         borderColor: `${cor}44`,
       }}
     >
       <div
-        className="absolute inset-0 opacity-[0.04] pointer-events-none"
+        className="pointer-events-none absolute inset-0 opacity-[0.04]"
         style={{
           backgroundImage: `radial-gradient(circle at 80% 50%, ${cor}, transparent 60%)`,
         }}
       />
       <div className="relative z-10">
-        <div className="flex items-center gap-3 mb-4">
+        <div className="mb-4 flex items-center gap-3">
           <div
-            className="p-2.5 rounded-xl"
+            className="rounded-xl p-2.5"
             style={{ background: `${cor}22`, border: `1px solid ${cor}33` }}
           >
             <Trophy size={20} style={{ color: cor }} />
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: cor }}>
+            <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: cor }}>
               Premiação em Destaque
             </p>
-            <p className="text-white font-bold text-lg leading-tight">
+            <p className={`text-lg leading-tight font-bold ${tema.heading}`}>
               Prêmio de até <span style={{ color: cor }}>{formatarMoeda(maiorPremio)}</span>
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {categorias.map((cat) => {
             const maxCat = Math.max(
               cat.premio_dinheiro_1 ?? 0,
@@ -463,39 +573,39 @@ function CardPremiacao({
             return (
               <div
                 key={cat.id}
-                className="p-3 rounded-xl border"
+                className="rounded-xl border p-3"
                 style={{
                   background: `${cor}0d`,
                   borderColor: `${cor}22`,
                 }}
               >
-                <p className="text-xs font-medium text-gray-300 mb-2">{cat.nome}</p>
+                <p className={`mb-2 text-xs font-medium ${tema.softText}`}>{cat.nome}</p>
                 <div className="space-y-1">
                   {cat.premio_dinheiro_1 != null && cat.premio_dinheiro_1 > 0 && (
                     <div className="flex items-center gap-2">
                       <Award size={11} style={{ color: cor }} />
-                      <span className="text-xs font-bold text-white">
+                      <span className={`text-xs font-bold ${tema.heading}`}>
                         {formatarMoeda(cat.premio_dinheiro_1)}
                       </span>
-                      <span className="text-xs text-gray-500">1 lugar</span>
+                      <span className={`text-xs ${tema.faintText}`}>1 lugar</span>
                     </div>
                   )}
                   {cat.premio_dinheiro_2 != null && cat.premio_dinheiro_2 > 0 && (
                     <div className="flex items-center gap-2">
-                      <Award size={11} className="text-gray-400" />
-                      <span className="text-xs font-bold text-white">
+                      <Award size={11} className={tema.softText} />
+                      <span className={`text-xs font-bold ${tema.heading}`}>
                         {formatarMoeda(cat.premio_dinheiro_2)}
                       </span>
-                      <span className="text-xs text-gray-500">2 lugar</span>
+                      <span className={`text-xs ${tema.faintText}`}>2 lugar</span>
                     </div>
                   )}
                   {cat.premio_dinheiro_3 != null && cat.premio_dinheiro_3 > 0 && (
                     <div className="flex items-center gap-2">
-                      <Award size={11} className="text-gray-500" />
-                      <span className="text-xs font-bold text-white">
+                      <Award size={11} className={tema.faintText} />
+                      <span className={`text-xs font-bold ${tema.heading}`}>
                         {formatarMoeda(cat.premio_dinheiro_3)}
                       </span>
-                      <span className="text-xs text-gray-500">3 lugar</span>
+                      <span className={`text-xs ${tema.faintText}`}>3 lugar</span>
                     </div>
                   )}
                 </div>
@@ -512,10 +622,12 @@ function BotaoInscricao({
   status,
   eventoId,
   corPrimaria,
+  tema,
 }: {
   status: Evento["status"];
   eventoId: string;
   corPrimaria: string | null;
+  tema: ReturnType<typeof getThemeClasses>;
 }) {
   const cor = corPrimaria ?? "#d4af37";
   const textoCor = corTextoContraste(corPrimaria);
@@ -525,7 +637,7 @@ function BotaoInscricao({
     return (
       <Link
         href={`/inscricao/${eventoId}`}
-        className="inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 active:scale-95 shadow-lg"
+        className="inline-flex items-center gap-2.5 rounded-xl px-8 py-3.5 text-sm font-bold shadow-lg transition-all duration-200 active:scale-95"
         style={{
           background: cor,
           color: textoCor,
@@ -547,7 +659,7 @@ function BotaoInscricao({
   return (
     <button
       disabled
-      className="inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl font-bold text-sm bg-white/10 text-gray-500 border border-white/10 cursor-not-allowed select-none"
+      className={`inline-flex cursor-not-allowed select-none items-center gap-2.5 rounded-xl border px-8 py-3.5 text-sm font-bold ${tema.disabledButton}`}
     >
       <Lock size={15} />
       {labelBloqueio}
@@ -555,17 +667,13 @@ function BotaoInscricao({
   );
 }
 
-/* ─────────────────────────────────────────────
-   DATA FETCHING
-───────────────────────────────────────────── */
-
 async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null> {
   const supabase = await createClient();
 
   const { data: eventoData, error } = await supabase
     .from("eventos")
     .select(
-      "id, nome, descricao, data_inicio, data_fim, local, status, logo_url, banner_url, formato, tipo_premiacao, multilocal, cor_primaria, cor_secundaria, fonte_familia"
+      "id, nome, descricao, data_inicio, data_fim, local, status, logo_url, banner_url, formato, tipo_premiacao, multilocal, cor_primaria, cor_secundaria, fonte_familia, tema_escuro"
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -579,7 +687,7 @@ async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null
     competitivo
       ? supabase
           .from("evento_jurados")
-          .select("jurado_id, usuarios!inner(id, nome, foto_url, especialidade)")
+          .select("jurado_id, usuarios!inner(id, nome, foto_url, especialidade, mini_bio)")
           .eq("evento_id", ev.id)
       : Promise.resolve({ data: null, error: null }),
     ev.multilocal
@@ -615,6 +723,7 @@ async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null
             nome: usuario.nome,
             foto_url: usuario.foto_url,
             especialidade: usuario.especialidade,
+            mini_bio: usuario.mini_bio,
           } satisfies JuradoPublico;
         })
         .filter((item): item is JuradoPublico => item !== null)
@@ -660,10 +769,6 @@ async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null
   return { evento: ev, jurados, locais, termos, categoriasPremiacao };
 }
 
-/* ─────────────────────────────────────────────
-   PAGE (SERVER COMPONENT)
-───────────────────────────────────────────── */
-
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
@@ -706,42 +811,40 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
   const corPrimaria = evento.cor_primaria ?? "#d4af37";
   const corSecundaria = evento.cor_secundaria ?? "#b8860b";
   const fonteFamilia = evento.fonte_familia;
+  const fontClass = getFontClass(fonteFamilia);
   const statusInfo = statusLabel(evento.status);
   const competitivo = evento.formato === "competitivo" || evento.formato === "misto";
   const temPremiacao =
     evento.tipo_premiacao === "com_premiacao_dinheiro" && categoriasPremiacao.length > 0;
-
-  const fontStyle: CSSProperties = fonteFamilia
-    ? { fontFamily: `'${fonteFamilia}', system-ui, sans-serif` }
-    : {};
+  const tema = getThemeClasses(evento.tema_escuro ?? true);
 
   return (
     <main
-      className="min-h-screen bg-[#0e0d0b] text-white antialiased"
+      className={`min-h-screen antialiased ${fontClass} ${tema.pageClass}`}
       style={
         {
-          ...fontStyle,
           "--cor-primaria": corPrimaria,
           "--cor-secundaria": corSecundaria,
+          backgroundColor: tema.pageBg,
         } as CSSProperties
       }
     >
       <section className="relative w-full overflow-hidden">
-        <div className="relative w-full h-64 sm:h-80 md:h-96 lg:h-[480px]">
+        <div className="relative h-64 w-full sm:h-80 md:h-96 lg:h-[480px]">
           {evento.banner_url ? (
             <img
               src={evento.banner_url}
               alt={`Banner de ${evento.nome}`}
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
               width={1440}
               height={480}
               loading="eager"
             />
           ) : (
             <div
-              className="absolute inset-0 w-full h-full"
+              className="absolute inset-0 h-full w-full"
               style={{
-                background: `linear-gradient(135deg, ${corPrimaria}22 0%, #0e0d0b 60%, ${corSecundaria}11 100%)`,
+                background: `linear-gradient(135deg, ${corPrimaria}22 0%, ${tema.overlayTo} 60%, ${corSecundaria}11 100%)`,
               }}
             />
           )}
@@ -749,14 +852,19 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
           <div
             className="absolute inset-0"
             style={{
-              background: `linear-gradient(to bottom, transparent 0%, ${corPrimaria}11 40%, #0e0d0b 100%)`,
+              background: `linear-gradient(to bottom, transparent 0%, ${corPrimaria}11 40%, ${tema.overlayTo} 100%)`,
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-[#0e0d0b]" />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(to bottom, rgba(0,0,0,0.30) 0%, rgba(0,0,0,0.18) 40%, ${tema.overlayTo} 100%)`,
+            }}
+          />
 
           <div className="absolute top-5 left-5 sm:top-6 sm:left-8">
             <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border backdrop-blur-md ${statusInfo.cor}`}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur-md ${statusInfo.cor}`}
             >
               {statusInfo.icone}
               {statusInfo.texto}
@@ -764,23 +872,23 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
           </div>
         </div>
 
-        <div className="relative max-w-5xl mx-auto px-5 sm:px-8 -mt-20 sm:-mt-28 pb-0 z-10">
-          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-5">
+        <div className="relative z-10 mx-auto -mt-20 max-w-5xl px-5 pb-0 sm:-mt-28 sm:px-8">
+          <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-end">
             <div
-              className="shrink-0 w-24 h-24 sm:w-28 sm:h-28 rounded-2xl border-2 overflow-hidden shadow-2xl"
+              className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-2 shadow-2xl sm:h-28 sm:w-28"
               style={{ borderColor: `${corPrimaria}55` }}
             >
               {evento.logo_url ? (
                 <img
                   src={evento.logo_url}
                   alt={`Logo de ${evento.nome}`}
-                  className="w-full h-full object-cover"
+                  className="h-full w-full object-cover"
                   width={112}
                   height={112}
                 />
               ) : (
                 <div
-                  className="w-full h-full flex items-center justify-center"
+                  className="flex h-full w-full items-center justify-center"
                   style={{
                     background: `linear-gradient(135deg, ${corPrimaria}33, ${corSecundaria}22)`,
                   }}
@@ -790,13 +898,13 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
               )}
             </div>
 
-            <div className="flex-1 min-w-0 pb-2">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white leading-tight tracking-tight">
+            <div className="min-w-0 flex-1 pb-2">
+              <h1 className={`text-2xl leading-tight font-extrabold tracking-tight sm:text-3xl md:text-4xl ${tema.heading}`}>
                 {evento.nome}
               </h1>
-              <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2">
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
                 {(evento.data_inicio || evento.data_fim) && (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                  <span className={`inline-flex items-center gap-1.5 text-xs ${tema.softText}`}>
                     <Calendar size={13} style={{ color: corPrimaria }} />
                     {evento.data_inicio && formatarData(evento.data_inicio)}
                     {evento.data_fim &&
@@ -805,25 +913,25 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
                   </span>
                 )}
                 {evento.local && !evento.multilocal && (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                  <span className={`inline-flex items-center gap-1.5 text-xs ${tema.softText}`}>
                     <MapPin size={13} style={{ color: corPrimaria }} />
                     {evento.local}
                   </span>
                 )}
                 {evento.multilocal && (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                  <span className={`inline-flex items-center gap-1.5 text-xs ${tema.softText}`}>
                     <Globe size={13} style={{ color: corPrimaria }} />
                     Multilocal
                   </span>
                 )}
                 {competitivo && (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                  <span className={`inline-flex items-center gap-1.5 text-xs ${tema.softText}`}>
                     <Trophy size={13} style={{ color: corPrimaria }} />
                     {evento.formato === "misto" ? "Festival Misto" : "Festival Competitivo"}
                   </span>
                 )}
                 {evento.formato === "mostra" && (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                  <span className={`inline-flex items-center gap-1.5 text-xs ${tema.softText}`}>
                     <FileText size={13} style={{ color: corPrimaria }} />
                     Mostra
                   </span>
@@ -834,21 +942,21 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
         </div>
       </section>
 
-      <div className="max-w-5xl mx-auto px-5 sm:px-8 py-10 space-y-14">
+      <div className="mx-auto max-w-5xl space-y-14 px-5 py-10 sm:px-8">
         <div
-          className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 p-6 rounded-2xl border"
+          className="flex flex-col items-start justify-between gap-5 rounded-2xl border p-6 sm:flex-row sm:items-center"
           style={{
             background: `linear-gradient(135deg, ${corPrimaria}11 0%, ${corSecundaria}08 100%)`,
             borderColor: `${corPrimaria}33`,
           }}
         >
           <div>
-            <h2 className="text-base font-bold mb-0.5" style={{ color: corPrimaria }}>
+            <h2 className="mb-0.5 text-base font-bold" style={{ color: corPrimaria }}>
               {evento.status === "inscricoes_abertas"
                 ? "Inscrições abertas"
                 : "Acompanhe este festival"}
             </h2>
-            <p className="text-sm text-gray-400">
+            <p className={`text-sm ${tema.softText}`}>
               {evento.status === "inscricoes_abertas"
                 ? "Garanta sua participação agora mesmo. Vagas limitadas por categoria."
                 : "As inscrições para este festival estão indisponíveis no momento."}
@@ -858,22 +966,19 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
             status={evento.status}
             eventoId={evento.id}
             corPrimaria={evento.cor_primaria}
+            tema={tema}
           />
         </div>
 
         {evento.descricao && (
           <section aria-labelledby="secao-sobre">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-1 h-6 rounded-full" style={{ background: corPrimaria }} />
-              <h2 id="secao-sobre" className="text-lg font-bold text-white">
-                Sobre o Festival
-              </h2>
-            </div>
-            <div
-              className="p-6 rounded-2xl border bg-white/[0.03] backdrop-blur-sm"
-              style={{ borderColor: `${corPrimaria}22` }}
-            >
-              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-line">
+            <SectionHeader
+              titulo="Sobre o Festival"
+              corPrimaria={corPrimaria}
+              headingClass={tema.heading}
+            />
+            <div className={`rounded-2xl border p-6 backdrop-blur-sm ${tema.card}`} style={{ borderColor: `${corPrimaria}22` }}>
+              <p className={`text-sm leading-relaxed whitespace-pre-line ${tema.text}`}>
                 {evento.descricao}
               </p>
             </div>
@@ -882,46 +987,44 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
 
         {temPremiacao && (
           <section aria-labelledby="secao-premiacao">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-1 h-6 rounded-full" style={{ background: corPrimaria }} />
-              <h2 id="secao-premiacao" className="text-lg font-bold text-white">
-                Premiação
-              </h2>
-            </div>
+            <SectionHeader
+              titulo="Premiação"
+              corPrimaria={corPrimaria}
+              headingClass={tema.heading}
+            />
             <CardPremiacao
               categorias={categoriasPremiacao}
               corPrimaria={evento.cor_primaria}
               corSecundaria={evento.cor_secundaria}
+              tema={tema}
             />
           </section>
         )}
 
         {competitivo && jurados.length > 0 && (
           <section aria-labelledby="secao-jurados">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-1 h-6 rounded-full" style={{ background: corPrimaria }} />
-              <h2 id="secao-jurados" className="text-lg font-bold text-white">
-                Corpo de Jurados
-              </h2>
-            </div>
-            <div
-              className="p-6 rounded-2xl border bg-white/[0.03]"
-              style={{ borderColor: `${corPrimaria}22` }}
-            >
-              <div className="flex items-center gap-2 mb-5">
+            <SectionHeader
+              titulo="Corpo de Jurados"
+              corPrimaria={corPrimaria}
+              headingClass={tema.heading}
+            />
+            <div className={`rounded-2xl border p-6 ${tema.card}`} style={{ borderColor: `${corPrimaria}22` }}>
+              <div className="mb-5 flex items-center gap-2">
                 <Users size={15} style={{ color: corPrimaria }} />
-                <span className="text-xs text-gray-400">
+                <span className={`text-xs ${tema.softText}`}>
                   {jurados.length} jurado{jurados.length !== 1 ? "s" : ""} escalado
                   {jurados.length !== 1 ? "s" : ""}
                 </span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {jurados.map((jurado) => (
-                  <AvatarJurado
+                  <div
                     key={jurado.id}
-                    jurado={jurado}
-                    corPrimaria={evento.cor_primaria}
-                  />
+                    className={`rounded-2xl border p-5 text-center ${tema.cardSoft}`}
+                    style={{ borderColor: `${corPrimaria}18` }}
+                  >
+                    <AvatarJurado jurado={jurado} corPrimaria={evento.cor_primaria} tema={tema} />
+                  </div>
                 ))}
               </div>
             </div>
@@ -930,28 +1033,237 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
 
         {evento.multilocal && locais.length > 0 && (
           <section aria-labelledby="secao-locais">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-1 h-6 rounded-full" style={{ background: corPrimaria }} />
-              <h2 id="secao-locais" className="text-lg font-bold text-white">
-                Locais do Festival
-              </h2>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <SectionHeader
+              titulo="Locais do Festival"
+              corPrimaria={corPrimaria}
+              headingClass={tema.heading}
+            />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {locais.map((local) => (
-                <CardLocal key={local.id} local={local} />
+                <CardLocal key={local.id} local={local} tema={tema} />
               ))}
             </div>
           </section>
         )}
 
+        <section aria-labelledby="secao-loja">
+          <SectionHeader
+            titulo="Loja do Festival"
+            corPrimaria={corPrimaria}
+            headingClass={tema.heading}
+          />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {[
+              {
+                titulo: "Ingresso VIP",
+                preco: "R$ 180,00",
+                descricao: "Acesso prioritário, área exclusiva e kit oficial do festival.",
+                icone: Ticket,
+              },
+              {
+                titulo: "Camiseta Oficial",
+                preco: "R$ 79,90",
+                descricao: "Edição limitada com identidade visual do evento e acabamento premium.",
+                icone: ShoppingBag,
+              },
+              {
+                titulo: "Passe Masterclass",
+                preco: "R$ 220,00",
+                descricao: "Acesso adicional a aulas especiais, bastidores e encontro com convidados.",
+                icone: BadgeCheck,
+              },
+            ].map(({ titulo, preco, descricao, icone: Icon }) => (
+              <div
+                key={titulo}
+                className={`rounded-2xl border p-5 ${tema.card}`}
+                style={{ borderColor: `${corPrimaria}22` }}
+              >
+                <div
+                  className="mb-4 inline-flex rounded-xl p-3"
+                  style={{ background: `${corPrimaria}16` }}
+                >
+                  <Icon size={18} style={{ color: corPrimaria }} />
+                </div>
+                <h3 className={`text-base font-bold ${tema.heading}`}>{titulo}</h3>
+                <p className="mt-2 text-sm font-semibold" style={{ color: corPrimaria }}>
+                  {preco}
+                </p>
+                <p className={`mt-2 text-sm leading-relaxed ${tema.text}`}>{descricao}</p>
+                <button
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
+                  style={{
+                    background: corPrimaria,
+                    color: corTextoContraste(corPrimaria),
+                  }}
+                >
+                  Ver detalhes
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section aria-labelledby="secao-participante">
+          <SectionHeader
+            titulo="Área do Participante"
+            corPrimaria={corPrimaria}
+            headingClass={tema.heading}
+          />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className={`rounded-2xl border p-6 ${tema.card}`} style={{ borderColor: `${corPrimaria}22` }}>
+              <div className="mb-4 flex items-center gap-3">
+                <div className="rounded-xl p-3" style={{ background: `${corPrimaria}16` }}>
+                  <Download size={18} style={{ color: corPrimaria }} />
+                </div>
+                <div>
+                  <h3 className={`text-base font-bold ${tema.heading}`}>Certificado de Participação</h3>
+                  <p className={`text-sm ${tema.softText}`}>
+                    Disponível para emissão digital após validação da presença no evento.
+                  </p>
+                </div>
+              </div>
+              <p className={`mb-5 text-sm leading-relaxed ${tema.text}`}>
+                Participantes, grupos e responsáveis poderão acessar a área autenticada para baixar o certificado oficial em PDF com assinatura digital da organização.
+              </p>
+              <button
+                className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
+                style={{
+                  background: corPrimaria,
+                  color: corTextoContraste(corPrimaria),
+                }}
+              >
+                <Download size={15} />
+                Baixar certificado
+              </button>
+            </div>
+
+            <div className={`rounded-2xl border p-6 ${tema.card}`} style={{ borderColor: `${corPrimaria}22` }}>
+              <div className="mb-4 flex items-center gap-3">
+                <div className="rounded-xl p-3" style={{ background: `${corPrimaria}16` }}>
+                  <Camera size={18} style={{ color: corPrimaria }} />
+                </div>
+                <div>
+                  <h3 className={`text-base font-bold ${tema.heading}`}>Retirada de Fotos e Vídeos</h3>
+                  <p className={`text-sm ${tema.softText}`}>
+                    Cobertura oficial da participação e registros do palco.
+                  </p>
+                </div>
+              </div>
+              <p className={`text-sm leading-relaxed ${tema.text}`}>
+                Os arquivos de foto e vídeo estarão liberados na data configurada pela organização do festival. Assim que a liberação ocorrer, o participante poderá acessar este espaço para download dos materiais.
+              </p>
+              <div className={`mt-5 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${tema.cardSoft}`} style={{ borderColor: `${corPrimaria}18` }}>
+                <Video size={16} style={{ color: corPrimaria }} />
+                <span className={tema.softText}>Liberação prevista conforme cronograma oficial do evento.</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="secao-menores">
+          <SectionHeader
+            titulo="Autorização para Menores"
+            corPrimaria={corPrimaria}
+            headingClass={tema.heading}
+          />
+          <div
+            className="rounded-2xl border p-6"
+            style={{
+              background: `linear-gradient(135deg, ${corPrimaria}12 0%, transparent 100%)`,
+              borderColor: `${corPrimaria}28`,
+            }}
+          >
+            <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+              <div className="max-w-2xl">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="rounded-xl p-3" style={{ background: `${corPrimaria}18` }}>
+                    <Shield size={18} style={{ color: corPrimaria }} />
+                  </div>
+                  <h3 className={`text-base font-bold ${tema.heading}`}>
+                    Termo de participação e uso de imagem
+                  </h3>
+                </div>
+                <p className={`text-sm leading-relaxed ${tema.text}`}>
+                  Responsáveis legais poderão assinar digitalmente ou baixar a autorização oficial de participação e uso de imagem para menores de idade, garantindo conformidade documental antes da apresentação.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold"
+                  style={{
+                    background: corPrimaria,
+                    color: corTextoContraste(corPrimaria),
+                  }}
+                >
+                  <CheckCircle2 size={15} />
+                  Assinar digitalmente
+                </button>
+                <button className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold ${tema.cardSoft}`}>
+                  <Download size={15} />
+                  Baixar autorização
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="secao-instagram">
+          <SectionHeader
+            titulo="Festival no Instagram"
+            corPrimaria={corPrimaria}
+            headingClass={tema.heading}
+          />
+          <div className={`rounded-2xl border p-6 ${tema.card}`} style={{ borderColor: `${corPrimaria}22` }}>
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Instagram size={16} style={{ color: corPrimaria }} />
+                  <p className={`text-sm font-semibold ${tema.heading}`}>@festival.oficial</p>
+                </div>
+                <p className={`mt-1 text-sm ${tema.softText}`}>
+                  Acompanhe bastidores, agenda, destaques e conteúdos em tempo real.
+                </p>
+              </div>
+              <button className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium ${tema.cardSoft}`}>
+                Ver perfil
+                <ArrowRight size={14} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {[1, 2, 3, 4].map((item) => (
+                <div
+                  key={item}
+                  className={`overflow-hidden rounded-2xl border ${tema.instagramTile}`}
+                  style={{ borderColor: `${corPrimaria}18` }}
+                >
+                  <div
+                    className="aspect-square w-full"
+                    style={{
+                      background: `linear-gradient(135deg, ${corPrimaria}22, ${corSecundaria}18, ${tema.overlayTo})`,
+                    }}
+                  />
+                  <div className="p-3">
+                    <p className={`text-xs font-medium ${tema.heading}`}>Post destaque #{item}</p>
+                    <p className={`mt-1 text-[11px] leading-relaxed ${tema.softText}`}>
+                      Agenda, cobertura, palco, bastidores e novidades da edição atual.
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {termos.length > 0 && (
           <section aria-labelledby="secao-regulamento">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-1 h-6 rounded-full" style={{ background: corPrimaria }} />
-              <h2 id="secao-regulamento" className="text-lg font-bold text-white">
-                Regulamento e Diretrizes
-              </h2>
-            </div>
+            <SectionHeader
+              titulo="Regulamento e Diretrizes"
+              corPrimaria={corPrimaria}
+              headingClass={tema.heading}
+            />
             <div className="space-y-2">
               {termos.map((termo) => (
                 <AccordionItem
@@ -959,6 +1271,7 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
                   titulo={termo.titulo}
                   conteudo={termo.conteudo ?? "Conteúdo não disponível."}
                   corPrimaria={evento.cor_primaria}
+                  tema={tema}
                 />
               ))}
             </div>
@@ -966,26 +1279,25 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
         )}
 
         <section aria-labelledby="secao-info">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-1 h-6 rounded-full" style={{ background: corPrimaria }} />
-            <h2 id="secao-info" className="text-lg font-bold text-white">
-              Informações do Evento
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <SectionHeader
+            titulo="Informações do Evento"
+            corPrimaria={corPrimaria}
+            headingClass={tema.heading}
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {evento.data_inicio && (
               <div
-                className="flex items-start gap-3 p-4 rounded-xl border bg-white/[0.03]"
+                className={`flex items-start gap-3 rounded-xl border p-4 ${tema.card}`}
                 style={{ borderColor: `${corPrimaria}22` }}
               >
-                <div className="p-2 rounded-lg shrink-0" style={{ background: `${corPrimaria}18` }}>
+                <div className="shrink-0 rounded-lg p-2" style={{ background: `${corPrimaria}18` }}>
                   <Calendar size={16} style={{ color: corPrimaria }} />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                  <p className={`mb-0.5 text-xs font-semibold tracking-wide uppercase ${tema.infoLabel}`}>
                     Data de Início
                   </p>
-                  <p className="text-sm font-medium text-white">
+                  <p className={`text-sm font-medium ${tema.heading}`}>
                     {formatarData(evento.data_inicio)}
                   </p>
                 </div>
@@ -994,17 +1306,17 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
 
             {evento.data_fim && (
               <div
-                className="flex items-start gap-3 p-4 rounded-xl border bg-white/[0.03]"
+                className={`flex items-start gap-3 rounded-xl border p-4 ${tema.card}`}
                 style={{ borderColor: `${corPrimaria}22` }}
               >
-                <div className="p-2 rounded-lg shrink-0" style={{ background: `${corPrimaria}18` }}>
+                <div className="shrink-0 rounded-lg p-2" style={{ background: `${corPrimaria}18` }}>
                   <Clock size={16} style={{ color: corPrimaria }} />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                  <p className={`mb-0.5 text-xs font-semibold tracking-wide uppercase ${tema.infoLabel}`}>
                     Data de Encerramento
                   </p>
-                  <p className="text-sm font-medium text-white">
+                  <p className={`text-sm font-medium ${tema.heading}`}>
                     {formatarData(evento.data_fim)}
                   </p>
                 </div>
@@ -1013,34 +1325,34 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
 
             {evento.local && (
               <div
-                className="flex items-start gap-3 p-4 rounded-xl border bg-white/[0.03]"
+                className={`flex items-start gap-3 rounded-xl border p-4 ${tema.card}`}
                 style={{ borderColor: `${corPrimaria}22` }}
               >
-                <div className="p-2 rounded-lg shrink-0" style={{ background: `${corPrimaria}18` }}>
+                <div className="shrink-0 rounded-lg p-2" style={{ background: `${corPrimaria}18` }}>
                   <MapPin size={16} style={{ color: corPrimaria }} />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                  <p className={`mb-0.5 text-xs font-semibold tracking-wide uppercase ${tema.infoLabel}`}>
                     Local
                   </p>
-                  <p className="text-sm font-medium text-white">{evento.local}</p>
+                  <p className={`text-sm font-medium ${tema.heading}`}>{evento.local}</p>
                 </div>
               </div>
             )}
 
             {evento.formato && (
               <div
-                className="flex items-start gap-3 p-4 rounded-xl border bg-white/[0.03]"
+                className={`flex items-start gap-3 rounded-xl border p-4 ${tema.card}`}
                 style={{ borderColor: `${corPrimaria}22` }}
               >
-                <div className="p-2 rounded-lg shrink-0" style={{ background: `${corPrimaria}18` }}>
+                <div className="shrink-0 rounded-lg p-2" style={{ background: `${corPrimaria}18` }}>
                   <FileText size={16} style={{ color: corPrimaria }} />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                  <p className={`mb-0.5 text-xs font-semibold tracking-wide uppercase ${tema.infoLabel}`}>
                     Formato
                   </p>
-                  <p className="text-sm font-medium text-white capitalize">
+                  <p className={`text-sm font-medium capitalize ${tema.heading}`}>
                     {evento.formato === "competitivo"
                       ? "Competitivo"
                       : evento.formato === "mostra"
@@ -1053,17 +1365,17 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
 
             {evento.tipo_premiacao && evento.tipo_premiacao !== "sem_premiacao" && (
               <div
-                className="flex items-start gap-3 p-4 rounded-xl border bg-white/[0.03]"
+                className={`flex items-start gap-3 rounded-xl border p-4 ${tema.card}`}
                 style={{ borderColor: `${corPrimaria}22` }}
               >
-                <div className="p-2 rounded-lg shrink-0" style={{ background: `${corPrimaria}18` }}>
+                <div className="shrink-0 rounded-lg p-2" style={{ background: `${corPrimaria}18` }}>
                   <Trophy size={16} style={{ color: corPrimaria }} />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                  <p className={`mb-0.5 text-xs font-semibold tracking-wide uppercase ${tema.infoLabel}`}>
                     Premiação
                   </p>
-                  <p className="text-sm font-medium text-white">
+                  <p className={`text-sm font-medium ${tema.heading}`}>
                     {evento.tipo_premiacao === "com_premiacao_dinheiro"
                       ? "Prêmio em Dinheiro"
                       : "Troféu e Certificado"}
@@ -1075,17 +1387,17 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
         </section>
 
         <div
-          className="flex flex-col items-center text-center py-12 px-6 rounded-2xl border"
+          className="flex flex-col items-center rounded-2xl border px-6 py-12 text-center"
           style={{
             background: `linear-gradient(135deg, ${corPrimaria}0d 0%, transparent 60%)`,
             borderColor: `${corPrimaria}22`,
           }}
         >
-          <div className="p-4 rounded-2xl mb-4" style={{ background: `${corPrimaria}18` }}>
+          <div className="mb-4 rounded-2xl p-4" style={{ background: `${corPrimaria}18` }}>
             <Ticket size={28} style={{ color: corPrimaria }} />
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">Pronto para participar?</h2>
-          <p className="text-sm text-gray-400 max-w-md mb-7">
+          <h2 className={`mb-2 text-xl font-bold ${tema.heading}`}>Pronto para participar?</h2>
+          <p className={`mb-7 max-w-md text-sm ${tema.softText}`}>
             Faça sua inscrição agora, selecione as categorias que deseja concorrer e aguarde a
             confirmação da equipe organizadora.
           </p>
@@ -1093,11 +1405,12 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
             status={evento.status}
             eventoId={evento.id}
             corPrimaria={evento.cor_primaria}
+            tema={tema}
           />
         </div>
 
-        <footer className="pt-6 border-t border-white/[0.07] text-center">
-          <p className="text-xs text-gray-600">
+        <footer className={`border-t pt-6 text-center ${tema.footerBorder}`}>
+          <p className={`text-xs ${tema.faintText}`}>
             Portal de inscrições operado pela plataforma de gestão de festivais.
           </p>
         </footer>

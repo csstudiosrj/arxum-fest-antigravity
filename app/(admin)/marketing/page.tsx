@@ -26,6 +26,8 @@ import {
   ChevronRight,
   Wand2,
   FolderOpen,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 type PostStatus = "agendado" | "publicado" | "erro";
@@ -53,6 +55,7 @@ interface EventoMarketing {
   fonte_familia: FonteFamilia | null;
   logo_url: string | null;
   banner_url: string | null;
+  tema_escuro: boolean | null;
 }
 
 interface ToastItem {
@@ -74,6 +77,7 @@ interface IdentidadeEventoForm {
   fonte_familia: FonteFamilia;
   logo_url: string | null;
   banner_url: string | null;
+  tema_escuro: boolean;
 }
 
 const FONT_OPTIONS: Array<{ value: FonteFamilia; label: string; helper: string; className: string }> = [
@@ -130,6 +134,38 @@ function classeFontePreview(fonte: FonteFamilia) {
   if (fonte === "mono") return "font-mono";
   if (fonte === "montserrat") return "font-[Montserrat,sans-serif]";
   return "font-sans";
+}
+
+function getPreviewTema(temaEscuro: boolean) {
+  if (temaEscuro) {
+    return {
+      shell: "bg-[#111315]",
+      surface: "bg-[#17191c]",
+      card: "bg-[#111315]",
+      border: "border-white/10",
+      text: "text-white",
+      textSoft: "text-white/65",
+      muted: "text-neutral-500",
+      chip: "border-white/10 bg-white/10 text-white/80",
+      skeletonStrong: "bg-white/10",
+      skeletonSoft: "bg-white/5",
+      phoneFrame: "bg-[#0b0d0f]",
+    };
+  }
+
+  return {
+    shell: "bg-[#fcfbf9]",
+    surface: "bg-[#ffffff]",
+    card: "bg-[#ffffff]",
+    border: "border-zinc-200",
+    text: "text-zinc-900",
+    textSoft: "text-zinc-600",
+    muted: "text-zinc-500",
+    chip: "border-zinc-300 bg-white/85 text-zinc-700",
+    skeletonStrong: "bg-zinc-200",
+    skeletonSoft: "bg-zinc-100",
+    phoneFrame: "bg-[#f3f4f6]",
+  };
 }
 
 function ToastContainer({
@@ -279,7 +315,9 @@ function ModalPost({ open, onClose, onSaved }: ModalPostProps) {
         <div className="flex items-center justify-between border-b border-axon-border px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-white">Agendar nova postagem</h2>
-            <p className="mt-1 text-xs text-neutral-500">Monte a arte, defina a data e deixe o conteúdo preparado para publicação.</p>
+            <p className="mt-1 text-xs text-neutral-500">
+              Monte a arte, defina a data e deixe o conteúdo preparado para publicação.
+            </p>
           </div>
 
           <button onClick={onClose} className="text-neutral-400 transition-colors hover:text-white" aria-label="Fechar">
@@ -333,6 +371,9 @@ function ModalPost({ open, onClose, onSaved }: ModalPostProps) {
                   <div>
                     <p className="text-sm font-medium text-white">Faça upload da arte do post</p>
                     <p className="mt-1 text-xs text-neutral-500">PNG, JPG ou WebP com qualidade de feed.</p>
+                    <p className="mt-2 max-w-md text-xs leading-relaxed text-neutral-500">
+                      Dimensão Recomendada: 1080x1080px (Proporção 1:1, padrão de feed quadrado para redes sociais).
+                    </p>
                   </div>
 
                   <div className="pt-1">
@@ -411,11 +452,13 @@ export default function MarketingPage() {
     fonte_familia: "sans",
     logo_url: null,
     banner_url: null,
+    tema_escuro: true,
   });
 
   const [carregando, setCarregando] = useState(true);
   const [carregandoEventos, setCarregandoEventos] = useState(true);
   const [salvandoIdentidade, setSalvandoIdentidade] = useState(false);
+  const [salvandoTema, setSalvandoTema] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
   const [filtro, setFiltro] = useState<FiltroPosts>("todos");
   const [abaAtiva, setAbaAtiva] = useState<AbaAtiva>("posts");
@@ -483,7 +526,7 @@ export default function MarketingPage() {
 
     const { data: eventosData } = await supabase
       .from("eventos")
-      .select("id, nome, slug, cor_primaria, cor_secundaria, fonte_familia, logo_url, banner_url")
+      .select("id, nome, slug, cor_primaria, cor_secundaria, fonte_familia, logo_url, banner_url, tema_escuro")
       .eq("produtora_id", produtoraId)
       .order("nome", { ascending: true });
 
@@ -517,6 +560,7 @@ export default function MarketingPage() {
         fonte_familia: "sans",
         logo_url: null,
         banner_url: null,
+        tema_escuro: true,
       });
       return;
     }
@@ -528,6 +572,7 @@ export default function MarketingPage() {
       fonte_familia: eventoSelecionado.fonte_familia ?? "sans",
       logo_url: eventoSelecionado.logo_url ?? null,
       banner_url: eventoSelecionado.banner_url ?? null,
+      tema_escuro: Boolean(eventoSelecionado.tema_escuro),
     });
   }, [eventoSelecionado]);
 
@@ -568,6 +613,7 @@ export default function MarketingPage() {
       fonte_familia: identidadeForm.fonte_familia,
       logo_url: identidadeForm.logo_url,
       banner_url: identidadeForm.banner_url,
+      tema_escuro: identidadeForm.tema_escuro,
     };
 
     const { error } = await supabase.from("eventos").update(payload).eq("id", eventoSelecionadoId);
@@ -584,6 +630,42 @@ export default function MarketingPage() {
 
     setSalvandoIdentidade(false);
     addToast("sucesso", "Identidade visual salva com sucesso.");
+  }
+
+  async function alternarTemaEscuro() {
+    if (!eventoSelecionadoId || salvandoTema) return;
+
+    const proximoValor = !identidadeForm.tema_escuro;
+
+    setSalvandoTema(true);
+    setIdentidadeForm((prev) => ({
+      ...prev,
+      tema_escuro: proximoValor,
+    }));
+
+    const { error } = await supabase
+      .from("eventos")
+      .update({ tema_escuro: proximoValor })
+      .eq("id", eventoSelecionadoId);
+
+    if (error) {
+      setIdentidadeForm((prev) => ({
+        ...prev,
+        tema_escuro: !proximoValor,
+      }));
+      setSalvandoTema(false);
+      addToast("erro", `Erro ao atualizar tema: ${error.message}`);
+      return;
+    }
+
+    setEventos((prev) =>
+      prev.map((evento) =>
+        evento.id === eventoSelecionadoId ? { ...evento, tema_escuro: proximoValor } : evento
+      )
+    );
+
+    setSalvandoTema(false);
+    addToast("sucesso", `Tema ${proximoValor ? "escuro" : "claro"} atualizado com sucesso.`);
   }
 
   async function copiarLinkFinal() {
@@ -615,6 +697,7 @@ export default function MarketingPage() {
 
   const urlFinal = `https://arxum.csstudios.site/fest/e/${slugifyEvento(identidadeForm.slug)}`;
   const previewFonteClass = classeFontePreview(identidadeForm.fonte_familia);
+  const previewTema = getPreviewTema(identidadeForm.tema_escuro);
 
   function badgeStatus(status: Post["status"]) {
     if (status === "publicado") return "border-emerald-500/25 text-emerald-300 bg-emerald-500/10";
@@ -886,7 +969,7 @@ export default function MarketingPage() {
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold text-white">Editor da identidade visual</h2>
                     <p className="mt-1 text-sm text-neutral-500">
-                      Ajuste URL pública, tipografia, paleta e mídias do evento selecionado.
+                      Ajuste URL pública, tipografia, paleta, tema e mídias do evento selecionado.
                     </p>
                   </div>
 
@@ -923,6 +1006,57 @@ export default function MarketingPage() {
                       </div>
 
                       <p className="text-xs text-neutral-600">{urlFinal}</p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-4 rounded-2xl border border-axon-border bg-axon-bg/60 px-4 py-4">
+                        <div className="min-w-0">
+                          <label className="block text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">
+                            Tema da página pública
+                          </label>
+                          <p className="mt-1 text-sm text-neutral-400">
+                            Alterne entre visual claro e escuro para a landing page do evento.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => void alternarTemaEscuro()}
+                          disabled={salvandoTema}
+                          aria-pressed={identidadeForm.tema_escuro}
+                          aria-label={identidadeForm.tema_escuro ? "Ativar tema claro" : "Ativar tema escuro"}
+                          className={`group relative inline-flex h-12 w-[84px] shrink-0 items-center rounded-full border px-1.5 transition-all duration-300 ${
+                            identidadeForm.tema_escuro
+                              ? "border-axon-gold/30 bg-axon-gold/15"
+                              : "border-zinc-600/40 bg-zinc-800/40"
+                          } ${salvandoTema ? "cursor-wait opacity-70" : "hover:opacity-90"}`}
+                        >
+                          <span
+                            className={`absolute inset-y-1.5 flex h-9 w-9 items-center justify-center rounded-full shadow-md transition-all duration-300 ${
+                              identidadeForm.tema_escuro
+                                ? "translate-x-[34px] bg-axon-gold text-black"
+                                : "translate-x-0 bg-white text-zinc-900"
+                            }`}
+                          >
+                            {salvandoTema ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : identidadeForm.tema_escuro ? (
+                              <Moon size={16} />
+                            ) : (
+                              <Sun size={16} />
+                            )}
+                          </span>
+
+                          <span className="flex w-full items-center justify-between px-2 text-neutral-400">
+                            <Sun size={14} className={identidadeForm.tema_escuro ? "opacity-40" : "opacity-100"} />
+                            <Moon size={14} className={identidadeForm.tema_escuro ? "opacity-100" : "opacity-40"} />
+                          </span>
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-neutral-600">
+                        Estado atual: {identidadeForm.tema_escuro ? "Tema escuro" : "Tema claro"}.
+                      </p>
                     </div>
 
                     <div className="space-y-3">
@@ -1035,7 +1169,9 @@ export default function MarketingPage() {
                       <div className="space-y-3 rounded-2xl border border-axon-border bg-axon-bg/60 p-4">
                         <div>
                           <p className="text-sm font-medium text-white">Logo do festival</p>
-                          <p className="mt-1 text-xs text-neutral-500">Imagem principal para cabeçalho e assinatura da página.</p>
+                          <p className="mt-1 text-xs text-neutral-500">
+                            Imagem principal para cabeçalho e assinatura da página.
+                          </p>
                         </div>
 
                         {identidadeForm.logo_url ? (
@@ -1088,12 +1224,18 @@ export default function MarketingPage() {
                             </button>
                           )}
                         </div>
+
+                        <p className="text-xs leading-relaxed text-neutral-500">
+                          Dimensão Recomendada: 512x512px (Proporção 1:1, quadrado, de preferência em formato PNG com fundo transparente).
+                        </p>
                       </div>
 
                       <div className="space-y-3 rounded-2xl border border-axon-border bg-axon-bg/60 p-4">
                         <div>
                           <p className="text-sm font-medium text-white">Banner do festival</p>
-                          <p className="mt-1 text-xs text-neutral-500">Imagem de capa para hero e apresentação institucional.</p>
+                          <p className="mt-1 text-xs text-neutral-500">
+                            Imagem de capa para hero e apresentação institucional.
+                          </p>
                         </div>
 
                         {identidadeForm.banner_url ? (
@@ -1131,7 +1273,6 @@ export default function MarketingPage() {
                               setUploadBannerLoading(false);
                             }}
                           />
-
                           {identidadeForm.banner_url && (
                             <button
                               onClick={() =>
@@ -1146,6 +1287,10 @@ export default function MarketingPage() {
                             </button>
                           )}
                         </div>
+
+                        <p className="text-xs leading-relaxed text-neutral-500">
+                          Dimensão Recomendada: Mínimo de 1920x480px (Proporção panorâmica de alta resolução para evitar distorções).
+                        </p>
                       </div>
                     </div>
 
@@ -1178,10 +1323,10 @@ export default function MarketingPage() {
                       </div>
 
                       <div
-                        className={`overflow-hidden rounded-2xl border border-white/10 bg-[#0f1113] shadow-[0_20px_40px_rgba(0,0,0,0.35)] ${previewFonteClass}`}
+                        className={`overflow-hidden rounded-2xl border shadow-[0_20px_40px_rgba(0,0,0,0.35)] ${previewTema.border} ${previewTema.shell} ${previewFonteClass}`}
                       >
                         <div
-                          className="relative h-44 border-b border-white/10"
+                          className={`relative h-44 border-b ${previewTema.border}`}
                           style={{
                             backgroundColor: hexSeguro(identidadeForm.cor_secundaria, "#2d3748"),
                           }}
@@ -1192,18 +1337,20 @@ export default function MarketingPage() {
 
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-black/10" />
 
-                          <div className="relative z-10 flex h-full flex-col justify-between p-5">
+                          <div className={`relative z-10 flex h-full flex-col justify-between p-5 ${previewTema.text}`}>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
                                 {identidadeForm.logo_url ? (
                                   <img
                                     src={identidadeForm.logo_url}
                                     alt="Logo preview"
-                                    className="h-11 w-11 rounded-xl border border-white/15 bg-white/10 object-cover"
+                                    className={`h-11 w-11 rounded-xl border object-cover ${previewTema.border} ${
+                                      identidadeForm.tema_escuro ? "bg-white/10" : "bg-white"
+                                    }`}
                                   />
                                 ) : (
                                   <div
-                                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 text-white"
+                                    className={`flex h-11 w-11 items-center justify-center rounded-xl border ${previewTema.border}`}
                                     style={{ backgroundColor: `${hexSeguro(identidadeForm.cor_primaria, "#d4af37")}22` }}
                                   >
                                     <ImageIcon size={18} />
@@ -1211,8 +1358,10 @@ export default function MarketingPage() {
                                 )}
 
                                 <div>
-                                  <p className="text-sm font-semibold text-white">{eventoSelecionado?.nome}</p>
-                                  <p className="text-xs text-white/65">{slugifyEvento(identidadeForm.slug) || "slug-do-evento"}</p>
+                                  <p className={`text-sm font-semibold ${previewTema.text}`}>{eventoSelecionado?.nome}</p>
+                                  <p className={`text-xs ${previewTema.textSoft}`}>
+                                    {slugifyEvento(identidadeForm.slug) || "slug-do-evento"}
+                                  </p>
                                 </div>
                               </div>
 
@@ -1225,8 +1374,10 @@ export default function MarketingPage() {
                             </div>
 
                             <div>
-                              <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-white/60">Landing Page Pública</p>
-                              <h3 className="max-w-sm text-2xl font-semibold tracking-tight text-white">
+                              <p className={`mb-2 text-[11px] uppercase tracking-[0.18em] ${previewTema.textSoft}`}>
+                                Landing Page Pública
+                              </p>
+                              <h3 className={`max-w-sm text-2xl font-semibold tracking-tight ${previewTema.text}`}>
                                 Uma experiência visual alinhada ao posicionamento do seu festival.
                               </h3>
                             </div>
@@ -1241,8 +1392,8 @@ export default function MarketingPage() {
                         Mockup mobile
                       </div>
 
-                      <div className="mx-auto w-full max-w-[320px] rounded-[2rem] border border-white/10 bg-[#0b0d0f] p-3 shadow-[0_25px_50px_rgba(0,0,0,0.45)]">
-                        <div className={`overflow-hidden rounded-[1.45rem] bg-[#111315] ${previewFonteClass}`}>
+                      <div className={`mx-auto w-full max-w-[320px] rounded-[2rem] border p-3 shadow-[0_25px_50px_rgba(0,0,0,0.45)] ${previewTema.border} ${previewTema.phoneFrame}`}>
+                        <div className={`overflow-hidden rounded-[1.45rem] ${previewTema.surface} ${previewFonteClass}`}>
                           <div
                             className="relative h-40"
                             style={{ backgroundColor: hexSeguro(identidadeForm.cor_secundaria, "#2d3748") }}
@@ -1252,10 +1403,10 @@ export default function MarketingPage() {
                             ) : null}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/10" />
 
-                            <div className="relative z-10 flex h-full flex-col justify-between p-4">
+                            <div className="relative z-10 flex h-full flex-col justify-between p-4 text-white">
                               <div className="flex items-center justify-between">
-                                <div className="h-1.5 w-16 rounded-full bg-white/25" />
-                                <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[10px] text-white/80">
+                                <div className={`h-1.5 w-16 rounded-full ${identidadeForm.tema_escuro ? "bg-white/25" : "bg-white/40"}`} />
+                                <div className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] ${previewTema.chip}`}>
                                   <Link2 size={10} />
                                   Ao vivo
                                 </div>
@@ -1264,7 +1415,11 @@ export default function MarketingPage() {
                               <div>
                                 <div className="mb-3 flex items-center gap-2">
                                   {identidadeForm.logo_url ? (
-                                    <img src={identidadeForm.logo_url} alt="Logo preview" className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10" />
+                                    <img
+                                      src={identidadeForm.logo_url}
+                                      alt="Logo preview"
+                                      className={`h-10 w-10 rounded-xl object-cover ring-1 ${identidadeForm.tema_escuro ? "ring-white/10" : "ring-zinc-300"}`}
+                                    />
                                   ) : (
                                     <div
                                       className="flex h-10 w-10 items-center justify-center rounded-xl text-white"
@@ -1286,11 +1441,11 @@ export default function MarketingPage() {
                             </div>
                           </div>
 
-                          <div className="space-y-4 p-4">
+                          <div className={`space-y-4 p-4 ${previewTema.text}`}>
                             <div className="space-y-2">
-                              <div className="h-2.5 w-24 rounded-full bg-white/10" />
-                              <div className="h-3 w-full rounded-full bg-white/5" />
-                              <div className="h-3 w-5/6 rounded-full bg-white/5" />
+                              <div className={`h-2.5 w-24 rounded-full ${previewTema.skeletonStrong}`} />
+                              <div className={`h-3 w-full rounded-full ${previewTema.skeletonSoft}`} />
+                              <div className={`h-3 w-5/6 rounded-full ${previewTema.skeletonSoft}`} />
                             </div>
 
                             <button
@@ -1301,20 +1456,20 @@ export default function MarketingPage() {
                             </button>
 
                             <div className="grid grid-cols-2 gap-2">
-                              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                                <p className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">Cor Primária</p>
+                              <div className={`rounded-xl border p-3 ${previewTema.border} ${identidadeForm.tema_escuro ? "bg-white/[0.03]" : "bg-zinc-50"}`}>
+                                <p className={`text-[11px] uppercase tracking-[0.14em] ${previewTema.muted}`}>Cor Primária</p>
                                 <div className="mt-2 flex items-center gap-2">
                                   <span
-                                    className="h-4 w-4 rounded-full border border-white/10"
+                                    className={`h-4 w-4 rounded-full border ${previewTema.border}`}
                                     style={{ backgroundColor: hexSeguro(identidadeForm.cor_primaria, "#d4af37") }}
                                   />
-                                  <span className="text-xs text-white">{hexSeguro(identidadeForm.cor_primaria, "#d4af37")}</span>
+                                  <span className={`text-xs ${previewTema.text}`}>{hexSeguro(identidadeForm.cor_primaria, "#d4af37")}</span>
                                 </div>
                               </div>
 
-                              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                                <p className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">Fonte</p>
-                                <p className="mt-2 text-xs text-white">
+                              <div className={`rounded-xl border p-3 ${previewTema.border} ${identidadeForm.tema_escuro ? "bg-white/[0.03]" : "bg-zinc-50"}`}>
+                                <p className={`text-[11px] uppercase tracking-[0.14em] ${previewTema.muted}`}>Fonte</p>
+                                <p className={`mt-2 text-xs ${previewTema.text}`}>
                                   {FONT_OPTIONS.find((font) => font.value === identidadeForm.fonte_familia)?.label ?? "Inter / Padrão"}
                                 </p>
                               </div>
