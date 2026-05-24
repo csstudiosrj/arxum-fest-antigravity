@@ -1276,102 +1276,101 @@ export default function PainelEventoPage() {
     setLoadingLocais(false);
   }, [eventoId]);
 
-  const carregarEvento = useCallback(async () => {
+  const carregarEvento = useCallback(async (silent = false) => {
     const supabase = createClient();
-    setLoading(true);
-
-    const [{ data: ev }, { data: cats }, { data: apres }] = await Promise.all([
-      supabase
-        .from("eventos")
-        .select("id, nome, data_inicio, data_fim, local, status, descricao, produtora_id, formato, tipo_premiacao, multilocal, logo_url, banner_url")
-        .eq("id", eventoId)
-        .single(),
-      supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome"),
-      supabase
-        .from("apresentacoes")
-        .select("id, nome, tipo, ordem_apresentacao, status_pagamento")
-        .eq("evento_id", eventoId)
-        .order("ordem_apresentacao", { ascending: true, nullsFirst: false }),
-    ]);
-
-    if (!ev) {
-      router.push("/eventos");
-      return;
-    }
-
-    const eventoAtual = ev as Evento;
-    setEvento(eventoAtual);
-    setForm(eventoAtual);
-
-    if (eventoAtual.produtora_id) {
-      try {
-        const { data: config } = await supabase
-          .from("tenant_config")
-          .select("*")
-          .eq("produtora_id", eventoAtual.produtora_id)
-          .maybeSingle();
-
-        const slug = (() => {
-          if (!config) return null;
-          return (config as any).settings?.perfis_festival?.slug
-            || (config as any).settings?.perfil_festival?.slug
-            || (config as any).perfil_slug
-            || (config as any).slug;
-        })();
-
-        if (slug && typeof slug === 'string') {
-          setPerfilSlug(slug);
-        } else {
-          setPerfilSlug("default");
-        }
-      } catch {
-        setPerfilSlug("default");
-      }
-    }
-
-    const todasCats = (cats ?? []) as Categoria[];
-    const pais = todasCats
-      .filter((c) => !c.categoria_pai_id)
-      .map((pai) => ({
-        ...pai,
-        subcategorias: todasCats.filter((c) => c.categoria_pai_id === pai.id),
-      }));
-
-    setCategorias(pais);
-    setApresentacoes((apres ?? []) as Apresentacao[]);
-
-    const total = (apres ?? []).length;
-    const pendentes = (apres ?? []).filter((a) => a.status_pagamento === "Pendente").length;
-
-    setTotalInscritos(total);
-    setTotalPendentes(pendentes);
+    if (!silent) setLoading(true);
 
     try {
-      const { count } = await supabase.from("evento_jurados").select("id", { count: "exact", head: true }).eq("evento_id", eventoId);
-      setTotalJurados(count ?? 0);
-    } catch {
-      setTotalJurados(0);
-    }
-
-    try {
-      const { count } = await supabase.from("criterios_avaliacao").select("id", { count: "exact", head: true }).eq("evento_id", eventoId);
-      setCriteriosConfigurados((count ?? 0) > 0);
-    } catch {
-      setCriteriosConfigurados(false);
-    }
-
-    try {
-      const [{ count: pdvCount }, { count: produtosCount }] = await Promise.all([
-        supabase.from("pdv_config").select("id", { count: "exact", head: true }).eq("evento_id", eventoId),
-        supabase.from("evento_produtos").select("id", { count: "exact", head: true }).eq("evento_id", eventoId),
+      const [evRes, catsRes, apresRes] = await Promise.all([
+        supabase
+          .from("eventos")
+          .select("id, nome, data_inicio, data_fim, local, status, descricao, produtora_id, formato, tipo_premiacao, multilocal, logo_url, banner_url")
+          .eq("id", eventoId)
+          .single(),
+        supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome"),
+        supabase
+          .from("apresentacoes")
+          .select("id, nome, tipo, ordem_apresentacao, status_pagamento")
+          .eq("evento_id", eventoId)
+          .order("ordem_apresentacao", { ascending: true, nullsFirst: false }),
       ]);
 
-      setPdvConfigurado((pdvCount ?? 0) > 0 || (produtosCount ?? 0) > 0);
-    } catch {
-      setPdvConfigurado(false);
-    }
+      if (evRes.error || !evRes.data) {
+        router.push("/eventos");
+        return;
+      }
 
-    setLoading(false);
+      const eventoAtual = evRes.data as Evento;
+      setEvento(eventoAtual);
+      setForm(eventoAtual);
+
+      if (eventoAtual.produtora_id) {
+        try {
+          const { data: config } = await supabase
+            .from("tenant_config")
+            .select("*")
+            .eq("produtora_id", eventoAtual.produtora_id)
+            .maybeSingle();
+
+          const slug = (() => {
+            if (!config) return null;
+            return (config as any).settings?.perfis_festival?.slug
+              || (config as any).settings?.perfil_festival?.slug
+              || (config as any).perfil_slug
+              || (config as any).slug;
+          })();
+
+          setPerfilSlug(slug && typeof slug === 'string' ? slug : "default");
+        } catch {
+          setPerfilSlug("default");
+        }
+      }
+
+      const cats = (catsRes.data ?? []) as Categoria[];
+      const apres = (apresRes.data ?? []) as Apresentacao[];
+
+      const pais = cats
+        .filter((c) => !c.categoria_pai_id)
+        .map((pai) => ({
+          ...pai,
+          subcategorias: cats.filter((c) => c.categoria_pai_id === pai.id),
+        }));
+
+      setCategorias(pais);
+      setApresentacoes(apres);
+
+      setTotalInscritos(apres.length);
+      setTotalPendentes(apres.filter((a) => a.status_pagamento === "Pendente").length);
+
+      // Contagem de jurados
+      try {
+        const { count } = await supabase.from("evento_jurados").select("id", { count: "exact", head: true }).eq("evento_id", eventoId);
+        setTotalJurados(count ?? 0);
+      } catch {
+        setTotalJurados(0);
+      }
+
+      // Critérios de avaliação
+      try {
+        const { count } = await supabase.from("criterios_avaliacao").select("id", { count: "exact", head: true }).eq("evento_id", eventoId);
+        setCriteriosConfigurados((count ?? 0) > 0);
+      } catch {
+        setCriteriosConfigurados(false);
+      }
+
+      // PDV config / produtos
+      try {
+        const [{ count: pdvCount }, { count: produtosCount }] = await Promise.all([
+          supabase.from("pdv_config").select("evento_id", { count: "exact", head: true }).eq("evento_id", eventoId),
+          supabase.from("evento_produtos").select("id", { count: "exact", head: true }).eq("evento_id", eventoId),
+        ]);
+        setPdvConfigurado((pdvCount ?? 0) > 0 || (produtosCount ?? 0) > 0);
+      } catch {
+        setPdvConfigurado(false);
+      }
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, [eventoId, router]);
 
   useEffect(() => {
@@ -1616,11 +1615,11 @@ export default function PainelEventoPage() {
   }
 
   async function handleModalJuradosSaved() {
-    await carregarEvento();
+    await carregarEvento(true);
   }
 
   async function handleModalPdvSaved() {
-    await carregarEvento();
+    await carregarEvento(true);
   }
 
   if (loading) {
