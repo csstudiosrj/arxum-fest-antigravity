@@ -544,7 +544,8 @@ function ModalConfigurarJuradosEvento({
           especialidade: jurado.especialidade.trim() || null,
         })
         .eq("id", vinculoId)
-        .eq("evento_id", eventoId);
+        .select()
+        .single();
 
       if (error) {
         addToast("erro", `Erro ao salvar configuração do jurado: ${error.message}`);
@@ -798,12 +799,14 @@ function ModalConfigurarPdvEvento({
   produtoraId,
   onClose,
   onSaved,
+  addToast,
 }: {
   open: boolean;
   eventoId: string;
   produtoraId: string;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
+  addToast: (tipo: Toast["tipo"], mensagem: string) => void;
 }) {
   const [tab, setTab] = useState<"vinculados" | "catalogo">("vinculados");
   const [loading, setLoading] = useState(true);
@@ -882,39 +885,49 @@ function ModalConfigurarPdvEvento({
     const supabase = createClient();
     setAddingIds((prev) => ({ ...prev, [produto.id]: true }));
 
-    const { data, error } = await supabase
-      .from("evento_produtos")
-      .insert({
-        evento_id: eventoId,
-        produto_id: produto.id,
-        preco_evento: produto.preco ?? 0,
-        estoque_evento: produto.estoque ?? 0,
-        ativo_evento: produto.ativo ?? true,
-      })
-      .select("id, evento_id, produto_id, preco_evento, estoque_evento, ativo_evento")
-      .single();
-
-    if (!error && data) {
-      const vinculo = data as EventoProduto;
-      setProdutosVinculados((prev) => [
-        ...prev,
-        {
-          vinculo_id: vinculo.id,
+    try {
+      const { data, error } = await supabase
+        .from("evento_produtos")
+        .insert({
+          evento_id: eventoId,
           produto_id: produto.id,
-          nome: produto.nome,
-          preco_base: produto.preco ?? 0,
-          estoque_base: produto.estoque ?? 0,
-          ativo_base: produto.ativo ?? true,
-          tipo: secaoProdutoLabel(produto.tipo),
-          preco_evento: vinculo.preco_evento ?? produto.preco ?? 0,
-          estoque_evento: vinculo.estoque_evento ?? produto.estoque ?? 0,
-          ativo_evento: vinculo.ativo_evento ?? true,
-        },
-      ]);
-      await onSaved();
-    }
+          preco_evento: produto.preco ?? 0,
+          estoque_evento: produto.estoque ?? 0,
+          ativo_evento: produto.ativo ?? true,
+        })
+        .select("id, evento_id, produto_id, preco_evento, estoque_evento, ativo_evento")
+        .single();
 
-    setAddingIds((prev) => ({ ...prev, [produto.id]: false }));
+      if (error) {
+        addToast("erro", `Erro ao vincular produto: ${error.message}`);
+        return;
+      }
+
+      if (data) {
+        const vinculo = data as EventoProduto;
+        setProdutosVinculados((prev) => [
+          ...prev,
+          {
+            vinculo_id: vinculo.id,
+            produto_id: produto.id,
+            nome: produto.nome,
+            preco_base: produto.preco ?? 0,
+            estoque_base: produto.estoque ?? 0,
+            ativo_base: produto.ativo ?? true,
+            tipo: secaoProdutoLabel(produto.tipo),
+            preco_evento: vinculo.preco_evento ?? produto.preco ?? 0,
+            estoque_evento: vinculo.estoque_evento ?? produto.estoque ?? 0,
+            ativo_evento: vinculo.ativo_evento ?? true,
+          },
+        ]);
+        addToast("sucesso", "Produto vinculado com sucesso!");
+        await onSaved();
+      }
+    } catch (error) {
+      addToast("erro", `Erro ao vincular produto: ${error instanceof Error ? error.message : "Erro inesperado"}`);
+    } finally {
+      setAddingIds((prev) => ({ ...prev, [produto.id]: false }));
+    }
   }
 
   async function salvarProduto(vinculoId: string) {
@@ -924,28 +937,54 @@ function ModalConfigurarPdvEvento({
     const supabase = createClient();
     setSavingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
-    await supabase
-      .from("evento_produtos")
-      .update({
-        preco_evento: Number(produto.preco_evento ?? 0),
-        estoque_evento: Number(produto.estoque_evento ?? 0),
-        ativo_evento: produto.ativo_evento,
-      })
-      .eq("id", vinculoId)
-      .eq("evento_id", eventoId);
+    try {
+      const { error } = await supabase
+        .from("evento_produtos")
+        .update({
+          preco_evento: Number(produto.preco_evento ?? 0),
+          estoque_evento: Number(produto.estoque_evento ?? 0),
+          ativo_evento: produto.ativo_evento,
+        })
+        .eq("id", vinculoId)
+        .eq("evento_id", eventoId);
 
-    setSavingIds((prev) => ({ ...prev, [vinculoId]: false }));
-    await onSaved();
+      if (error) {
+        addToast("erro", `Erro ao salvar configuração do produto: ${error.message}`);
+        return;
+      }
+
+      addToast("sucesso", "Configuração do produto salva com sucesso!");
+      await onSaved();
+    } catch (error) {
+      addToast(
+        "erro",
+        `Erro ao salvar configuração do produto: ${error instanceof Error ? error.message : "Erro inesperado"}`
+      );
+    } finally {
+      setSavingIds((prev) => ({ ...prev, [vinculoId]: false }));
+    }
   }
 
   async function removerProduto(vinculoId: string) {
     const supabase = createClient();
     setRemovingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
-    await supabase.from("evento_produtos").delete().eq("id", vinculoId).eq("evento_id", eventoId);
-    setProdutosVinculados((prev) => prev.filter((item) => item.vinculo_id !== vinculoId));
-    setRemovingIds((prev) => ({ ...prev, [vinculoId]: false }));
-    await onSaved();
+    try {
+      const { error } = await supabase.from("evento_produtos").delete().eq("id", vinculoId).eq("evento_id", eventoId);
+
+      if (error) {
+        addToast("erro", `Erro ao remover produto: ${error.message}`);
+        return;
+      }
+
+      setProdutosVinculados((prev) => prev.filter((item) => item.vinculo_id !== vinculoId));
+      addToast("sucesso", "Produto removido com sucesso!");
+      await onSaved();
+    } catch (error) {
+      addToast("erro", `Erro ao remover produto: ${error instanceof Error ? error.message : "Erro inesperado"}`);
+    } finally {
+      setRemovingIds((prev) => ({ ...prev, [vinculoId]: false }));
+    }
   }
 
   function renderListaCatalogo(titulo: string, icon: React.ReactNode, itens: ProdutoCatalogo[]) {
@@ -1276,14 +1315,14 @@ export default function PainelEventoPage() {
     }
 
     const todasCats = (cats ?? []) as Categoria[];
-    const principais = todasCats
+    const pais = todasCats
       .filter((c) => !c.categoria_pai_id)
-      .map((principal) => ({
-        ...principal,
-        subcategorias: todasCats.filter((c) => c.categoria_pai_id === principal.id),
+      .map((pai) => ({
+        ...pai,
+        subcategorias: todasCats.filter((c) => c.categoria_pai_id === pai.id),
       }));
 
-    setCategorias(principais);
+    setCategorias(pais);
     setApresentacoes((apres ?? []) as Apresentacao[]);
 
     const total = (apres ?? []).length;
@@ -1336,37 +1375,43 @@ export default function PainelEventoPage() {
     const supabase = createClient();
     setSalvando(true);
 
-    const payload = {
-      nome: form.nome ?? "",
-      local: form.local ?? "",
-      data_inicio: form.data_inicio ?? "",
-      data_fim: form.data_fim ?? "",
-      status: (form.status ?? "Em Montagem") as EventoStatus,
-      descricao: form.descricao ?? null,
-      formato: (form.formato ?? "competitivo") as EventoFormato,
-      tipo_premiacao: (form.tipo_premiacao ?? "sem_premiacao") as TipoPremiacao,
-      multilocal: Boolean(form.multilocal),
-      logo_url: evento?.logo_url ?? null,
-      banner_url: evento?.banner_url ?? null,
-    };
+    try {
+      const payload = {
+        nome: form.nome ?? "",
+        local: form.local ?? "",
+        data_inicio: form.data_inicio ?? "",
+        data_fim: form.data_fim ?? "",
+        status: (form.status ?? "Em Montagem") as EventoStatus,
+        descricao: form.descricao ?? null,
+        formato: (form.formato ?? "competitivo") as EventoFormato,
+        tipo_premiacao: (form.tipo_premiacao ?? "sem_premiacao") as TipoPremiacao,
+        multilocal: Boolean(form.multilocal),
+        logo_url: evento?.logo_url ?? null,
+        banner_url: evento?.banner_url ?? null,
+      };
 
-    const { error } = await supabase.from("eventos").update(payload).eq("id", eventoId);
+      const { error } = await supabase.from("eventos").update(payload).eq("id", eventoId);
 
-    if (!error) {
+      if (error) {
+        addToast("erro", `Erro ao salvar evento: ${error.message}`);
+        return;
+      }
+
       const atualizado = { ...(evento as Evento), ...payload } as Evento;
       setEvento(atualizado);
       setForm(atualizado);
       addToast("sucesso", "Evento salvo com sucesso!");
+
       if (payload.multilocal) {
         await carregarLocais();
       } else {
         setLocaisEvento([]);
       }
-    } else {
-      addToast("erro", "Erro ao salvar. Tente novamente.");
+    } catch (error) {
+      addToast("erro", `Erro ao salvar evento: ${error instanceof Error ? error.message : "Erro inesperado"}`);
+    } finally {
+      setSalvando(false);
     }
-
-    setSalvando(false);
   }
 
   async function adicionarLocalEvento() {
@@ -1378,42 +1423,54 @@ export default function PainelEventoPage() {
     const supabase = createClient();
     setSalvandoLocal(true);
 
-    const { data, error } = await supabase
-      .from("locais_evento")
-      .insert({
-        evento_id: eventoId,
-        nome_local: novoLocal.nome_local.trim(),
-        cidade: novoLocal.cidade.trim() || null,
-        estado: novoLocal.estado.trim() || null,
-      })
-      .select("id, evento_id, nome_local, cidade, estado")
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from("locais_evento")
+        .insert({
+          evento_id: eventoId,
+          nome_local: novoLocal.nome_local.trim(),
+          cidade: novoLocal.cidade.trim() || null,
+          estado: novoLocal.estado.trim() || null,
+        })
+        .select("id, evento_id, nome_local, cidade, estado")
+        .single();
 
-    if (!error && data) {
-      setLocaisEvento((prev) => [...prev, data as LocalEvento].sort((a, b) => a.nome_local.localeCompare(b.nome_local)));
-      setNovoLocal({ nome_local: "", cidade: "", estado: "" });
-      addToast("sucesso", "Local adicionado.");
-    } else {
-      addToast("erro", "Erro ao adicionar local.");
+      if (error) {
+        addToast("erro", `Erro ao adicionar local: ${error.message}`);
+        return;
+      }
+
+      if (data) {
+        setLocaisEvento((prev) => [...prev, data as LocalEvento].sort((a, b) => a.nome_local.localeCompare(b.nome_local)));
+        setNovoLocal({ nome_local: "", cidade: "", estado: "" });
+        addToast("sucesso", "Local adicionado.");
+      }
+    } catch (error) {
+      addToast("erro", `Erro ao adicionar local: ${error instanceof Error ? error.message : "Erro inesperado"}`);
+    } finally {
+      setSalvandoLocal(false);
     }
-
-    setSalvandoLocal(false);
   }
 
   async function removerLocalEvento(id: string) {
     const supabase = createClient();
     setRemovendoLocalId(id);
 
-    const { error } = await supabase.from("locais_evento").delete().eq("id", id).eq("evento_id", eventoId);
+    try {
+      const { error } = await supabase.from("locais_evento").delete().eq("id", id).eq("evento_id", eventoId);
 
-    if (!error) {
+      if (error) {
+        addToast("erro", `Erro ao remover local: ${error.message}`);
+        return;
+      }
+
       setLocaisEvento((prev) => prev.filter((local) => local.id !== id));
       addToast("sucesso", "Local removido.");
-    } else {
-      addToast("erro", "Erro ao remover local.");
+    } catch (error) {
+      addToast("erro", `Erro ao remover local: ${error instanceof Error ? error.message : "Erro inesperado"}`);
+    } finally {
+      setRemovendoLocalId(null);
     }
-
-    setRemovendoLocalId(null);
   }
 
   async function recarregarCategorias() {
@@ -1421,14 +1478,14 @@ export default function PainelEventoPage() {
     const { data } = await supabase.from("categorias").select("*").eq("evento_id", eventoId).order("nome");
 
     const todasCats = (data ?? []) as Categoria[];
-    const principais = todasCats
+    const pais = todasCats
       .filter((c) => !c.categoria_pai_id)
-      .map((principal) => ({
-        ...principal,
-        subcategorias: todasCats.filter((c) => c.categoria_pai_id === principal.id),
+      .map((pai) => ({
+        ...pai,
+        subcategorias: todasCats.filter((c) => c.categoria_pai_id === pai.id),
       }));
 
-    setCategorias(principais);
+    setCategorias(pais);
   }
 
   function abrirModalNova() {
@@ -1457,51 +1514,63 @@ export default function PainelEventoPage() {
     const supabase = createClient();
     if (!formCat.nome.trim()) return;
 
-    const ehCategoriaPrincipal = !formCat.categoria_pai_id;
-
     const payload = {
-      nome: formCat.nome.trim(),
-      valor_solo: ehCategoriaPrincipal ? 0 : Number(formCat.valor_solo),
-      valor_duo: ehCategoriaPrincipal ? 0 : Number(formCat.valor_duo),
-      valor_conjunto: ehCategoriaPrincipal ? 0 : Number(formCat.valor_conjunto),
-      genero: ehCategoriaPrincipal ? "livre" : formCat.genero,
-      faixa_etaria_min: ehCategoriaPrincipal ? null : formCat.faixa_etaria_min ? Number(formCat.faixa_etaria_min) : null,
-      faixa_etaria_max: ehCategoriaPrincipal ? null : formCat.faixa_etaria_max ? Number(formCat.faixa_etaria_max) : null,
-      faixa_etaria_label: ehCategoriaPrincipal ? null : formCat.faixa_etaria_label || null,
+      nome: formCat.nome,
+      valor_solo: Number(formCat.valor_solo),
+      valor_duo: Number(formCat.valor_duo),
+      valor_conjunto: Number(formCat.valor_conjunto),
+      genero: formCat.genero,
+      faixa_etaria_min: formCat.faixa_etaria_min ? Number(formCat.faixa_etaria_min) : null,
+      faixa_etaria_max: formCat.faixa_etaria_max ? Number(formCat.faixa_etaria_max) : null,
+      faixa_etaria_label: formCat.faixa_etaria_label || null,
       categoria_pai_id: formCat.categoria_pai_id || null,
       evento_id: eventoId,
     };
 
-    if (catEditando) {
-      const { error } = await supabase.from("categorias").update(payload).eq("id", catEditando.id);
-      if (!error) {
-        addToast("sucesso", `${formCat.nome} atualizada!`);
-        void recarregarCategorias();
-      } else {
-        addToast("erro", `Erro ao atualizar categoria: ${error.message}`);
-      }
-    } else {
-      const { error } = await supabase.from("categorias").insert(payload);
-      if (!error) {
-        addToast("sucesso", `${formCat.nome} criada!`);
-        void recarregarCategorias();
-      } else {
-        addToast("erro", `Erro ao criar categoria: ${error.message}`);
-      }
-    }
+    try {
+      if (catEditando) {
+        const { error } = await supabase.from("categorias").update(payload).eq("id", catEditando.id);
 
-    setModalCat(false);
+        if (error) {
+          addToast("erro", `Erro ao atualizar categoria: ${error.message}`);
+          return;
+        }
+
+        addToast("sucesso", `${formCat.nome} atualizada!`);
+        await recarregarCategorias();
+      } else {
+        const { error } = await supabase.from("categorias").insert(payload);
+
+        if (error) {
+          addToast("erro", `Erro ao criar categoria: ${error.message}`);
+          return;
+        }
+
+        addToast("sucesso", `${formCat.nome} criada!`);
+        await recarregarCategorias();
+      }
+
+      setModalCat(false);
+    } catch (error) {
+      addToast("erro", `Erro ao salvar categoria: ${error instanceof Error ? error.message : "Erro inesperado"}`);
+    }
   }
 
   async function excluirCategoria(id: string, nome: string) {
     const supabase = createClient();
-    const { error } = await supabase.from("categorias").delete().eq("id", id);
 
-    if (!error) {
+    try {
+      const { error } = await supabase.from("categorias").delete().eq("id", id);
+
+      if (error) {
+        addToast("erro", `Erro ao remover categoria: ${error.message}`);
+        return;
+      }
+
       addToast("sucesso", `${nome} removida.`);
-      void recarregarCategorias();
-    } else {
-      addToast("erro", "Erro ao remover categoria.");
+      await recarregarCategorias();
+    } catch (error) {
+      addToast("erro", `Erro ao remover categoria: ${error instanceof Error ? error.message : "Erro inesperado"}`);
     }
   }
 
@@ -1518,13 +1587,17 @@ export default function PainelEventoPage() {
     const reordenadas = items.map((c, i) => ({ ...c, ordem_apresentacao: i + 1 }));
     setApresentacoes(reordenadas);
 
-    await Promise.all(
-      reordenadas.map((c) =>
-        supabase.from("apresentacoes").update({ ordem_apresentacao: c.ordem_apresentacao }).eq("id", c.id)
-      )
-    );
+    try {
+      await Promise.all(
+        reordenadas.map((c) =>
+          supabase.from("apresentacoes").update({ ordem_apresentacao: c.ordem_apresentacao }).eq("id", c.id)
+        )
+      );
 
-    addToast("sucesso", "Ordem salva!");
+      addToast("sucesso", "Ordem salva!");
+    } catch (error) {
+      addToast("erro", `Erro ao salvar ordem: ${error instanceof Error ? error.message : "Erro inesperado"}`);
+    }
   }
 
   async function handleModalJuradosSaved() {
@@ -1545,10 +1618,8 @@ export default function PainelEventoPage() {
 
   if (!evento) return null;
 
-  const categoriasPrincipais = categorias.filter((c) => !c.categoria_pai_id);
   const presetAtual = PRESETS[perfilSlug] ?? PRESETS.default;
-  const formCatEhPrincipal = !formCat.categoria_pai_id;
-
+  const categoriasPrincipais = categorias.filter((c) => !c.categoria_pai_id);
   const checklistJuradosOk = form.formato === "mostra" ? true : totalJurados > 0 && criteriosConfigurados;
 
   const checklist = [
@@ -1562,7 +1633,7 @@ export default function PainelEventoPage() {
     },
     {
       label: "Ao menos 1 categoria criada",
-      descricao: "Categorias organizam a estrutura competitiva do evento.",
+      descricao: "Categorias definem as taxas e faixas etárias aceitas.",
       ok: categorias.length > 0,
       acao: "categorias" as const,
       onAcao: null as null | (() => void),
@@ -1605,6 +1676,7 @@ export default function PainelEventoPage() {
         produtoraId={evento.produtora_id ?? ""}
         onClose={() => setModalPdvOpen(false)}
         onSaved={handleModalPdvSaved}
+        addToast={addToast}
       />
 
       <div className="max-w-6xl mx-auto space-y-6">
@@ -1834,7 +1906,7 @@ export default function PainelEventoPage() {
                     <input
                       type="text"
                       value={form.local ?? ""}
-                      placeholder="Ex: Espaço principal do evento"
+                      placeholder="Ex: Teatro Municipal, São Paulo - SP"
                       onChange={(e) => setForm({ ...form, local: e.target.value })}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200"
                     />
@@ -1933,7 +2005,7 @@ export default function PainelEventoPage() {
                     <textarea
                       rows={5}
                       value={form.descricao ?? ""}
-                      placeholder="Texto descritivo do festival, proposta, diferenciais, regulamento resumido e informações públicas."
+                      placeholder="Texto descritivo do festival, conceito curatorial, diferenciais, regulamento resumido e informações que alimentarão a página pública."
                       onChange={(e) => setForm({ ...form, descricao: e.target.value })}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold focus:ring-1 focus:ring-axon-gold/20 transition-all duration-200 resize-none"
                     />
@@ -1947,7 +2019,7 @@ export default function PainelEventoPage() {
                           Múltiplos Locais / Palcos
                         </h4>
                         <p className="text-xs text-gray-500 mt-1">
-                          Gerencie os palcos, espaços ou cidades vinculados a este festival. Esta lista é carregada em tempo real do Supabase.
+                          Gerencie os palcos, teatros e cidades vinculados a este festival. Esta lista é carregada em tempo real do Supabase.
                         </p>
                       </div>
 
@@ -2025,7 +2097,7 @@ export default function PainelEventoPage() {
 
                 <div className="flex justify-end pt-2">
                   <button
-                    onClick={salvarEvento}
+                    onClick={() => void salvarEvento()}
                     disabled={salvando}
                     className="flex items-center gap-2 bg-axon-gold text-black font-bold px-6 py-2.5 rounded-lg hover:bg-axon-gold/80 hover:shadow-lg hover:shadow-axon-gold/20 active:scale-95 transition-all duration-200 disabled:opacity-50"
                   >
@@ -2041,7 +2113,7 @@ export default function PainelEventoPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-1">Categorias & Taxas</h3>
-                    <p className="text-sm text-gray-400">Defina a estrutura de Categorias Principais e subcategorias do evento.</p>
+                    <p className="text-sm text-gray-400">Defina as categorias de competição deste evento com suas respectivas taxas de inscrição.</p>
                   </div>
 
                   <button
@@ -2059,7 +2131,7 @@ export default function PainelEventoPage() {
                   <div className="text-center py-16 border border-dashed border-axon-border rounded-xl text-gray-500">
                     <ListTree size={40} className="mx-auto mb-3 opacity-20 text-axon-gold" />
                     <p className="font-medium text-gray-300">Nenhuma categoria ainda</p>
-                    <p className="text-sm mt-1 text-gray-500">Crie a primeira categoria para organizar a estrutura do evento.</p>
+                    <p className="text-sm mt-1 text-gray-500">Crie a primeira categoria para definir as taxas de inscrição do evento.</p>
                     <button
                       onClick={abrirModalNova}
                       className="mt-4 text-sm text-axon-gold hover:text-white border border-axon-gold/30 hover:border-axon-gold hover:bg-axon-gold/10 px-4 py-2 rounded-lg transition-all duration-200"
@@ -2069,13 +2141,32 @@ export default function PainelEventoPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {categorias.map((cat) => (
+                    {categoriasPrincipais.map((cat) => (
                       <div key={cat.id} className="bg-axon-bg border border-axon-border rounded-xl overflow-hidden hover:border-gray-600 transition-colors">
                         <div className="flex items-center justify-between p-4 group">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-white font-semibold">{cat.nome}</p>
+                              <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                {GENERO_LABELS[cat.genero]}
+                              </span>
+                              {cat.faixa_etaria_label && (
+                                <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                  {cat.faixa_etaria_label}
+                                </span>
+                              )}
+                              {!cat.faixa_etaria_label && cat.faixa_etaria_min != null && cat.faixa_etaria_max != null && (
+                                <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                  {cat.faixa_etaria_min}-{cat.faixa_etaria_max} anos
+                                </span>
+                              )}
                             </div>
+
+                            <p className="text-sm text-gray-400 mt-1.5">
+                              {presetAtual.taxaSolo.replace("R$", "")} <span className="text-white">{moeda(cat.valor_solo)}</span> ·{" "}
+                              {presetAtual.taxaDuo.replace("R$", "")} <span className="text-white">{moeda(cat.valor_duo)}</span> ·{" "}
+                              {presetAtual.taxaConjunto.replace("R$", "")} <span className="text-white">{moeda(cat.valor_conjunto)}</span>
+                            </p>
                           </div>
 
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2098,31 +2189,23 @@ export default function PainelEventoPage() {
                           <div className="border-t border-axon-border divide-y divide-axon-border bg-black/10">
                             {cat.subcategorias.map((sub) => (
                               <div key={sub.id} className="flex items-center justify-between px-4 py-3 group">
-                                <div className="flex items-center gap-3 pl-4 min-w-0 flex-1">
-                                  <div className="w-px h-4 bg-axon-border shrink-0" />
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <p className="text-sm text-gray-200 font-medium">{sub.nome}</p>
+                                <div className="flex items-center gap-3 pl-4">
+                                  <div className="w-px h-4 bg-axon-border" />
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-sm text-gray-200 font-medium">{sub.nome}</p>
+                                    <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                      {GENERO_LABELS[sub.genero]}
+                                    </span>
+                                    {sub.faixa_etaria_label && (
                                       <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                        {GENERO_LABELS[sub.genero]}
+                                        {sub.faixa_etaria_label}
                                       </span>
-                                      {sub.faixa_etaria_label && (
-                                        <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                          {sub.faixa_etaria_label}
-                                        </span>
-                                      )}
-                                      {!sub.faixa_etaria_label && sub.faixa_etaria_min != null && sub.faixa_etaria_max != null && (
-                                        <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                                          {sub.faixa_etaria_min}-{sub.faixa_etaria_max} anos
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    <p className="text-sm text-gray-400 mt-1.5">
-                                      {presetAtual.taxaSolo.replace("R$", "")} <span className="text-white">{moeda(sub.valor_solo)}</span> ·{" "}
-                                      {presetAtual.taxaDuo.replace("R$", "")} <span className="text-white">{moeda(sub.valor_duo)}</span> ·{" "}
-                                      {presetAtual.taxaConjunto.replace("R$", "")} <span className="text-white">{moeda(sub.valor_conjunto)}</span>
-                                    </p>
+                                    )}
+                                    {!sub.faixa_etaria_label && sub.faixa_etaria_min != null && sub.faixa_etaria_max != null && (
+                                      <span className="text-xs text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                        {sub.faixa_etaria_min}-{sub.faixa_etaria_max} anos
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
 
@@ -2190,7 +2273,7 @@ export default function PainelEventoPage() {
                     </p>
                   </div>
                 ) : (
-                  <DragDropContext onDragEnd={onDragEnd}>
+                  <DragDropContext onDragEnd={(result) => void onDragEnd(result)}>
                     <Droppable droppableId="lineup">
                       {(provided) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
@@ -2244,10 +2327,10 @@ export default function PainelEventoPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-white">
-                    {catEditando ? "Editar Categoria" : formCatEhPrincipal ? "Nova Categoria Principal" : "Nova Subcategoria"}
+                    {catEditando ? "Editar Categoria" : formCat.categoria_pai_id ? "Nova Subcategoria" : "Nova Categoria"}
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {formCatEhPrincipal ? presetAtual.explicacaoPrincipal : presetAtual.explicacaoSub}
+                    {formCat.categoria_pai_id ? presetAtual.explicacaoSub : presetAtual.explicacaoPrincipal}
                   </p>
                 </div>
                 <button onClick={() => setModalCat(false)} className="text-gray-500 hover:text-white hover:bg-white/5 p-1.5 rounded-lg transition-all duration-200">
@@ -2256,54 +2339,40 @@ export default function PainelEventoPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm text-gray-400 font-medium">
-                    Categoria Principal <span className="text-gray-600 font-normal">opcional</span>
-                  </label>
-                  <select
-                    value={formCat.categoria_pai_id}
-                    onChange={(e) =>
-                      setFormCat((prev) => ({
-                        ...prev,
-                        categoria_pai_id: e.target.value,
-                        ...(e.target.value
-                          ? {}
-                          : {
-                              valor_solo: 0,
-                              valor_duo: 0,
-                              valor_conjunto: 0,
-                              genero: "livre",
-                              faixa_etaria_min: "",
-                              faixa_etaria_max: "",
-                              faixa_etaria_label: "",
-                            }),
-                      }))
-                    }
-                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
-                  >
-                    <option value="">Nenhuma categoria principal (criar como categoria principal)</option>
-                    {categoriasPrincipais
-                      .filter((c) => c.id !== catEditando?.id)
-                      .map((c) => (
+                {!formCat.categoria_pai_id && !catEditando?.categoria_pai_id && (
+                  <div className="space-y-2">
+                    <label className="text-sm text-gray-400 font-medium">
+                      Categoria Principal <span className="text-gray-600 font-normal">opcional</span>
+                    </label>
+                    <select
+                      value={formCat.categoria_pai_id}
+                      onChange={(e) => setFormCat({ ...formCat, categoria_pai_id: e.target.value })}
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
+                    >
+                      <option value="">Nenhuma (criar categoria principal)</option>
+                      {categoriasPrincipais.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.nome}
                         </option>
                       ))}
-                  </select>
-                </div>
+                    </select>
+                  </div>
+                )}
 
                 <div className="space-y-2">
-                  <label className="text-sm text-gray-400 font-medium">Nome</label>
+                  <label className="text-sm text-gray-400 font-medium">
+                    {formCat.categoria_pai_id ? "Nome da Subcategoria" : "Nome da Categoria Principal"}
+                  </label>
                   <input
                     type="text"
-                    placeholder={formCatEhPrincipal ? presetAtual.placeholderNomePrincipal : presetAtual.placeholderNomeSubcategoria}
+                    placeholder={formCat.categoria_pai_id ? presetAtual.placeholderNomeSubcategoria : presetAtual.placeholderNomePrincipal}
                     value={formCat.nome}
                     onChange={(e) => setFormCat({ ...formCat, nome: e.target.value })}
                     className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-axon-gold transition-all duration-200"
                   />
                 </div>
 
-                {!formCatEhPrincipal && (
+                {formCat.categoria_pai_id && (
                   <>
                     <div className="space-y-2">
                       <label className="text-sm text-gray-400 font-medium">Gênero</label>
@@ -2335,7 +2404,7 @@ export default function PainelEventoPage() {
                           <label className="text-xs text-gray-500">Label</label>
                           <input
                             type="text"
-                            placeholder="Ex: Faixa A"
+                            placeholder="Ex: Infantil"
                             value={formCat.faixa_etaria_label}
                             onChange={(e) => setFormCat({ ...formCat, faixa_etaria_label: e.target.value })}
                             className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
@@ -2347,7 +2416,7 @@ export default function PainelEventoPage() {
                           <input
                             type="number"
                             min="0"
-                            placeholder="0"
+                            placeholder="6"
                             value={formCat.faixa_etaria_min}
                             onChange={(e) => setFormCat({ ...formCat, faixa_etaria_min: e.target.value })}
                             className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
@@ -2359,7 +2428,7 @@ export default function PainelEventoPage() {
                           <input
                             type="number"
                             min="0"
-                            placeholder="99"
+                            placeholder="12"
                             value={formCat.faixa_etaria_max}
                             onChange={(e) => setFormCat({ ...formCat, faixa_etaria_max: e.target.value })}
                             className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-axon-gold transition-all duration-200"
@@ -2370,7 +2439,7 @@ export default function PainelEventoPage() {
 
                     <div className="space-y-2">
                       <label className="text-sm text-gray-400 font-medium">Taxas de Inscrição</label>
-                      <p className="text-xs text-gray-500">Valor cobrado por modalidade. O terceiro campo é o valor por conjunto ou grupo.</p>
+                      <p className="text-xs text-gray-500">Valor cobrado por modalidade.</p>
 
                       <div className="grid grid-cols-3 gap-3">
                         {(["valor_solo", "valor_duo", "valor_conjunto"] as const).map((campo) => {
