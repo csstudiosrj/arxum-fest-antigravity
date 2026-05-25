@@ -10,7 +10,6 @@ import {
   CheckCircle,
   Shield,
   Info,
-  Upload,
   Download,
   Bold,
   Italic,
@@ -55,6 +54,17 @@ interface Evento {
   id: string;
   nome: string;
 }
+
+interface SupabaseParticipanteRow {
+  id: string;
+  nome: string;
+  termo_assinado: boolean | null;
+  escola: { nome: string } | { nome: string }[] | null;
+}
+
+// ─── Cliente Supabase Global ─────────────────────────────────────────────────
+
+const supabase = createClient();
 
 // ─── Badge de Status ──────────────────────────────────────────────────────────
 
@@ -105,8 +115,6 @@ function DocumentoEditor({
   eventoId: string;
   produtoraId: string;
 }) {
-  const supabase = createClient();
-
   const [exibirPublico, setExibirPublico] = useState(
     documento?.exibir_publico ?? (tipo === "regulamento" ? true : true)
   );
@@ -155,16 +163,53 @@ function DocumentoEditor({
   };
 
   const handleCarregarModelo = () => {
-    const modelo =
-      tipo === "regulamento"
-        ? `<h2>Regulamento Oficial do Festival [NOME DO FESTIVAL]</h2>
-<p><strong>1. Disposições Gerais</strong><br>O presente regulamento estabelece as regras para...</p>
-<p><strong>2. Inscrições</strong><br>As inscrições deverão ser realizadas...</p>`
-        : tipo === "uso_imagem"
-        ? `<h2>Termo de Uso de Imagem</h2>
-<p>Eu, [NOME DO RESPONSÁVEL], autorizo o uso de imagem do(a) participante [NOME DO PARTICIPANTE] para fins de divulgação do evento [NOME DO FESTIVAL]...</p>`
-        : `<h2>Autorização para Menores de Idade</h2>
-<p>Eu, [NOME DO RESPONSÁVEL LEGAL], autorizo a participação do menor [NOME DO MENOR] no evento [NOME DO FESTIVAL]...</p>`;
+    let modelo = "";
+    if (tipo === "regulamento") {
+      modelo = `<h2>Regulamento Oficial do Festival [NOME DO FESTIVAL]</h2>
+<p><strong>Preâmbulo</strong></p>
+<p>O [NOME DO FESTIVAL], doravante denominado EVENTO, é organizado por [NOME DA PRODUTORA], inscrita no CNPJ sob o nº [CNPJ], com sede em [CIDADE/ESTADO], e tem por objetivo fomentar a produção artística e cultural por meio de competição de dança, música ou teatro, sem qualquer subordinação a sorteios ou modalidades de captação de recursos que dependam de autorização do Poder Público.</p>
+<p><strong>CLÁUSULA PRIMEIRA - DO OBJETO</strong></p>
+<p>O presente Regulamento estabelece as normas e condições de participação no EVENTO, visando garantir a isonomia entre os participantes, a transparência nas avaliações e a observância aos princípios legais.</p>
+<p><strong>CLÁUSULA SEGUNDA - DAS INSCRIÇÕES</strong></p>
+<p>2.1 Podem inscrever-se grupos, companhias, escolas de dança, academias e artistas independentes, respeitando os limites de faixa etária definidos na ficha técnica.<br>
+2.2 As inscrições serão efetuadas exclusivamente pela plataforma oficial, mediante preenchimento completo da ficha de inscrição, upload dos arquivos de áudio e, quando couber, comprovante de pagamento.<br>
+2.3 O ato de inscrição implica a aceitação integral deste Regulamento e a declaração de titularidade ou autorização para uso das obras musicais e coreográficas apresentadas, isentando a organização de eventuais reclamações de terceiros relativas a direitos autorais.</p>
+<p><strong>CLÁUSULA TERCEIRA - DA CURADORIA E JÚRI</strong></p>
+<p>3.1 O corpo de jurados será composto por profissionais de notório saber nas áreas de dança, música e expressão corporal, cuja indicação e identidade serão divulgadas pela Organização.<br>
+3.2 As decisões do júri são soberanas, irrecorríveis e pautadas em critérios de originalidade, técnica, figurino, interpretação e conceito artístico, não cabendo qualquer recurso administrativo ou judicial contra seus vereditos.</p>
+<p><strong>CLÁUSULA QUARTA - DAS PREMIAÇÕES</strong></p>
+<p>4.1 Os prêmios serão entregues conforme divulgação prévia no site oficial.<br>
+4.2 Sobre os valores em dinheiro eventualmente concedidos, incidirão os tributos federais e estaduais previstos em lei, sendo a Organização autorizada a proceder as retenções e recolhimentos exigidos.<br>
+4.3 A constatação de fraude, plágio ou qualquer conduta que viole o espírito artístico do EVENTO acarretará a desclassificação sumária do participante e a perda de qualquer premiação já concedida.</p>
+<p><strong>CLÁUSULA QUINTA - DAS DISPOSIÇÕES GERAIS</strong></p>
+<p>5.1 A Organização reserva-se o direito de transmitir, gravar e divulgar as apresentações por qualquer meio (televisão, rádio, internet, streaming) sem que isso gere direito a remuneração adicional aos participantes.<br>
+5.2 Fica eleito o foro da comarca de [CIDADE/ESTADO] para dirimir quaisquer dúvidas ou controvérsias decorrentes deste Regulamento, com renúncia expressa a qualquer outro, por mais privilegiado que seja.<br>
+5.3 A participação no EVENTO representa concordância tácita do participante com todos os termos e condições aqui estipulados.</p>`;
+    } else if (tipo === "uso_imagem") {
+      modelo = `<h2>Termo de Cessão de Uso de Imagem e Voz</h2>
+<p><strong>Preâmbulo</strong></p>
+<p>Pelo presente instrumento particular, de um lado [NOME DO RESPONSÁVEL OU PARTICIPANTE MAIOR], portador do CPF nº [CPF], doravante denominado CEDENTE, e de outro lado [NOME DA PRODUTORA], pessoa jurídica de direito privado inscrita no CNPJ sob o nº [CNPJ], com sede em [CIDADE/ESTADO], doravante denominada CESSIONÁRIA, resolvem celebrar este TERMO DE CESSÃO DE USO DE IMAGEM E VOZ, que será regido pelas cláusulas seguintes.</p>
+<p><strong>CLÁUSULA PRIMEIRA - DO OBJETO</strong></p>
+<p>O CEDENTE autoriza, de forma ampla, gratuita e irrevogável, a captação, fixação e utilização de sua imagem corporal, fisionomia, espectro vocal e nome artístico pela CESSIONÁRIA, nos eventos relacionados ao [NOME DO FESTIVAL] e em todas as ações de divulgação dele decorrentes.</p>
+<p><strong>CLÁUSULA SEGUNDA - DOS MEIOS DE VEICULAÇÃO</strong></p>
+<p>A presente autorização compreende a veiculação em redes sociais da CESSIONÁRIA (Instagram, YouTube, Facebook, TikTok, etc.), sites institucionais, materiais gráficos promocionais de edições futuras, transmissões ao vivo via streaming e em mídias analógicas e digitais, em território nacional e internacional, sem limitação de tempo ou número de exibições.</p>
+<p><strong>CLÁUSULA TERCEIRA - DA GRATUIDADE E VIGÊNCIA</strong></p>
+<p>O CEDENTE declara expressamente que a cessão ora concedida se dá em caráter de total gratuidade, não fazendo jus a qualquer contraprestação financeira, cachê, royalties, indenização ou remuneração presente ou futura, seja a que título for. Esta cessão tem vigência por prazo indeterminado, em âmbito global, de forma irrevogável e irretratável, não podendo ser revogada mesmo após o término do vínculo do CEDENTE com o EVENTO.</p>
+<p><strong>CLÁUSULA QUARTA - DO FORO</strong></p>
+<p>As partes elegem o foro da comarca de [CIDADE/ESTADO] para dirimir quaisquer controvérsias oriundas deste instrumento, com exclusão de qualquer outro, por mais privilegiado que seja.</p>`;
+    } else if (tipo === "autorizacao_menores") {
+      modelo = `<h2>Autorização para Menores de Idade e Responsabilidade Médica</h2>
+<p><strong>Preâmbulo</strong></p>
+<p>Eu, [NOME DO RESPONSÁVEL LEGAL], portador do CPF nº [CPF], RG nº [RG], residente e domiciliado em [ENDEREÇO], na qualidade de representante legal do menor [NOME DO MENOR], inscrito no CPF nº [CPF DO MENOR] ou portador da certidão de nascimento nº [CERTIDÃO], autorizo a participação do referido menor no evento [NOME DO FESTIVAL], organizado por [NOME DA PRODUTORA], e concordo com os termos a seguir.</p>
+<p><strong>CLÁUSULA PRIMEIRA - DA PARTICIPAÇÃO</strong></p>
+<p>Autorizo o trânsito do menor nas dependências do EVENTO (coxias, palcos, camarins, áreas de ensaio e alimentação) durante os horários determinados pela organização, bem como a participação nos ensaios e apresentações oficiais, desde que acompanhado por profissional da equipe designada ou por mim, quando possível.</p>
+<p><strong>CLÁUSULA SEGUNDA - DO ESTADO DE SAÚDE</strong></p>
+<p>Declaro, sob as penas da lei (art. 299 do Código Penal), que o menor se encontra em plenas condições de saúde física e mental para a prática de atividades performáticas, não havendo contraindicações médicas conhecidas que o impeçam de participar das coreografias e demais atividades previstas.</p>
+<p><strong>CLÁUSULA TERCEIRA - DA RESPONSABILIDADE MÉDICA DE EMERGÊNCIA</strong></p>
+<p>Em caso de acidente ou mal súbito durante o EVENTO, outorgo à comissão organizadora plenos poderes de representação para autorizar intervenções médicas, atendimento hospitalar, procedimentos cirúrgicos ou socorros de urgência e emergência que se fizerem necessários, eximindo a produtora de responsabilidade pelos custos decorrentes de tratamentos não cobertos por apólices de seguro eventualmente contratadas.</p>
+<p><strong>CLÁUSULA QUARTA - DO USO DE IMAGEM</strong></p>
+<p>Autorizo, de forma gratuita, a captação e divulgação de fotos e filmagens do menor exclusivamente no escopo de divulgação do [NOME DO FESTIVAL], conforme termos de cessão de imagem próprios, cuja concordância se confirma por este instrumento.</p>`;
+    }
     setConteudoHtml(modelo);
   };
 
@@ -366,7 +411,7 @@ function DocumentoEditor({
                 },
               }}
               onClientUploadComplete={(res) => {
-                setArquivoUrl(res[0].url);
+                setArquivoUrl(res?.[0]?.ufsUrl ?? res?.[0]?.url ?? null);
                 setUploading(false);
               }}
               onUploadError={(error) => {
@@ -379,7 +424,7 @@ function DocumentoEditor({
             <div className="flex items-center gap-3 bg-axon-bg border border-axon-border rounded-lg p-3">
               <FileText size={16} className="text-axon-green" />
               <a
-                href={arquivoUrl}
+                href={arquivoUrl ?? undefined}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-axon-green underline truncate"
@@ -419,7 +464,6 @@ function StatusAssinaturas({
   eventoId: string;
   produtoraId: string;
 }) {
-  const supabase = createClient();
   const [participantes, setParticipantes] = useState<ParticipanteStatus[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
@@ -434,16 +478,21 @@ function StatusAssinaturas({
       .eq("produtora_id", produtoraId)
       .order("created_at", { ascending: false })
       .then(({ data }) => {
-        const status: ParticipanteStatus[] = (data ?? []).map((p: any) => ({
-          id: p.id,
-          nome: p.nome,
-          termo_assinado: p.termo_assinado ?? false,
-          escola_nome: p.escola?.nome ?? "—",
-        }));
+        const rows = (data as unknown as SupabaseParticipanteRow[]) ?? [];
+        const status: ParticipanteStatus[] = rows.map((p) => {
+          const escolaData = Array.isArray(p.escola) ? p.escola[0] : p.escola;
+          const escola_nome = escolaData?.nome ?? "—";
+          return {
+            id: p.id,
+            nome: p.nome,
+            termo_assinado: p.termo_assinado ?? false,
+            escola_nome,
+          };
+        });
         setParticipantes(status);
         setCarregando(false);
       });
-  }, [eventoId, produtoraId, supabase]);
+  }, [eventoId, produtoraId]);
 
   const filtrados = participantes.filter(
     (p) =>
@@ -532,8 +581,6 @@ function StatusAssinaturas({
 // ─── Componente Principal ─────────────────────────────────────────────────────
 
 export default function TermosPage() {
-  const supabase = createClient();
-
   const [produtoraId, setProdutoraId] = useState<string>("");
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [eventoSelecionadoId, setEventoSelecionadoId] = useState<string>("");
@@ -561,7 +608,7 @@ export default function TermosPage() {
         setProdutoraId(usuario.produtora_id);
       }
     })();
-  }, [supabase]);
+  }, []);
 
   // Buscar eventos da produtora
   useEffect(() => {
@@ -575,7 +622,7 @@ export default function TermosPage() {
         if (data) setEventos(data as Evento[]);
         setCarregandoPagina(false);
       });
-  }, [produtoraId, supabase]);
+  }, [produtoraId]);
 
   // Carregar documentos do evento selecionado
   useEffect(() => {
@@ -589,7 +636,7 @@ export default function TermosPage() {
       .then(({ data }) => {
         setDocumentos((data as Documento[]) ?? []);
       });
-  }, [produtoraId, eventoSelecionadoId, supabase]);
+  }, [produtoraId, eventoSelecionadoId]);
 
   const mostrarToast = (msg: string) => {
     setToastMsg(msg);
@@ -613,42 +660,43 @@ export default function TermosPage() {
       ativo: true,
     };
 
-    let error = null;
+    let savedRecord: Documento | null = null;
+
     if (existente) {
-      const { error: err } = await supabase
+      const { data, error } = await supabase
         .from("termos_documentos")
         .update({
           ...dataPayload,
           versao: existente.versao + 1,
         })
-        .eq("id", existente.id);
-      error = err;
+        .eq("id", existente.id)
+        .select()
+        .single();
+      if (!error && data) savedRecord = data as Documento;
     } else {
-      const { error: err } = await supabase
+      const { data, error } = await supabase
         .from("termos_documentos")
         .insert({
           ...dataPayload,
           versao: 1,
-        });
-      error = err;
+        })
+        .select()
+        .single();
+      if (!error && data) savedRecord = data as Documento;
     }
 
     setSalvando(false);
-    if (!error) {
+
+    if (savedRecord) {
       mostrarToast("Documento salvo com sucesso!");
-      const updated = {
-        ...dataPayload,
-        id: existente?.id ?? "",
-        versao: existente ? existente.versao + 1 : 1,
-      } as Documento;
       setDocumentos((prev) => {
         const others = prev.filter(
-          (d) => !(d.tipo === payload.tipo && d.evento_id === eventoSelecionadoId)
+          (d) => !(d.tipo === savedRecord.tipo && d.evento_id === eventoSelecionadoId)
         );
-        return [...others, updated];
+        return [...others, savedRecord];
       });
     } else {
-      alert("Erro ao salvar documento: " + error.message);
+      alert("Erro ao salvar documento. Tente novamente.");
     }
   };
 
