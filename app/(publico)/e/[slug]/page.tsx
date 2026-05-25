@@ -64,6 +64,12 @@ interface Evento {
   cor_secundaria: string | null;
   fonte_familia: FonteFamilia;
   tema_escuro: boolean;
+  exibir_loja_publica: boolean | null;
+  exibir_feed_instagram: boolean | null;
+  instagram_handle: string | null;
+  regulamento_url: string | null;
+  termo_imagem_url: string | null;
+  autorizacao_menor_url: string | null;
 }
 
 interface JuradoPublico {
@@ -114,6 +120,12 @@ interface EventoRow {
   cor_secundaria: string | null;
   fonte_familia: string | null;
   tema_escuro: boolean | null;
+  exibir_loja_publica: boolean | null;
+  exibir_feed_instagram: boolean | null;
+  instagram_handle: string | null;
+  regulamento_url: string | null;
+  termo_imagem_url: string | null;
+  autorizacao_menor_url: string | null;
 }
 
 interface EventoJuradoUsuarioRow {
@@ -165,15 +177,29 @@ interface DadosEventoPublico {
   locais: LocalEvento[];
   termos: TermoDocumento[];
   categoriasPremiacao: CategoriaPremiacao[];
+  produtosLoja: any[];
 }
 
 function formatarData(iso: string | null): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  const [datePart] = iso.split("T");
+  if (!datePart) return "";
+  const [year, month, day] = datePart.split("-");
+  const meses = [
+    "janeiro",
+    "fevereiro",
+    "março",
+    "abril",
+    "maio",
+    "junho",
+    "julho",
+    "agosto",
+    "setembro",
+    "outubro",
+    "novembro",
+    "dezembro",
+  ];
+  return `${day} de ${meses[parseInt(month, 10) - 1]} de ${year}`;
 }
 
 function formatarMoeda(valor: number): string {
@@ -269,6 +295,12 @@ function normalizarEvento(row: EventoRow): Evento {
     cor_secundaria: row.cor_secundaria,
     fonte_familia: normalizarFonteFamilia(row.fonte_familia),
     tema_escuro: row.tema_escuro ?? true,
+    exibir_loja_publica: row.exibir_loja_publica,
+    exibir_feed_instagram: row.exibir_feed_instagram,
+    instagram_handle: row.instagram_handle,
+    regulamento_url: row.regulamento_url,
+    termo_imagem_url: row.termo_imagem_url,
+    autorizacao_menor_url: row.autorizacao_menor_url,
   };
 }
 
@@ -673,7 +705,7 @@ async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null
   const { data: eventoData, error } = await supabase
     .from("eventos")
     .select(
-      "id, nome, descricao, data_inicio, data_fim, local, status, logo_url, banner_url, formato, tipo_premiacao, multilocal, cor_primaria, cor_secundaria, fonte_familia, tema_escuro"
+      "id, nome, descricao, data_inicio, data_fim, local, status, logo_url, banner_url, formato, tipo_premiacao, multilocal, cor_primaria, cor_secundaria, fonte_familia, tema_escuro, exibir_loja_publica, exibir_feed_instagram, instagram_handle, regulamento_url, termo_imagem_url, autorizacao_menor_url"
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -683,7 +715,7 @@ async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null
   const ev = normalizarEvento(eventoData as EventoRow);
   const competitivo = ev.formato === "competitivo" || ev.formato === "misto";
 
-  const [juradosRes, locaisRes, termosRes, categoriasRes] = await Promise.all([
+  const [juradosRes, locaisRes, termosRes, categoriasRes, produtosRes] = await Promise.all([
     competitivo
       ? supabase
           .from("evento_jurados")
@@ -708,6 +740,13 @@ async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null
           .select("id, nome, premio_dinheiro_1, premio_dinheiro_2, premio_dinheiro_3")
           .eq("evento_id", ev.id)
           .or("premio_dinheiro_1.gt.0,premio_dinheiro_2.gt.0,premio_dinheiro_3.gt.0")
+      : Promise.resolve({ data: null, error: null }),
+    ev.exibir_loja_publica
+      ? supabase
+          .from("evento_produtos")
+          .select("id, preco_evento, estoque_evento, ativo_evento, produtos!inner(id, nome, preco, descricao)")
+          .eq("evento_id", ev.id)
+          .eq("ativo_evento", true)
       : Promise.resolve({ data: null, error: null }),
   ]);
 
@@ -766,7 +805,24 @@ async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null
         )
       : [];
 
-  return { evento: ev, jurados, locais, termos, categoriasPremiacao };
+  const produtosLoja: any[] = [];
+  if (produtosRes.data) {
+    for (const item of produtosRes.data as any[]) {
+      const produtoData = Array.isArray(item.produtos) ? item.produtos[0] : item.produtos;
+      if (produtoData) {
+        produtosLoja.push({
+          id: item.id,
+          preco_evento: item.preco_evento,
+          estoque_evento: item.estoque_evento,
+          nome: produtoData.nome,
+          preco: produtoData.preco,
+          descricao: produtoData.descricao,
+        });
+      }
+    }
+  }
+
+  return { evento: ev, jurados, locais, termos, categoriasPremiacao, produtosLoja };
 }
 
 interface PageProps {
@@ -807,7 +863,7 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
     notFound();
   }
 
-  const { evento, jurados, locais, termos, categoriasPremiacao } = dados;
+  const { evento, jurados, locais, termos, categoriasPremiacao, produtosLoja } = dados;
   const corPrimaria = evento.cor_primaria ?? "#d4af37";
   const corSecundaria = evento.cor_secundaria ?? "#b8860b";
   const fonteFamilia = evento.fonte_familia;
@@ -1046,63 +1102,53 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
           </section>
         )}
 
-        <section aria-labelledby="secao-loja">
-          <SectionHeader
-            titulo="Loja do Festival"
-            corPrimaria={corPrimaria}
-            headingClass={tema.heading}
-          />
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {[
-              {
-                titulo: "Ingresso VIP",
-                preco: "R$ 180,00",
-                descricao: "Acesso prioritário, área exclusiva e kit oficial do festival.",
-                icone: Ticket,
-              },
-              {
-                titulo: "Camiseta Oficial",
-                preco: "R$ 79,90",
-                descricao: "Edição limitada com identidade visual do evento e acabamento premium.",
-                icone: ShoppingBag,
-              },
-              {
-                titulo: "Passe Masterclass",
-                preco: "R$ 220,00",
-                descricao: "Acesso adicional a aulas especiais, bastidores e encontro com convidados.",
-                icone: BadgeCheck,
-              },
-            ].map(({ titulo, preco, descricao, icone: Icon }) => (
-              <div
-                key={titulo}
-                className={`rounded-2xl border p-5 ${tema.card}`}
-                style={{ borderColor: `${corPrimaria}22` }}
-              >
-                <div
-                  className="mb-4 inline-flex rounded-xl p-3"
-                  style={{ background: `${corPrimaria}16` }}
-                >
-                  <Icon size={18} style={{ color: corPrimaria }} />
-                </div>
-                <h3 className={`text-base font-bold ${tema.heading}`}>{titulo}</h3>
-                <p className="mt-2 text-sm font-semibold" style={{ color: corPrimaria }}>
-                  {preco}
-                </p>
-                <p className={`mt-2 text-sm leading-relaxed ${tema.text}`}>{descricao}</p>
-                <button
-                  className="mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
-                  style={{
-                    background: corPrimaria,
-                    color: corTextoContraste(corPrimaria),
-                  }}
-                >
-                  Ver detalhes
-                  <ArrowRight size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
+        {evento.exibir_loja_publica && produtosLoja.length > 0 && (
+          <section aria-labelledby="secao-loja">
+            <SectionHeader
+              titulo="Loja do Festival"
+              corPrimaria={corPrimaria}
+              headingClass={tema.heading}
+            />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {produtosLoja.map((produto: any) => {
+                const preco = produto.preco_evento ?? produto.preco;
+                return (
+                  <div
+                    key={produto.id}
+                    className={`rounded-2xl border p-5 ${tema.card}`}
+                    style={{ borderColor: `${corPrimaria}22` }}
+                  >
+                    <div
+                      className="mb-4 inline-flex rounded-xl p-3"
+                      style={{ background: `${corPrimaria}16` }}
+                    >
+                      <ShoppingBag size={18} style={{ color: corPrimaria }} />
+                    </div>
+                    <h3 className={`text-base font-bold ${tema.heading}`}>{produto.nome}</h3>
+                    <p className="mt-2 text-sm font-semibold" style={{ color: corPrimaria }}>
+                      {formatarMoeda(preco)}
+                    </p>
+                    {produto.descricao && (
+                      <p className={`mt-2 text-sm leading-relaxed ${tema.text}`}>
+                        {produto.descricao}
+                      </p>
+                    )}
+                    <button
+                      className="mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
+                      style={{
+                        background: corPrimaria,
+                        color: corTextoContraste(corPrimaria),
+                      }}
+                    >
+                      Ver detalhes
+                      <ArrowRight size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         <section aria-labelledby="secao-participante">
           <SectionHeader
@@ -1200,62 +1246,78 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
                   <CheckCircle2 size={15} />
                   Assinar digitalmente
                 </button>
-                <button className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold ${tema.cardSoft}`}>
-                  <Download size={15} />
-                  Baixar autorização
-                </button>
+                {evento.autorizacao_menor_url && (
+                  <a
+                    href={evento.autorizacao_menor_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold ${tema.cardSoft}`}
+                  >
+                    <Download size={15} />
+                    Baixar autorização
+                  </a>
+                )}
               </div>
             </div>
           </div>
         </section>
 
-        <section aria-labelledby="secao-instagram">
-          <SectionHeader
-            titulo="Festival no Instagram"
-            corPrimaria={corPrimaria}
-            headingClass={tema.heading}
-          />
-          <div className={`rounded-2xl border p-6 ${tema.card}`} style={{ borderColor: `${corPrimaria}22` }}>
-            <div className="mb-5 flex items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Instagram size={16} style={{ color: corPrimaria }} />
-                  <p className={`text-sm font-semibold ${tema.heading}`}>@festival.oficial</p>
-                </div>
-                <p className={`mt-1 text-sm ${tema.softText}`}>
-                  Acompanhe bastidores, agenda, destaques e conteúdos em tempo real.
-                </p>
-              </div>
-              <button className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium ${tema.cardSoft}`}>
-                Ver perfil
-                <ArrowRight size={14} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {[1, 2, 3, 4].map((item) => (
-                <div
-                  key={item}
-                  className={`overflow-hidden rounded-2xl border ${tema.instagramTile}`}
-                  style={{ borderColor: `${corPrimaria}18` }}
-                >
-                  <div
-                    className="aspect-square w-full"
-                    style={{
-                      background: `linear-gradient(135deg, ${corPrimaria}22, ${corSecundaria}18, ${tema.overlayTo})`,
-                    }}
-                  />
-                  <div className="p-3">
-                    <p className={`text-xs font-medium ${tema.heading}`}>Post destaque #{item}</p>
-                    <p className={`mt-1 text-[11px] leading-relaxed ${tema.softText}`}>
-                      Agenda, cobertura, palco, bastidores e novidades da edição atual.
+        {evento.exibir_feed_instagram && (
+          <section aria-labelledby="secao-instagram">
+            <SectionHeader
+              titulo="Festival no Instagram"
+              corPrimaria={corPrimaria}
+              headingClass={tema.heading}
+            />
+            <div className={`rounded-2xl border p-6 ${tema.card}`} style={{ borderColor: `${corPrimaria}22` }}>
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Instagram size={16} style={{ color: corPrimaria }} />
+                    <p className={`text-sm font-semibold ${tema.heading}`}>
+                      @{evento.instagram_handle || "festival"}
                     </p>
                   </div>
+                  <p className={`mt-1 text-sm ${tema.softText}`}>
+                    Acompanhe bastidores, agenda, destaques e conteúdos em tempo real.
+                  </p>
                 </div>
-              ))}
+                <a
+                  href={`https://instagram.com/${evento.instagram_handle || "festival"}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium ${tema.cardSoft}`}
+                >
+                  Ver perfil
+                  <ArrowRight size={14} />
+                </a>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {[1, 2, 3, 4].map((item) => (
+                  <div
+                    key={item}
+                    className={`overflow-hidden rounded-2xl border ${tema.instagramTile}`}
+                    style={{ borderColor: `${corPrimaria}18` }}
+                  >
+                    <div
+                      className="aspect-square w-full"
+                      style={{
+                        background: `linear-gradient(135deg, ${corPrimaria}22, ${corSecundaria}18, ${tema.overlayTo})`,
+                      }}
+                    />
+                    <div className="p-3">
+                      <p className={`text-xs font-medium ${tema.heading}`}>Post destaque #{item}</p>
+                      <p className={`mt-1 text-[11px] leading-relaxed ${tema.softText}`}>
+                        Agenda, cobertura, palco, bastidores e novidades da edição atual.
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {termos.length > 0 && (
           <section aria-labelledby="secao-regulamento">
