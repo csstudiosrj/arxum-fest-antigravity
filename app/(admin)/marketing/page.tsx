@@ -65,6 +65,18 @@ interface EventoMarketing {
   exibir_feed_instagram?: boolean | null;
 }
 
+interface ProdutoReal {
+  id: string;
+  preco_evento: number | null;
+  estoque_evento: number | null;
+  nome: string;
+  preco: number;
+  descricao: string | null;
+  imagem_url: string | null;
+  exibir_imagem: boolean;
+  exibir_loja_publica: boolean;
+}
+
 interface ToastItem {
   id: string;
   tipo: "sucesso" | "erro" | "info";
@@ -152,7 +164,7 @@ function formatarDataCurta(iso: string | null | undefined): string {
   return `${day} de ${mesNome}`;
 }
 
-function formatarPreco(valor: any): string {
+function formatarPreco(valor: number | string | null | undefined): string {
   if (valor == null) return "Preço indisponível";
   const num = typeof valor === "string" ? parseFloat(valor) : valor;
   if (num == null || isNaN(num)) return "Preço indisponível";
@@ -224,6 +236,9 @@ function getPreviewTema(temaEscuro: boolean) {
   };
 }
 
+// ─── Cliente Supabase Global ─────────────────────────────────────────────────
+const supabase = createClient();
+
 function ToastContainer({
   toasts,
   remover,
@@ -291,8 +306,6 @@ function CardStat({
 }
 
 function ModalPost({ open, onClose, onSaved, produtoraId }: ModalPostProps) {
-  const supabase = createClient();
-
   const [legenda, setLegenda] = useState("");
   const [dataHora, setDataHora] = useState("");
   const [imagemUrl, setImagemUrl] = useState<string | null>(null);
@@ -499,13 +512,11 @@ function ModalPost({ open, onClose, onSaved, produtoraId }: ModalPostProps) {
 }
 
 export default function MarketingPage() {
-  const supabase = createClient();
-
   const [posts, setPosts] = useState<Post[]>([]);
   const [eventos, setEventos] = useState<EventoMarketing[]>([]);
   const [eventoSelecionadoId, setEventoSelecionadoId] = useState("");
   const [produtoraId, setProdutoraId] = useState("");
-  const [produtosReais, setProdutosReais] = useState<any[]>([]);
+  const [produtosReais, setProdutosReais] = useState<ProdutoReal[]>([]);
   const [carregandoProdutos, setCarregandoProdutos] = useState(false);
 
   const [identidadeForm, setIdentidadeForm] = useState<IdentidadeEventoForm>({
@@ -604,7 +615,7 @@ export default function MarketingPage() {
     });
 
     setCarregandoEventos(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     void carregarEventos();
@@ -625,7 +636,7 @@ export default function MarketingPage() {
       .order("agendado_para", { ascending: true });
     setPosts(((data ?? []) as Post[]) ?? []);
     setCarregando(false);
-  }, [supabase, produtoraId]);
+  }, [produtoraId]);
 
   useEffect(() => {
     if (produtoraId) {
@@ -633,7 +644,7 @@ export default function MarketingPage() {
     }
   }, [carregarPosts, produtoraId]);
 
-  // Carrega produtos reais com segurança de tenant e filtro defensivo contra nulos
+  // Carrega produtos reais com segurança de tenant e novas colunas (imagem, exibição)
   const carregarProdutos = useCallback(async () => {
     if (!eventoSelecionadoId || !produtoraId) {
       setProdutosReais([]);
@@ -643,7 +654,7 @@ export default function MarketingPage() {
     setCarregandoProdutos(true);
     const { data, error } = await supabase
       .from("evento_produtos")
-      .select("id, preco_evento, estoque_evento, ativo_evento, produtos!inner(id, nome, preco, descricao), eventos!inner(produtora_id)")
+      .select("id, preco_evento, estoque_evento, ativo_evento, produtos!inner(id, nome, preco, descricao, imagem_url, exibir_imagem, exibir_loja_publica), eventos!inner(produtora_id)")
       .eq("evento_id", eventoSelecionadoId)
       .eq("ativo_evento", true)
       .eq("eventos.produtora_id", produtoraId);
@@ -662,15 +673,18 @@ export default function MarketingPage() {
             nome: produtoData.nome,
             preco: produtoData.preco,
             descricao: produtoData.descricao,
+            imagem_url: produtoData.imagem_url,
+            exibir_imagem: produtoData.exibir_imagem ?? false,
+            exibir_loja_publica: produtoData.exibir_loja_publica ?? true,
           };
         })
-        .filter(Boolean) as any[];
+        .filter((p): p is ProdutoReal => p !== null && p.exibir_loja_publica !== false);
       setProdutosReais(produtos);
     } else {
       setProdutosReais([]);
     }
     setCarregandoProdutos(false);
-  }, [eventoSelecionadoId, produtoraId, supabase]);
+  }, [eventoSelecionadoId, produtoraId]);
 
   useEffect(() => {
     void carregarProdutos();
@@ -1661,17 +1675,28 @@ export default function MarketingPage() {
                               </div>
                             ) : (
                               <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
-                                {produtosReais.slice(0, 6).map((produto: any) => {
+                                {produtosReais.slice(0, 6).map((produto) => {
                                   const preco = produto.preco_evento ?? produto.preco;
                                   return (
                                     <div
                                       key={produto.id}
-                                      className={`rounded-xl border p-3 ${previewTema.border} ${previewTema.card}`}
+                                      className={`flex flex-col justify-between rounded-xl border p-3 ${previewTema.border} ${previewTema.card}`}
                                     >
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <ShoppingBag size={14} className="text-axon-gold shrink-0" />
-                                        <p className={`text-xs font-medium ${previewTema.text}`}>{produto.nome}</p>
-                                      </div>
+                                      {produto.exibir_imagem && produto.imagem_url ? (
+                                        <img
+                                          src={produto.imagem_url}
+                                          alt={produto.nome}
+                                          className="w-full h-24 object-cover rounded-lg mb-2"
+                                        />
+                                      ) : (
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <ShoppingBag size={14} className="text-axon-gold shrink-0" />
+                                          <p className={`text-xs font-medium ${previewTema.text}`}>{produto.nome}</p>
+                                        </div>
+                                      )}
+                                      {!produto.exibir_imagem || !produto.imagem_url ? null : (
+                                        <p className={`text-xs font-medium mb-1 ${previewTema.text}`}>{produto.nome}</p>
+                                      )}
                                       {produto.descricao && (
                                         <p className={`text-[11px] leading-relaxed mb-2 ${previewTema.textSoft}`}>
                                           {produto.descricao.length > 60
@@ -1838,14 +1863,25 @@ export default function MarketingPage() {
                                   </div>
                                 ) : (
                                   <div className="grid grid-cols-2 gap-2">
-                                    {produtosReais.slice(0, 4).map((produto: any) => {
+                                    {produtosReais.slice(0, 4).map((produto) => {
                                       const preco = produto.preco_evento ?? produto.preco;
                                       return (
-                                        <div key={produto.id} className={`rounded-lg border p-2 ${previewTema.border} ${previewTema.card}`}>
-                                          <div className="flex items-center gap-1 mb-1">
-                                            <ShoppingBag size={12} className="text-axon-gold shrink-0" />
-                                            <p className={`text-[10px] font-medium ${previewTema.text}`}>{produto.nome}</p>
-                                          </div>
+                                        <div key={produto.id} className={`flex flex-col justify-between rounded-lg border p-2 ${previewTema.border} ${previewTema.card}`}>
+                                          {produto.exibir_imagem && produto.imagem_url ? (
+                                            <img
+                                              src={produto.imagem_url}
+                                              alt={produto.nome}
+                                              className="w-full h-12 object-cover rounded mb-1.5"
+                                            />
+                                          ) : (
+                                            <div className="flex items-center gap-1 mb-1">
+                                              <ShoppingBag size={12} className="text-axon-gold shrink-0" />
+                                              <p className={`text-[10px] font-medium ${previewTema.text}`}>{produto.nome}</p>
+                                            </div>
+                                          )}
+                                          {!produto.exibir_imagem || !produto.imagem_url ? null : (
+                                            <p className={`text-[10px] font-medium mb-1 ${previewTema.text}`}>{produto.nome}</p>
+                                          )}
                                           {produto.descricao && (
                                             <p className={`text-[9px] leading-relaxed mb-1 ${previewTema.textSoft}`}>
                                               {produto.descricao.length > 40
