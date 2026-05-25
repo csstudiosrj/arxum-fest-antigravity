@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     const { email, role, action, password, userId, grupo_id, nome } = body;
 
     // ── Autenticação do solicitante (Zero Trust) ──
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
     const { data: { user: caller }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !caller) {
