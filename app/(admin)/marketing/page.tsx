@@ -30,6 +30,8 @@ import {
   Moon,
   ShoppingCart,
   Instagram,
+  ExternalLink,
+  ShoppingBag,
 } from "lucide-react";
 
 type PostStatus = "agendado" | "publicado" | "erro";
@@ -64,7 +66,7 @@ interface EventoMarketing {
 }
 
 interface ToastItem {
-  id: number;
+  id: string;
   tipo: "sucesso" | "erro" | "info";
   mensagem: string;
 }
@@ -102,37 +104,68 @@ const PALETA_PRESETS: Array<{ nome: string; prim: string; sec: string }> = [
   { nome: "Bordô Luxo", prim: "#9f1239", sec: "#f59e0b" },
 ];
 
-let toastCounter = 0;
+// Gerador de IDs únicos para evitar colisões de chave no React
+function gerarIdUnico(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+// Parsing manual de datas para evitar problemas de fuso horário
+function parseDataSegura(iso: string | null | undefined): { year: number; month: number; day: number; hour: number; minute: number } | null {
+  if (!iso) return null;
+  const [datePart, timePartRaw] = iso.split("T");
+  if (!datePart) return null;
+  const parts = datePart.split("-");
+  if (parts.length !== 3) return null;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+
+  let hour = 0, minute = 0;
+  if (timePartRaw) {
+    const timeClean = timePartRaw.split(".")[0].split("Z")[0];
+    const timeParts = timeClean.split(":");
+    if (timeParts.length >= 2) {
+      hour = parseInt(timeParts[0], 10);
+      minute = parseInt(timeParts[1], 10);
+      if (isNaN(hour)) hour = 0;
+      if (isNaN(minute)) minute = 0;
+    }
+  }
+  return { year, month, day, hour, minute };
+}
+
+const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 function formatarData(iso: string | null | undefined): string {
-  try {
-    if (!iso) return "Data não informada";
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return "Data não informada";
-    return date.toLocaleString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return "Data não informada";
-  }
+  const data = parseDataSegura(iso);
+  if (!data) return "Data não informada";
+  const { day, month, year, hour, minute } = data;
+  return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year} às ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 function formatarDataCurta(iso: string | null | undefined): string {
-  try {
-    if (!iso) return "Data não informada";
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return "Data não informada";
-    return date.toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "short",
-    });
-  } catch {
-    return "Data não informada";
-  }
+  const data = parseDataSegura(iso);
+  if (!data) return "Data não informada";
+  const { day, month } = data;
+  const mesNome = MESES_ABREV[month - 1] ?? "?";
+  return `${day} de ${mesNome}`;
+}
+
+function formatarPreco(valor: any): string {
+  if (valor == null) return "Preço indisponível";
+  const num = typeof valor === "string" ? parseFloat(valor) : valor;
+  if (num == null || isNaN(num)) return "Preço indisponível";
+  return `R$ ${num.toFixed(2).replace(".", ",")}`;
+}
+
+function extrairHandleInstagram(input: string): string {
+  let clean = input.trim();
+  // Remove @ do início
+  if (clean.startsWith("@")) clean = clean.substring(1);
+  // Se for URL completa, extrai o trecho após instagram.com/
+  const urlMatch = clean.match(/(?:instagram\.com\/)?([a-zA-Z0-9_.]+)/);
+  return urlMatch ? urlMatch[1] : clean;
 }
 
 function slugifyEvento(value: string) {
@@ -196,7 +229,7 @@ function ToastContainer({
   remover,
 }: {
   toasts: ToastItem[];
-  remover: (id: number) => void;
+  remover: (id: string) => void;
 }) {
   const estilos: Record<ToastItem["tipo"], string> = {
     sucesso: "border-emerald-500/25 text-emerald-300",
@@ -364,11 +397,13 @@ function ModalPost({ open, onClose, onSaved, produtoraId }: ModalPostProps) {
 
           <div className="space-y-2">
             <label className="block text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">Data e hora *</label>
+            {/* Acessibilidade: colorScheme definido via style nativo para evitar bugs visuais */}
             <input
               type="datetime-local"
               value={dataHora}
               onChange={(e) => setDataHora(e.target.value)}
-              className="w-full rounded-xl border border-axon-border bg-axon-bg px-4 py-3 text-sm text-white focus:border-axon-gold focus:outline-none [color-scheme:dark]"
+              style={{ colorScheme: "dark" }}
+              className="w-full rounded-xl border border-axon-border bg-axon-bg px-4 py-3 text-sm text-white focus:border-axon-gold focus:outline-none"
             />
           </div>
 
@@ -470,6 +505,9 @@ export default function MarketingPage() {
   const [eventos, setEventos] = useState<EventoMarketing[]>([]);
   const [eventoSelecionadoId, setEventoSelecionadoId] = useState("");
   const [produtoraId, setProdutoraId] = useState("");
+  const [produtosReais, setProdutosReais] = useState<any[]>([]);
+  const [carregandoProdutos, setCarregandoProdutos] = useState(false);
+
   const [identidadeForm, setIdentidadeForm] = useState<IdentidadeEventoForm>({
     slug: "",
     cor_primaria: "#d4af37",
@@ -496,33 +534,20 @@ export default function MarketingPage() {
   const [uploadBannerLoading, setUploadBannerLoading] = useState(false);
 
   const addToast = useCallback((tipo: ToastItem["tipo"], mensagem: string) => {
-    const id = ++toastCounter;
+    const id = gerarIdUnico();
     setToasts((prev) => [...prev, { id, tipo, mensagem }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
   }, []);
 
-  const removerToast = useCallback((id: number) => {
+  const removerToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const carregarPosts = useCallback(async () => {
-    setCarregando(true);
-    if (!produtoraId) {
-      setPosts([]);
-      setCarregando(false);
-      return;
-    }
-    const { data } = await supabase
-      .from("posts_marketing")
-      .select("*")
-      .eq("produtora_id", produtoraId)
-      .order("agendado_para", { ascending: true });
-    setPosts(((data ?? []) as Post[]) ?? []);
-    setCarregando(false);
-  }, [supabase, produtoraId]);
+  // ---- EFEITOS SEPARADOS (evita loops de carregamento) ----
 
+  // Carrega eventos apenas na montagem
   const carregarEventos = useCallback(async () => {
     setCarregandoEventos(true);
 
@@ -582,9 +607,74 @@ export default function MarketingPage() {
   }, [supabase]);
 
   useEffect(() => {
-    void carregarPosts();
     void carregarEventos();
-  }, [carregarPosts, carregarEventos]);
+  }, [carregarEventos]);
+
+  // Carrega posts somente quando produtoraId estiver definida
+  const carregarPosts = useCallback(async () => {
+    setCarregando(true);
+    if (!produtoraId) {
+      setPosts([]);
+      setCarregando(false);
+      return;
+    }
+    const { data } = await supabase
+      .from("posts_marketing")
+      .select("*")
+      .eq("produtora_id", produtoraId)
+      .order("agendado_para", { ascending: true });
+    setPosts(((data ?? []) as Post[]) ?? []);
+    setCarregando(false);
+  }, [supabase, produtoraId]);
+
+  useEffect(() => {
+    if (produtoraId) {
+      void carregarPosts();
+    }
+  }, [carregarPosts, produtoraId]);
+
+  // Carrega produtos reais com segurança de tenant e filtro defensivo contra nulos
+  const carregarProdutos = useCallback(async () => {
+    if (!eventoSelecionadoId || !produtoraId) {
+      setProdutosReais([]);
+      setCarregandoProdutos(false);
+      return;
+    }
+    setCarregandoProdutos(true);
+    const { data, error } = await supabase
+      .from("evento_produtos")
+      .select("id, preco_evento, estoque_evento, ativo_evento, pdv_produtos!inner(id, nome, preco, descricao), eventos!inner(produtora_id)")
+      .eq("evento_id", eventoSelecionadoId)
+      .eq("ativo_evento", true)
+      .eq("eventos.produtora_id", produtoraId);
+
+    if (!error && data) {
+      const produtos = (data as any[])
+        .map((item) => {
+          const produtoData = Array.isArray(item.pdv_produtos)
+            ? item.pdv_produtos[0]
+            : item.pdv_produtos;
+          if (!produtoData) return null;
+          return {
+            id: item.id,
+            preco_evento: item.preco_evento,
+            estoque_evento: item.estoque_evento,
+            nome: produtoData.nome,
+            preco: produtoData.preco,
+            descricao: produtoData.descricao,
+          };
+        })
+        .filter(Boolean) as any[];
+      setProdutosReais(produtos);
+    } else {
+      setProdutosReais([]);
+    }
+    setCarregandoProdutos(false);
+  }, [eventoSelecionadoId, produtoraId, supabase]);
+
+  useEffect(() => {
+    void carregarProdutos();
+  }, [carregarProdutos]);
 
   const eventoSelecionado = useMemo(
     () => eventos.find((evento) => evento.id === eventoSelecionadoId) ?? null,
@@ -622,17 +712,28 @@ export default function MarketingPage() {
     });
   }, [eventoSelecionado]);
 
+  // ---- OPERAÇÕES COM SEGURANÇA MULTI-TENANT ----
+
   async function excluir(id: string) {
     if (!window.confirm("Excluir este post agendado?")) return;
-    await supabase.from("posts_marketing").delete().eq("id", id).eq("produtora_id", produtoraId);
-    setPosts((prev) => prev.filter((x) => x.id !== id));
-    addToast("sucesso", "Post excluído.");
+    const { error } = await supabase
+      .from("posts_marketing")
+      .delete()
+      .eq("id", id)
+      .eq("produtora_id", produtoraId);
+
+    if (!error) {
+      setPosts((prev) => prev.filter((x) => x.id !== id));
+      addToast("sucesso", "Post excluído.");
+    } else {
+      addToast("erro", "Erro ao excluir o post.");
+    }
   }
 
   async function marcarPublicado(id: string) {
     const publicadoEm = new Date().toISOString();
 
-    await supabase
+    const { error } = await supabase
       .from("posts_marketing")
       .update({
         status: "publicado",
@@ -641,15 +742,24 @@ export default function MarketingPage() {
       .eq("id", id)
       .eq("produtora_id", produtoraId);
 
-    setPosts((prev) =>
-      prev.map((x) => (x.id === id ? { ...x, status: "publicado", publicado_em: publicadoEm } : x))
-    );
-
-    addToast("sucesso", "Post marcado como publicado.");
+    if (!error) {
+      setPosts((prev) =>
+        prev.map((x) => (x.id === id ? { ...x, status: "publicado", publicado_em: publicadoEm } : x))
+      );
+      addToast("sucesso", "Post marcado como publicado.");
+    } else {
+      addToast("erro", "Erro ao atualizar o post.");
+    }
   }
 
   async function salvarIdentidadeVisual() {
-    if (!eventoSelecionadoId) return;
+    if (!eventoSelecionadoId || !produtoraId) return;
+
+    // Bloqueia salvamento enquanto uploads estão ativos
+    if (uploadLogoLoading || uploadBannerLoading) {
+      addToast("erro", "Aguarde o envio das mídias antes de salvar a identidade visual.");
+      return;
+    }
 
     setSalvandoIdentidade(true);
 
@@ -662,11 +772,15 @@ export default function MarketingPage() {
       banner_url: identidadeForm.banner_url,
       tema_escuro: identidadeForm.tema_escuro,
       exibir_loja_publica: identidadeForm.exibir_loja_publica,
-      instagram_handle: identidadeForm.instagram_handle,
+      instagram_handle: extrairHandleInstagram(identidadeForm.instagram_handle),
       exibir_feed_instagram: identidadeForm.exibir_feed_instagram,
     };
 
-    const { error } = await supabase.from("eventos").update(payload).eq("id", eventoSelecionadoId);
+    const { error } = await supabase
+      .from("eventos")
+      .update(payload)
+      .eq("id", eventoSelecionadoId)
+      .eq("produtora_id", produtoraId);
 
     if (error) {
       addToast("erro", `Erro ao salvar identidade visual: ${error.message}`);
@@ -683,31 +797,24 @@ export default function MarketingPage() {
   }
 
   async function alternarTemaEscuro() {
-    if (!eventoSelecionadoId || salvandoTema) return;
+    if (!eventoSelecionadoId || salvandoTema || !produtoraId) return;
 
     const proximoValor = !identidadeForm.tema_escuro;
-
     setSalvandoTema(true);
-    setIdentidadeForm((prev) => ({
-      ...prev,
-      tema_escuro: proximoValor,
-    }));
 
     const { error } = await supabase
       .from("eventos")
       .update({ tema_escuro: proximoValor })
-      .eq("id", eventoSelecionadoId);
+      .eq("id", eventoSelecionadoId)
+      .eq("produtora_id", produtoraId);
 
     if (error) {
-      setIdentidadeForm((prev) => ({
-        ...prev,
-        tema_escuro: !proximoValor,
-      }));
-      setSalvandoTema(false);
       addToast("erro", `Erro ao atualizar tema: ${error.message}`);
+      setSalvandoTema(false);
       return;
     }
 
+    setIdentidadeForm((prev) => ({ ...prev, tema_escuro: proximoValor }));
     setEventos((prev) =>
       prev.map((evento) =>
         evento.id === eventoSelecionadoId ? { ...evento, tema_escuro: proximoValor } : evento
@@ -761,6 +868,8 @@ export default function MarketingPage() {
     return "Agendado";
   }
 
+  // ---- RENDER ----
+
   return (
     <>
       <ToastContainer toasts={toasts} remover={removerToast} />
@@ -773,6 +882,7 @@ export default function MarketingPage() {
       />
 
       <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+        {/* Cabeçalho e seletor de abas */}
         <div className="overflow-hidden rounded-3xl border border-axon-border bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
           <div className="flex flex-col gap-6 p-6 md:p-8">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
@@ -858,6 +968,7 @@ export default function MarketingPage() {
           </div>
         </div>
 
+        {/* Aba Posts */}
         {abaAtiva === "posts" && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1006,6 +1117,7 @@ export default function MarketingPage() {
           </div>
         )}
 
+        {/* Aba Identidade */}
         {abaAtiva === "identidade" && (
           <>
             {!eventoSelecionadoId ? (
@@ -1020,6 +1132,7 @@ export default function MarketingPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+                {/* Editor */}
                 <div className="rounded-3xl border border-axon-border bg-axon-panel p-5 shadow-[0_15px_40px_rgba(0,0,0,0.25)] md:p-6">
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold text-white">Editor da identidade visual</h2>
@@ -1349,7 +1462,7 @@ export default function MarketingPage() {
                       </div>
                     </div>
 
-                    {/* Nova seção: Ativação de Loja */}
+                    {/* Ativação da Loja */}
                     <div className="flex items-center justify-between gap-4 rounded-2xl border border-axon-border bg-axon-bg/60 px-4 py-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -1383,7 +1496,7 @@ export default function MarketingPage() {
                       </button>
                     </div>
 
-                    {/* Nova seção: Integração Instagram */}
+                    {/* Integração Instagram */}
                     <div className="space-y-3 rounded-2xl border border-axon-border bg-axon-bg/60 p-4">
                       <div className="flex items-center gap-2">
                         <Instagram size={15} className="text-axon-gold" />
@@ -1397,7 +1510,16 @@ export default function MarketingPage() {
                           type="text"
                           value={identidadeForm.instagram_handle}
                           onChange={(e) =>
-                            setIdentidadeForm((prev) => ({ ...prev, instagram_handle: e.target.value }))
+                            setIdentidadeForm((prev) => ({
+                              ...prev,
+                              instagram_handle: e.target.value,
+                            }))
+                          }
+                          onBlur={(e) =>
+                            setIdentidadeForm((prev) => ({
+                              ...prev,
+                              instagram_handle: extrairHandleInstagram(e.target.value),
+                            }))
                           }
                           placeholder="meufestival"
                           className="w-full mt-1 rounded-xl border border-axon-border bg-axon-bg px-4 py-3 text-sm text-white placeholder:text-neutral-600 focus:border-axon-gold focus:outline-none"
@@ -1427,10 +1549,11 @@ export default function MarketingPage() {
                       </div>
                     </div>
 
+                    {/* Botão de salvar (desabilitado se uploads ativos) */}
                     <div className="pt-2">
                       <button
                         onClick={() => void salvarIdentidadeVisual()}
-                        disabled={salvandoIdentidade}
+                        disabled={salvandoIdentidade || uploadLogoLoading || uploadBannerLoading}
                         className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-axon-gold px-5 py-3 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
                       >
                         {salvandoIdentidade && <Loader2 size={16} className="animate-spin" />}
@@ -1440,6 +1563,7 @@ export default function MarketingPage() {
                   </div>
                 </div>
 
+                {/* Live Preview */}
                 <div className="rounded-3xl border border-axon-border bg-axon-panel p-5 shadow-[0_15px_40px_rgba(0,0,0,0.25)] md:p-6">
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold text-white">Live Preview Interativo</h2>
@@ -1517,42 +1641,79 @@ export default function MarketingPage() {
                           </div>
                         </div>
 
-                        {/* Seção de Loja no Desktop Preview */}
+                        {/* Loja real no desktop preview */}
                         {identidadeForm.exibir_loja_publica && (
                           <div className={`p-5 ${previewTema.text}`}>
                             <div className="mb-3 flex items-center gap-2">
-                              <ShoppingCart size={16} className="text-axon-gold" />
+                              <ShoppingBag size={16} className="text-axon-gold" />
                               <h4 className="text-sm font-semibold">Produtos e Ingressos</h4>
                             </div>
-                            <div className="grid grid-cols-3 gap-3">
-                              {[
-                                { nome: "Copo Térmico do Festival", preco: "R$ 49,90" },
-                                { nome: "Camiseta Oficial", preco: "R$ 79,90" },
-                                { nome: "Ingresso VIP", preco: "R$ 199,90" },
-                              ].map((produto) => (
-                                <div
-                                  key={produto.nome}
-                                  className={`rounded-xl border p-3 ${previewTema.border} ${previewTema.card}`}
-                                >
-                                  <div className={`h-20 rounded-lg mb-2 flex items-center justify-center ${previewTema.skeletonSoft}`}>
-                                    <ShoppingCart size={20} className={previewTema.muted} />
-                                  </div>
-                                  <p className={`text-xs font-medium ${previewTema.text}`}>{produto.nome}</p>
-                                  <p className={`text-xs font-semibold mt-1 ${previewTema.textSoft}`}>{produto.preco}</p>
-                                </div>
-                              ))}
-                            </div>
+                            {carregandoProdutos ? (
+                              <div className="flex justify-center py-4">
+                                <Loader2 size={20} className="animate-spin text-neutral-400" />
+                              </div>
+                            ) : produtosReais.length === 0 ? (
+                              <div className="flex flex-col items-center py-6 text-center">
+                                <ShoppingBag size={24} className="mb-2 text-neutral-500" />
+                                <p className="text-xs text-neutral-400">
+                                  Nenhum produto disponível na loja pública.
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
+                                {produtosReais.slice(0, 6).map((produto: any) => {
+                                  const preco = produto.preco_evento ?? produto.preco;
+                                  return (
+                                    <div
+                                      key={produto.id}
+                                      className={`rounded-xl border p-3 ${previewTema.border} ${previewTema.card}`}
+                                    >
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <ShoppingBag size={14} className="text-axon-gold shrink-0" />
+                                        <p className={`text-xs font-medium ${previewTema.text}`}>{produto.nome}</p>
+                                      </div>
+                                      {produto.descricao && (
+                                        <p className={`text-[11px] leading-relaxed mb-2 ${previewTema.textSoft}`}>
+                                          {produto.descricao.length > 60
+                                            ? `${produto.descricao.slice(0, 60)}...`
+                                            : produto.descricao}
+                                        </p>
+                                      )}
+                                      <p className={`text-xs font-semibold ${previewTema.textSoft}`}>
+                                        {formatarPreco(preco)}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         )}
 
-                        {/* Seção de Instagram Feed no Desktop Preview */}
+                        {/* Feed do Instagram */}
                         {identidadeForm.exibir_feed_instagram && (
                           <div className={`p-5 border-t ${previewTema.border} ${previewTema.text}`}>
                             <div className="mb-3 flex items-center gap-2">
-                              <Instagram size={16} className="text-axon-gold" />
-                              <h4 className="text-sm font-semibold">
-                                @{identidadeForm.instagram_handle || "seufestival"}
-                              </h4>
+                              {(() => {
+                                const handleLimpo = extrairHandleInstagram(identidadeForm.instagram_handle);
+                                return handleLimpo ? (
+                                  <a
+                                    href={`https://instagram.com/${handleLimpo}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-sm font-semibold text-axon-gold hover:underline"
+                                  >
+                                    <Instagram size={16} />
+                                    @{handleLimpo}
+                                    <ExternalLink size={12} />
+                                  </a>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-neutral-500">
+                                    <Instagram size={16} />
+                                    @seufestival
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <div className="grid grid-cols-3 gap-2">
                               {Array.from({ length: 6 }).map((_, i) => (
@@ -1569,6 +1730,7 @@ export default function MarketingPage() {
                       </div>
                     </div>
 
+                    {/* Mockup Mobile */}
                     <div className="rounded-2xl border border-axon-border bg-axon-bg/60 p-4">
                       <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">
                         <Smartphone size={14} className="text-axon-gold" />
@@ -1658,36 +1820,74 @@ export default function MarketingPage() {
                               </div>
                             </div>
 
-                            {/* Seção de Loja no Mobile Preview */}
+                            {/* Loja real no mobile */}
                             {identidadeForm.exibir_loja_publica && (
                               <div className="pt-2">
                                 <div className="mb-2 flex items-center gap-2">
-                                  <ShoppingCart size={14} className="text-axon-gold" />
+                                  <ShoppingBag size={14} className="text-axon-gold" />
                                   <p className="text-xs font-semibold">Produtos e Ingressos</p>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                  {[
-                                    { nome: "Copo Térmico", preco: "R$49,90" },
-                                    { nome: "Camiseta", preco: "R$79,90" },
-                                  ].map((produto) => (
-                                    <div key={produto.nome} className={`rounded-lg border p-2 ${previewTema.border} ${previewTema.card}`}>
-                                      <div className={`h-12 rounded mb-1 flex items-center justify-center ${previewTema.skeletonSoft}`}>
-                                        <ShoppingCart size={12} className={previewTema.muted} />
-                                      </div>
-                                      <p className={`text-[10px] font-medium ${previewTema.text}`}>{produto.nome}</p>
-                                      <p className={`text-[10px] font-semibold ${previewTema.textSoft}`}>{produto.preco}</p>
-                                    </div>
-                                  ))}
-                                </div>
+                                {carregandoProdutos ? (
+                                  <div className="flex justify-center py-2">
+                                    <Loader2 size={16} className="animate-spin text-neutral-400" />
+                                  </div>
+                                ) : produtosReais.length === 0 ? (
+                                  <div className="flex flex-col items-center py-3 text-center">
+                                    <ShoppingBag size={18} className="mb-1 text-neutral-500" />
+                                    <p className="text-[10px] text-neutral-400">Nenhum produto disponível</p>
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {produtosReais.slice(0, 4).map((produto: any) => {
+                                      const preco = produto.preco_evento ?? produto.preco;
+                                      return (
+                                        <div key={produto.id} className={`rounded-lg border p-2 ${previewTema.border} ${previewTema.card}`}>
+                                          <div className="flex items-center gap-1 mb-1">
+                                            <ShoppingBag size={12} className="text-axon-gold shrink-0" />
+                                            <p className={`text-[10px] font-medium ${previewTema.text}`}>{produto.nome}</p>
+                                          </div>
+                                          {produto.descricao && (
+                                            <p className={`text-[9px] leading-relaxed mb-1 ${previewTema.textSoft}`}>
+                                              {produto.descricao.length > 40
+                                                ? `${produto.descricao.slice(0, 40)}...`
+                                                : produto.descricao}
+                                            </p>
+                                          )}
+                                          <p className={`text-[10px] font-semibold ${previewTema.textSoft}`}>
+                                            {formatarPreco(preco)}
+                                          </p>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             )}
 
-                            {/* Seção de Instagram no Mobile Preview */}
+                            {/* Instagram mobile */}
                             {identidadeForm.exibir_feed_instagram && (
                               <div className="pt-2">
-                                <div className="mb-2 flex items-center gap-2">
-                                  <Instagram size={14} className="text-axon-gold" />
-                                  <p className="text-xs font-semibold">@{identidadeForm.instagram_handle || "seufestival"}</p>
+                                <div className="mb-2">
+                                  {(() => {
+                                    const handleLimpo = extrairHandleInstagram(identidadeForm.instagram_handle);
+                                    return handleLimpo ? (
+                                      <a
+                                        href={`https://instagram.com/${handleLimpo}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-xs font-semibold text-axon-gold hover:underline"
+                                      >
+                                        <Instagram size={12} />
+                                        @{handleLimpo}
+                                        <ExternalLink size={10} />
+                                      </a>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-neutral-500">
+                                        <Instagram size={12} />
+                                        @seufestival
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                                 <div className="grid grid-cols-3 gap-1.5">
                                   {Array.from({ length: 6 }).map((_, i) => (
