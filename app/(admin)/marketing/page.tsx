@@ -28,6 +28,8 @@ import {
   FolderOpen,
   Sun,
   Moon,
+  ShoppingCart,
+  Instagram,
 } from "lucide-react";
 
 type PostStatus = "agendado" | "publicado" | "erro";
@@ -56,6 +58,9 @@ interface EventoMarketing {
   logo_url: string | null;
   banner_url: string | null;
   tema_escuro: boolean | null;
+  exibir_loja_publica?: boolean | null;
+  instagram_handle?: string | null;
+  exibir_feed_instagram?: boolean | null;
 }
 
 interface ToastItem {
@@ -68,6 +73,7 @@ interface ModalPostProps {
   open: boolean;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
+  produtoraId: string;
 }
 
 interface IdentidadeEventoForm {
@@ -78,6 +84,9 @@ interface IdentidadeEventoForm {
   logo_url: string | null;
   banner_url: string | null;
   tema_escuro: boolean;
+  exibir_loja_publica: boolean;
+  instagram_handle: string;
+  exibir_feed_instagram: boolean;
 }
 
 const FONT_OPTIONS: Array<{ value: FonteFamilia; label: string; helper: string; className: string }> = [
@@ -95,21 +104,35 @@ const PALETA_PRESETS: Array<{ nome: string; prim: string; sec: string }> = [
 
 let toastCounter = 0;
 
-function formatarData(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function formatarData(iso: string | null | undefined): string {
+  try {
+    if (!iso) return "Data não informada";
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "Data não informada";
+    return date.toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "Data não informada";
+  }
 }
 
-function formatarDataCurta(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "short",
-  });
+function formatarDataCurta(iso: string | null | undefined): string {
+  try {
+    if (!iso) return "Data não informada";
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "Data não informada";
+    return date.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "short",
+    });
+  } catch {
+    return "Data não informada";
+  }
 }
 
 function slugifyEvento(value: string) {
@@ -234,7 +257,7 @@ function CardStat({
   );
 }
 
-function ModalPost({ open, onClose, onSaved }: ModalPostProps) {
+function ModalPost({ open, onClose, onSaved, produtoraId }: ModalPostProps) {
   const supabase = createClient();
 
   const [legenda, setLegenda] = useState("");
@@ -288,6 +311,7 @@ function ModalPost({ open, onClose, onSaved }: ModalPostProps) {
       agendado_para: agendadoPara.toISOString(),
       status: "agendado",
       plataforma: "Instagram",
+      produtora_id: produtoraId,
     });
 
     if (error) {
@@ -381,7 +405,7 @@ function ModalPost({ open, onClose, onSaved }: ModalPostProps) {
                       endpoint="imageUploader"
                       appearance={{
                         button:
-                          "ut-ready:bg-[#d4af37] ut-ready:text-black ut-ready:hover:bg-[#caa22f] ut-uploading:bg-[#d4af37]/80 ut-uploading:text-black rounded-xl border-0 px-4 py-2 text-sm font-semibold",
+                          "ut-ready:bg-[#d4af37] ut-ready:text-black ut-ready:hover:bg-[#caa22f] ut-uploading:bg-[#d4af37]/80 ut-uploading:text-black w-full overflow-hidden truncate px-4 py-2.5 rounded-xl border-0 text-sm font-semibold",
                         allowedContent: "hidden",
                       }}
                       content={{
@@ -445,6 +469,7 @@ export default function MarketingPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [eventos, setEventos] = useState<EventoMarketing[]>([]);
   const [eventoSelecionadoId, setEventoSelecionadoId] = useState("");
+  const [produtoraId, setProdutoraId] = useState("");
   const [identidadeForm, setIdentidadeForm] = useState<IdentidadeEventoForm>({
     slug: "",
     cor_primaria: "#d4af37",
@@ -453,6 +478,9 @@ export default function MarketingPage() {
     logo_url: null,
     banner_url: null,
     tema_escuro: true,
+    exibir_loja_publica: false,
+    instagram_handle: "",
+    exibir_feed_instagram: false,
   });
 
   const [carregando, setCarregando] = useState(true);
@@ -481,10 +509,19 @@ export default function MarketingPage() {
 
   const carregarPosts = useCallback(async () => {
     setCarregando(true);
-    const { data } = await supabase.from("posts_marketing").select("*").order("agendado_para", { ascending: true });
+    if (!produtoraId) {
+      setPosts([]);
+      setCarregando(false);
+      return;
+    }
+    const { data } = await supabase
+      .from("posts_marketing")
+      .select("*")
+      .eq("produtora_id", produtoraId)
+      .order("agendado_para", { ascending: true });
     setPosts(((data ?? []) as Post[]) ?? []);
     setCarregando(false);
-  }, [supabase]);
+  }, [supabase, produtoraId]);
 
   const carregarEventos = useCallback(async () => {
     setCarregandoEventos(true);
@@ -498,6 +535,7 @@ export default function MarketingPage() {
     if (!userId) {
       setEventos([]);
       setEventoSelecionadoId("");
+      setProdutoraId("");
       setCarregandoEventos(false);
       return;
     }
@@ -511,13 +549,15 @@ export default function MarketingPage() {
     if (usuarioError) {
       setEventos([]);
       setEventoSelecionadoId("");
+      setProdutoraId("");
       setCarregandoEventos(false);
       return;
     }
 
-    const produtoraId = (usuarioData as { produtora_id: string | null } | null)?.produtora_id;
+    const produtoraIdValor = (usuarioData as { produtora_id: string | null } | null)?.produtora_id ?? "";
+    setProdutoraId(produtoraIdValor);
 
-    if (!produtoraId) {
+    if (!produtoraIdValor) {
       setEventos([]);
       setEventoSelecionadoId("");
       setCarregandoEventos(false);
@@ -526,8 +566,8 @@ export default function MarketingPage() {
 
     const { data: eventosData } = await supabase
       .from("eventos")
-      .select("id, nome, slug, cor_primaria, cor_secundaria, fonte_familia, logo_url, banner_url, tema_escuro")
-      .eq("produtora_id", produtoraId)
+      .select("id, nome, slug, cor_primaria, cor_secundaria, fonte_familia, logo_url, banner_url, tema_escuro, exibir_loja_publica, instagram_handle, exibir_feed_instagram")
+      .eq("produtora_id", produtoraIdValor)
       .order("nome", { ascending: true });
 
     const lista = ((eventosData ?? []) as EventoMarketing[]) ?? [];
@@ -561,6 +601,9 @@ export default function MarketingPage() {
         logo_url: null,
         banner_url: null,
         tema_escuro: true,
+        exibir_loja_publica: false,
+        instagram_handle: "",
+        exibir_feed_instagram: false,
       });
       return;
     }
@@ -573,12 +616,15 @@ export default function MarketingPage() {
       logo_url: eventoSelecionado.logo_url ?? null,
       banner_url: eventoSelecionado.banner_url ?? null,
       tema_escuro: Boolean(eventoSelecionado.tema_escuro),
+      exibir_loja_publica: Boolean(eventoSelecionado.exibir_loja_publica),
+      instagram_handle: eventoSelecionado.instagram_handle ?? "",
+      exibir_feed_instagram: Boolean(eventoSelecionado.exibir_feed_instagram),
     });
   }, [eventoSelecionado]);
 
   async function excluir(id: string) {
     if (!window.confirm("Excluir este post agendado?")) return;
-    await supabase.from("posts_marketing").delete().eq("id", id);
+    await supabase.from("posts_marketing").delete().eq("id", id).eq("produtora_id", produtoraId);
     setPosts((prev) => prev.filter((x) => x.id !== id));
     addToast("sucesso", "Post excluído.");
   }
@@ -592,7 +638,8 @@ export default function MarketingPage() {
         status: "publicado",
         publicado_em: publicadoEm,
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("produtora_id", produtoraId);
 
     setPosts((prev) =>
       prev.map((x) => (x.id === id ? { ...x, status: "publicado", publicado_em: publicadoEm } : x))
@@ -614,6 +661,9 @@ export default function MarketingPage() {
       logo_url: identidadeForm.logo_url,
       banner_url: identidadeForm.banner_url,
       tema_escuro: identidadeForm.tema_escuro,
+      exibir_loja_publica: identidadeForm.exibir_loja_publica,
+      instagram_handle: identidadeForm.instagram_handle,
+      exibir_feed_instagram: identidadeForm.exibir_feed_instagram,
     };
 
     const { error } = await supabase.from("eventos").update(payload).eq("id", eventoSelecionadoId);
@@ -715,7 +765,12 @@ export default function MarketingPage() {
     <>
       <ToastContainer toasts={toasts} remover={removerToast} />
 
-      <ModalPost open={modalAberto} onClose={() => setModalAberto(false)} onSaved={carregarPosts} />
+      <ModalPost
+        open={modalAberto}
+        onClose={() => setModalAberto(false)}
+        onSaved={carregarPosts}
+        produtoraId={produtoraId}
+      />
 
       <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
         <div className="overflow-hidden rounded-3xl border border-axon-border bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
@@ -964,12 +1019,12 @@ export default function MarketingPage() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
                 <div className="rounded-3xl border border-axon-border bg-axon-panel p-5 shadow-[0_15px_40px_rgba(0,0,0,0.25)] md:p-6">
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold text-white">Editor da identidade visual</h2>
                     <p className="mt-1 text-sm text-neutral-500">
-                      Ajuste URL pública, tipografia, paleta, tema e mídias do evento selecionado.
+                      Ajuste URL pública, tipografia, paleta, tema, mídias, loja e integrações.
                     </p>
                   </div>
 
@@ -1165,7 +1220,7 @@ export default function MarketingPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-5">
                       <div className="space-y-3 rounded-2xl border border-axon-border bg-axon-bg/60 p-4">
                         <div>
                           <p className="text-sm font-medium text-white">Logo do festival</p>
@@ -1189,7 +1244,7 @@ export default function MarketingPage() {
                             endpoint="imageUploader"
                             appearance={{
                               button:
-                                "ut-ready:bg-[#d4af37] ut-ready:text-black ut-ready:hover:bg-[#caa22f] ut-uploading:bg-[#d4af37]/80 ut-uploading:text-black rounded-xl border-0 px-4 py-2 text-sm font-semibold",
+                                "ut-ready:bg-[#d4af37] ut-ready:text-black ut-ready:hover:bg-[#caa22f] ut-uploading:bg-[#d4af37]/80 ut-uploading:text-black w-full overflow-hidden truncate px-4 py-2.5 rounded-xl border-0 text-sm font-semibold",
                               allowedContent: "hidden",
                             }}
                             content={{
@@ -1253,7 +1308,7 @@ export default function MarketingPage() {
                             endpoint="imageUploader"
                             appearance={{
                               button:
-                                "ut-ready:bg-[#d4af37] ut-ready:text-black ut-ready:hover:bg-[#caa22f] ut-uploading:bg-[#d4af37]/80 ut-uploading:text-black rounded-xl border-0 px-4 py-2 text-sm font-semibold",
+                                "ut-ready:bg-[#d4af37] ut-ready:text-black ut-ready:hover:bg-[#caa22f] ut-uploading:bg-[#d4af37]/80 ut-uploading:text-black w-full overflow-hidden truncate px-4 py-2.5 rounded-xl border-0 text-sm font-semibold",
                               allowedContent: "hidden",
                             }}
                             content={{
@@ -1291,6 +1346,84 @@ export default function MarketingPage() {
                         <p className="text-xs leading-relaxed text-neutral-500">
                           Dimensão Recomendada: Mínimo de 1920x480px (Proporção panorâmica de alta resolução para evitar distorções).
                         </p>
+                      </div>
+                    </div>
+
+                    {/* Nova seção: Ativação de Loja */}
+                    <div className="flex items-center justify-between gap-4 rounded-2xl border border-axon-border bg-axon-bg/60 px-4 py-4">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <ShoppingCart size={15} className="text-axon-gold" />
+                          <label className="block text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">
+                            Exibir Loja e Upsell na Página Pública
+                          </label>
+                        </div>
+                        <p className="mt-1 text-sm text-neutral-400">
+                          Ative a seção de produtos e ingressos com venda direta.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setIdentidadeForm((prev) => ({
+                            ...prev,
+                            exibir_loja_publica: !prev.exibir_loja_publica,
+                          }))
+                        }
+                        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                          identidadeForm.exibir_loja_publica ? "bg-axon-gold" : "bg-neutral-700"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${
+                            identidadeForm.exibir_loja_publica ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Nova seção: Integração Instagram */}
+                    <div className="space-y-3 rounded-2xl border border-axon-border bg-axon-bg/60 p-4">
+                      <div className="flex items-center gap-2">
+                        <Instagram size={15} className="text-axon-gold" />
+                        <p className="text-sm font-medium text-white">Feed do Instagram</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">
+                          @ do Instagram do festival
+                        </label>
+                        <input
+                          type="text"
+                          value={identidadeForm.instagram_handle}
+                          onChange={(e) =>
+                            setIdentidadeForm((prev) => ({ ...prev, instagram_handle: e.target.value }))
+                          }
+                          placeholder="meufestival"
+                          className="w-full mt-1 rounded-xl border border-axon-border bg-axon-bg px-4 py-3 text-sm text-white placeholder:text-neutral-600 focus:border-axon-gold focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-neutral-400">Exibir feed de fotos na página</p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setIdentidadeForm((prev) => ({
+                              ...prev,
+                              exibir_feed_instagram: !prev.exibir_feed_instagram,
+                            }))
+                          }
+                          className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                            identidadeForm.exibir_feed_instagram ? "bg-axon-gold" : "bg-neutral-700"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${
+                              identidadeForm.exibir_feed_instagram ? "translate-x-6" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
                       </div>
                     </div>
 
@@ -1383,6 +1516,56 @@ export default function MarketingPage() {
                             </div>
                           </div>
                         </div>
+
+                        {/* Seção de Loja no Desktop Preview */}
+                        {identidadeForm.exibir_loja_publica && (
+                          <div className={`p-5 ${previewTema.text}`}>
+                            <div className="mb-3 flex items-center gap-2">
+                              <ShoppingCart size={16} className="text-axon-gold" />
+                              <h4 className="text-sm font-semibold">Produtos e Ingressos</h4>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3">
+                              {[
+                                { nome: "Copo Térmico do Festival", preco: "R$ 49,90" },
+                                { nome: "Camiseta Oficial", preco: "R$ 79,90" },
+                                { nome: "Ingresso VIP", preco: "R$ 199,90" },
+                              ].map((produto) => (
+                                <div
+                                  key={produto.nome}
+                                  className={`rounded-xl border p-3 ${previewTema.border} ${previewTema.card}`}
+                                >
+                                  <div className={`h-20 rounded-lg mb-2 flex items-center justify-center ${previewTema.skeletonSoft}`}>
+                                    <ShoppingCart size={20} className={previewTema.muted} />
+                                  </div>
+                                  <p className={`text-xs font-medium ${previewTema.text}`}>{produto.nome}</p>
+                                  <p className={`text-xs font-semibold mt-1 ${previewTema.textSoft}`}>{produto.preco}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Seção de Instagram Feed no Desktop Preview */}
+                        {identidadeForm.exibir_feed_instagram && (
+                          <div className={`p-5 border-t ${previewTema.border} ${previewTema.text}`}>
+                            <div className="mb-3 flex items-center gap-2">
+                              <Instagram size={16} className="text-axon-gold" />
+                              <h4 className="text-sm font-semibold">
+                                @{identidadeForm.instagram_handle || "seufestival"}
+                              </h4>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              {Array.from({ length: 6 }).map((_, i) => (
+                                <div
+                                  key={i}
+                                  className={`aspect-square rounded-lg flex items-center justify-center ${previewTema.skeletonStrong}`}
+                                >
+                                  <ImageIcon size={16} className={previewTema.muted} />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1474,6 +1657,47 @@ export default function MarketingPage() {
                                 </p>
                               </div>
                             </div>
+
+                            {/* Seção de Loja no Mobile Preview */}
+                            {identidadeForm.exibir_loja_publica && (
+                              <div className="pt-2">
+                                <div className="mb-2 flex items-center gap-2">
+                                  <ShoppingCart size={14} className="text-axon-gold" />
+                                  <p className="text-xs font-semibold">Produtos e Ingressos</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {[
+                                    { nome: "Copo Térmico", preco: "R$49,90" },
+                                    { nome: "Camiseta", preco: "R$79,90" },
+                                  ].map((produto) => (
+                                    <div key={produto.nome} className={`rounded-lg border p-2 ${previewTema.border} ${previewTema.card}`}>
+                                      <div className={`h-12 rounded mb-1 flex items-center justify-center ${previewTema.skeletonSoft}`}>
+                                        <ShoppingCart size={12} className={previewTema.muted} />
+                                      </div>
+                                      <p className={`text-[10px] font-medium ${previewTema.text}`}>{produto.nome}</p>
+                                      <p className={`text-[10px] font-semibold ${previewTema.textSoft}`}>{produto.preco}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Seção de Instagram no Mobile Preview */}
+                            {identidadeForm.exibir_feed_instagram && (
+                              <div className="pt-2">
+                                <div className="mb-2 flex items-center gap-2">
+                                  <Instagram size={14} className="text-axon-gold" />
+                                  <p className="text-xs font-semibold">@{identidadeForm.instagram_handle || "seufestival"}</p>
+                                </div>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {Array.from({ length: 6 }).map((_, i) => (
+                                    <div key={i} className={`aspect-square rounded-md flex items-center justify-center ${previewTema.skeletonStrong}`}>
+                                      <ImageIcon size={10} className={previewTema.muted} />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
