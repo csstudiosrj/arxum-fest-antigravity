@@ -1,49 +1,72 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import {
-  FileSignature, FileText, Users, Save,
-  CheckCircle, Clock, XCircle, Copy,
-  Send, ChevronDown, ChevronUp, Shield,
-  Check, AlertTriangle
-} from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  FileText,
+  FileSignature,
+  Users,
+  Save,
+  CheckCircle,
+  Shield,
+  Info,
+  Upload,
+  Download,
+  Bold,
+  Italic,
+  Underline,
+  List,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Check,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react";
+import { UploadButton } from "@/utils/uploadthing";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Documento {
   id: string;
-  tipo: "regulamento" | "uso_imagem" | "responsabilidade_medica";
+  tipo: "regulamento" | "uso_imagem" | "autorizacao_menores";
   titulo: string;
-  conteudo: string;
+  conteudo: string | null;
   versao: number;
   ativo: boolean;
   atualizado_em: string;
+  evento_id: string;
+  produtora_id: string;
+  exibir_publico: boolean;
+  formato: "html" | "pdf";
+  arquivo_url: string | null;
 }
 
-interface AceiteStatus {
-  participante_id: string;
-  participante_nome: string;
+interface ParticipanteStatus {
+  id: string;
+  nome: string;
+  termo_assinado: boolean;
   escola_nome: string;
-  escola_aceite: boolean;
-  imagem_aceite: boolean;
-  imagem_aceito_em: string | null;
-  imagem_assinante: string | null;
+}
+
+interface Evento {
+  id: string;
+  nome: string;
 }
 
 // ─── Badge de Status ──────────────────────────────────────────────────────────
 
-function BadgeStatus({ aceito, label }: { aceito: boolean; label?: string }) {
+function BadgeStatus({ assinado }: { assinado: boolean }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-        aceito
+        assinado
           ? "bg-axon-green/10 text-axon-green border border-axon-green/30"
           : "bg-red-500/10 text-red-400 border border-red-500/30"
       }`}
     >
-      {aceito ? <CheckCircle size={12} /> : <Clock size={12} />}
-      {label ?? (aceito ? "Assinado" : "Pendente")}
+      {assinado ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+      {assinado ? "Assinado" : "Pendente"}
     </span>
   );
 }
@@ -63,260 +86,423 @@ function Toast({ msg, visivel }: { msg: string; visivel: boolean }) {
   );
 }
 
-// ─── Aba: Regulamento ─────────────────────────────────────────────────────────
+// ─── Editor de Documento (Rico) ────────────────────────────────────────────────
 
-function AbaRegulamento({
+function DocumentoEditor({
+  tipo,
   documento,
   onSalvar,
   salvando,
+  eventoId,
+  produtoraId,
 }: {
+  tipo: Documento["tipo"];
   documento: Documento | null;
-  onSalvar: (conteudo: string) => void;
+  onSalvar: (payload: Partial<Documento>) => Promise<void>;
   salvando: boolean;
+  eventoId: string;
+  produtoraId: string;
 }) {
-  const [conteudo, setConteudo] = useState(documento?.conteudo ?? "");
+  const supabase = createClient();
 
-  useEffect(() => {
-    if (documento) setConteudo(documento.conteudo);
-  }, [documento]);
-
-  return (
-    <div className="space-y-6">
-      {/* Info Box */}
-      <div className="bg-axon-bg border border-axon-border rounded-xl p-4 flex items-start gap-3">
-        <Shield size={20} className="text-axon-green mt-0.5 shrink-0" />
-        <div>
-          <p className="text-white font-medium text-sm">Aceite Obrigatório com Registro</p>
-          <p className="text-gray-400 text-sm mt-0.5">
-            O coordenador da escola deverá marcar "Li e concordo" antes de finalizar
-            qualquer inscrição. O sistema registra IP, data e hora como prova legal.
-          </p>
-        </div>
-      </div>
-
-      {documento && (
-        <div className="flex items-center gap-3 text-xs text-gray-500">
-          <span>Versão {documento.versao}</span>
-          <span>·</span>
-          <span>Última atualização: {new Date(documento.atualizado_em).toLocaleDateString("pt-BR")}</span>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-300">
-          Texto do Regulamento Oficial
-        </label>
-        <textarea
-          value={conteudo}
-          onChange={(e) => setConteudo(e.target.value)}
-          className="w-full h-96 bg-axon-bg border border-axon-border rounded-xl p-4 text-gray-300 focus:outline-none focus:border-axon-green resize-none font-mono text-sm leading-relaxed"
-          placeholder="Cole aqui o texto completo do regulamento do festival..."
-        />
-      </div>
-
-      <button
-        onClick={() => onSalvar(conteudo)}
-        disabled={salvando || !conteudo.trim()}
-        className="flex items-center gap-2 bg-axon-green text-black px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#00c866] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        <Save size={16} />
-        {salvando ? "Salvando..." : "Salvar Regulamento"}
-      </button>
-    </div>
+  // Estados locais
+  const [exibirPublico, setExibirPublico] = useState(
+    documento?.exibir_publico ?? (tipo === "regulamento" ? true : true)
   );
-}
+  const [formato, setFormato] = useState<"html" | "pdf">(
+    documento?.formato ?? "html"
+  );
+  const [conteudoHtml, setConteudoHtml] = useState(
+    documento?.conteudo ?? ""
+  );
+  const [arquivoUrl, setArquivoUrl] = useState(documento?.arquivo_url ?? null);
+  const [uploading, setUploading] = useState(false);
 
-// ─── Aba: Uso de Imagem ───────────────────────────────────────────────────────
+  const editorRef = useRef<HTMLDivElement>(null);
 
-function AbaUsoImagem({
-  documento,
-  onSalvar,
-  salvando,
-}: {
-  documento: Documento | null;
-  onSalvar: (conteudo: string) => void;
-  salvando: boolean;
-}) {
-  const [conteudo, setConteudo] = useState(documento?.conteudo ?? "");
-  const [linkCopiado, setLinkCopiado] = useState(false);
-
+  // Sincroniza o conteúdo inicial e mudanças externas no documento
   useEffect(() => {
-    if (documento) setConteudo(documento.conteudo);
-  }, [documento]);
+    if (documento) {
+      setConteudoHtml(documento.conteudo ?? "");
+      setFormato(documento.formato ?? "html");
+      setArquivoUrl(documento.arquivo_url ?? null);
+      setExibirPublico(
+        tipo === "regulamento" ? true : (documento.exibir_publico ?? true)
+      );
+    } else {
+      setConteudoHtml("");
+      setFormato("html");
+      setArquivoUrl(null);
+      setExibirPublico(tipo === "regulamento" ? true : true);
+    }
+  }, [documento, tipo]);
 
-  const linkPublico = typeof window !== "undefined"
-    ? `${window.location.origin}/assinar/imagem`
-    : "/assinar/imagem";
+  // Quando o conteúdo HTML mudar, atualiza o editor
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== conteudoHtml) {
+      editorRef.current.innerHTML = conteudoHtml;
+    }
+  }, [conteudoHtml]);
 
-  const copiarLink = () => {
-    navigator.clipboard.writeText(linkPublico);
-    setLinkCopiado(true);
-    setTimeout(() => setLinkCopiado(false), 2000);
+  const handleInput = useCallback(() => {
+    if (editorRef.current) {
+      setConteudoHtml(editorRef.current.innerHTML);
+    }
+  }, []);
+
+  // Toolbar commands
+  const execCommand = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    editorRef.current?.focus();
+  };
+
+  const handleCarregarModelo = () => {
+    const modelo =
+      tipo === "regulamento"
+        ? `<h2>Regulamento Oficial do Festival [NOME DO FESTIVAL]</h2>
+<p><strong>1. Disposições Gerais</strong><br>O presente regulamento estabelece as regras para...</p>
+<p><strong>2. Inscrições</strong><br>As inscrições deverão ser realizadas...</p>`
+        : tipo === "uso_imagem"
+        ? `<h2>Termo de Uso de Imagem</h2>
+<p>Eu, [NOME DO RESPONSÁVEL], autorizo o uso de imagem do(a) participante [NOME DO PARTICIPANTE] para fins de divulgação do evento [NOME DO FESTIVAL]...</p>`
+        : `<h2>Autorização para Menores de Idade</h2>
+<p>Eu, [NOME DO RESPONSÁVEL LEGAL], autorizo a participação do menor [NOME DO MENOR] no evento [NOME DO FESTIVAL]...</p>`;
+    setConteudoHtml(modelo);
+  };
+
+  const handleBaixarPdf = () => {
+    const content = conteudoHtml;
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(`
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>${tipo === "regulamento" ? "Regulamento" : tipo === "uso_imagem" ? "Uso de Imagem" : "Autorização de Menores"}</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; }
+              h2 { margin-top: 0; }
+            </style>
+          </head>
+          <body>${content}</body>
+        </html>
+      `);
+      win.document.close();
+      win.focus();
+      win.print();
+    }
+  };
+
+  const handleSalvar = async () => {
+    const payload = {
+      tipo,
+      titulo:
+        tipo === "regulamento"
+          ? "Regulamento do Festival"
+          : tipo === "uso_imagem"
+          ? "Termo de Uso de Imagem"
+          : "Autorização para Menores de Idade",
+      conteudo: formato === "html" ? conteudoHtml : null,
+      formato,
+      arquivo_url: formato === "pdf" ? arquivoUrl : null,
+      exibir_publico: tipo === "regulamento" ? true : exibirPublico,
+      evento_id: eventoId,
+      produtora_id: produtoraId,
+      ativo: true,
+    };
+    await onSalvar(payload);
   };
 
   return (
     <div className="space-y-6">
-      {/* Fluxo de assinatura */}
-      <div className="bg-axon-bg border border-axon-border rounded-xl p-5 space-y-4">
-        <p className="text-white font-medium text-sm">Como funciona a assinatura dos responsáveis</p>
-        <div className="flex items-start gap-3">
-          {[
-            { n: "1", txt: "O coreógrafo copia o link abaixo e envia no WhatsApp dos pais." },
-            { n: "2", txt: "O pai/responsável clica, lê o termo e assina digitalmente." },
-            { n: "3", txt: "O sistema registra nome, e-mail, IP e data/hora automaticamente." },
-          ].map(({ n, txt }) => (
-            <div key={n} className="flex items-start gap-3">
-              <span className="w-6 h-6 rounded-full bg-axon-green/20 text-axon-green text-xs font-bold flex items-center justify-center shrink-0">
-                {n}
-              </span>
-              <p className="text-gray-400 text-sm">{txt}</p>
-            </div>
-          ))}
-        </div>
+      {/* Info Legal */}
+      <div className="bg-axon-bg border border-axon-border rounded-xl p-4 flex items-start gap-3">
+        <Shield size={20} className="text-axon-green mt-0.5 shrink-0" />
+        <p className="text-sm text-gray-300">
+          A assinatura digital tem validade jurídica (MP 2.200-2/2001). O sistema
+          registra IP, Data, Hora e o Aceite do usuário no momento da inscrição.
+        </p>
+      </div>
 
-        {/* Link público */}
-        <div className="flex items-center gap-2 bg-axon-panel border border-axon-border rounded-lg p-3">
-          <span className="flex-1 text-xs text-axon-green font-mono truncate">{linkPublico}</span>
+      {/* Toggles de Configuração */}
+      <div className="space-y-3">
+        {tipo !== "regulamento" && (
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-sm text-neutral-300">Exibir na Página Pública</span>
+            <button
+              onClick={() => setExibirPublico((p) => !p)}
+              className="text-axon-gold"
+              aria-label="Toggle exibição pública"
+            >
+              {exibirPublico ? (
+                <ToggleRight size={26} />
+              ) : (
+                <ToggleLeft size={26} className="text-neutral-600" />
+              )}
+            </button>
+          </label>
+        )}
+
+        <label className="flex items-center justify-between cursor-pointer">
+          <span className="text-sm text-neutral-300">Formato do Documento</span>
           <button
-            onClick={copiarLink}
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded border border-axon-border"
+            onClick={() => setFormato((f) => (f === "html" ? "pdf" : "html"))}
+            className="text-axon-gold"
           >
-            {linkCopiado ? <Check size={12} className="text-axon-green" /> : <Copy size={12} />}
-            {linkCopiado ? "Copiado!" : "Copiar"}
+            {formato === "html" ? (
+              <ToggleRight size={26} />
+            ) : (
+              <ToggleLeft size={26} className="text-neutral-600" />
+            )}
           </button>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-300">
-          Texto do Termo de Uso de Imagem e Responsabilidade Médica
         </label>
-        <textarea
-          value={conteudo}
-          onChange={(e) => setConteudo(e.target.value)}
-          className="w-full h-72 bg-axon-bg border border-axon-border rounded-xl p-4 text-gray-300 focus:outline-none focus:border-axon-green resize-none font-mono text-sm leading-relaxed"
-          placeholder="Cole aqui o texto completo do Termo de Uso de Imagem e Responsabilidade Médica..."
-        />
+        <p className="text-xs text-neutral-500">
+          {formato === "html"
+            ? "Criar no Editor"
+            : "Fazer Upload de PDF"}
+        </p>
       </div>
 
+      {/* Conteúdo conforme formato */}
+      {formato === "html" ? (
+        <>
+          {/* Barra de Ferramentas */}
+          <div className="flex items-center gap-1 p-2 bg-axon-bg border border-axon-border rounded-lg flex-wrap">
+            <button
+              onClick={() => execCommand("bold")}
+              className="p-2 hover:bg-axon-panel rounded text-neutral-400 hover:text-white"
+              title="Negrito"
+            >
+              <Bold size={16} />
+            </button>
+            <button
+              onClick={() => execCommand("italic")}
+              className="p-2 hover:bg-axon-panel rounded text-neutral-400 hover:text-white"
+              title="Itálico"
+            >
+              <Italic size={16} />
+            </button>
+            <button
+              onClick={() => execCommand("underline")}
+              className="p-2 hover:bg-axon-panel rounded text-neutral-400 hover:text-white"
+              title="Sublinhado"
+            >
+              <Underline size={16} />
+            </button>
+            <div className="w-px h-6 bg-axon-border mx-1" />
+            <button
+              onClick={() => execCommand("insertUnorderedList")}
+              className="p-2 hover:bg-axon-panel rounded text-neutral-400 hover:text-white"
+              title="Lista"
+            >
+              <List size={16} />
+            </button>
+            <button
+              onClick={() => execCommand("justifyLeft")}
+              className="p-2 hover:bg-axon-panel rounded text-neutral-400 hover:text-white"
+              title="Alinhar à esquerda"
+            >
+              <AlignLeft size={16} />
+            </button>
+            <button
+              onClick={() => execCommand("justifyCenter")}
+              className="p-2 hover:bg-axon-panel rounded text-neutral-400 hover:text-white"
+              title="Centralizar"
+            >
+              <AlignCenter size={16} />
+            </button>
+            <button
+              onClick={() => execCommand("justifyRight")}
+              className="p-2 hover:bg-axon-panel rounded text-neutral-400 hover:text-white"
+              title="Alinhar à direita"
+            >
+              <AlignRight size={16} />
+            </button>
+          </div>
+
+          {/* Editor */}
+          <div
+            ref={editorRef}
+            contentEditable
+            onInput={handleInput}
+            className="min-h-[300px] bg-axon-bg border border-axon-border rounded-xl p-4 text-gray-300 focus:outline-none focus:border-axon-green text-sm leading-relaxed"
+            placeholder="Digite o conteúdo do documento..."
+            suppressContentEditableWarning
+          />
+
+          {/* Botões auxiliares */}
+          <div className="flex gap-3">
+            <button
+              onClick={handleCarregarModelo}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-axon-border text-xs text-neutral-400 hover:text-white transition-colors"
+            >
+              <FileText size={14} />
+              Carregar Modelo Padrão
+            </button>
+            <button
+              onClick={handleBaixarPdf}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-axon-border text-xs text-neutral-400 hover:text-white transition-colors"
+            >
+              <Download size={14} />
+              Baixar como PDF
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-xs text-neutral-500">
+            Faça o upload do documento em PDF. O arquivo ficará disponível para
+            download e visualização pública (se ativado).
+          </p>
+          {!arquivoUrl ? (
+            <UploadButton
+              endpoint="imageUploader"
+              onClientUploadComplete={(res) => {
+                setArquivoUrl(res[0].url);
+                setUploading(false);
+              }}
+              onUploadError={(error) => {
+                alert(`Erro no upload: ${error.message}`);
+                setUploading(false);
+              }}
+              onUploadBegin={() => setUploading(true)}
+              className="ut-button:bg-axon-panel ut-button:border ut-button:border-axon-border ut-button:text-white ut-button:hover:bg-axon-gold ut-allowed-content:hidden"
+            />
+          ) : (
+            <div className="flex items-center gap-3 bg-axon-bg border border-axon-border rounded-lg p-3">
+              <FileText size={16} className="text-axon-green" />
+              <a
+                href={arquivoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-axon-green underline truncate"
+              >
+                {arquivoUrl}
+              </a>
+              <button
+                onClick={() => setArquivoUrl(null)}
+                className="ml-auto text-neutral-500 hover:text-red-400 transition-colors"
+              >
+                <CheckCircle size={14} /> Remover
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Botão Salvar */}
       <button
-        onClick={() => onSalvar(conteudo)}
-        disabled={salvando || !conteudo.trim()}
+        onClick={handleSalvar}
+        disabled={salvando || uploading}
         className="flex items-center gap-2 bg-axon-green text-black px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#00c866] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <Save size={16} />
-        {salvando ? "Salvando..." : "Salvar Termo"}
+        {salvando ? "Salvando..." : "Salvar Documento"}
       </button>
     </div>
   );
 }
 
-// ─── Aba: Status de Assinaturas ───────────────────────────────────────────────
+// ─── Aba Status de Assinaturas ────────────────────────────────────────────────
 
-function AbaStatus({ aceites }: { aceites: AceiteStatus[] }) {
+function StatusAssinaturas({
+  eventoId,
+  produtoraId,
+}: {
+  eventoId: string;
+  produtoraId: string;
+}) {
+  const supabase = createClient();
+  const [participantes, setParticipantes] = useState<ParticipanteStatus[]>([]);
+  const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
-  const [filtro, setFiltro] = useState<"todos" | "pendentes" | "assinados">("todos");
 
-  const filtrados = aceites.filter((a) => {
-    const matchBusca =
-      a.participante_nome.toLowerCase().includes(busca.toLowerCase()) ||
-      a.escola_nome.toLowerCase().includes(busca.toLowerCase());
-    if (filtro === "pendentes") return matchBusca && !a.imagem_aceite;
-    if (filtro === "assinados") return matchBusca && a.imagem_aceite;
-    return matchBusca;
-  });
+  useEffect(() => {
+    if (!eventoId) return;
+    setCarregando(true);
+    supabase
+      .from("participantes")
+      .select("id, nome, termo_assinado")
+      .eq("festival_id", eventoId)
+      .eq("produtora_id", produtoraId)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        const status: ParticipanteStatus[] = (data ?? []).map((p: any) => ({
+          id: p.id,
+          nome: p.nome,
+          termo_assinado: p.termo_assinado ?? false,
+          escola_nome: p.escola?.nome ?? "—",
+        }));
+        setParticipantes(status);
+        setCarregando(false);
+      });
+  }, [eventoId, produtoraId, supabase]);
 
-  const pendentes = aceites.filter((a) => !a.imagem_aceite).length;
-  const assinados = aceites.filter((a) => a.imagem_aceite).length;
+  const filtrados = participantes.filter(
+    (p) =>
+      p.nome.toLowerCase().includes(busca.toLowerCase()) ||
+      p.escola_nome.toLowerCase().includes(busca.toLowerCase())
+  );
+
+  const total = participantes.length;
+  const assinados = participantes.filter((p) => p.termo_assinado).length;
+  const pendentes = total - assinados;
 
   return (
     <div className="space-y-5">
       {/* Resumo */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Total", valor: aceites.length, cor: "text-white" },
+          { label: "Total", valor: total, cor: "text-white" },
           { label: "Assinados", valor: assinados, cor: "text-axon-green" },
           { label: "Pendentes", valor: pendentes, cor: "text-red-400" },
         ].map(({ label, valor, cor }) => (
-          <div key={label} className="bg-axon-bg border border-axon-border rounded-xl p-4 text-center">
+          <div
+            key={label}
+            className="bg-axon-bg border border-axon-border rounded-xl p-4 text-center"
+          >
             <p className={`text-2xl font-bold ${cor}`}>{valor}</p>
             <p className="text-xs text-gray-500 mt-1">{label}</p>
           </div>
         ))}
       </div>
 
-      {/* Filtros + Busca */}
-      <div className="flex items-center gap-3">
-        <input
-          type="text"
-          placeholder="Buscar participante ou escola..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="flex-1 bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-green placeholder:text-gray-600"
-        />
-        <div className="flex bg-axon-bg border border-axon-border rounded-lg overflow-hidden">
-          {(["todos", "pendentes", "assinados"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFiltro(f)}
-              className={`px-3 py-2 text-xs font-medium capitalize transition-colors ${
-                filtro === f ? "bg-axon-panel text-white" : "text-gray-500 hover:text-white"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Busca */}
+      <input
+        type="text"
+        placeholder="Buscar participante ou escola..."
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-green placeholder:text-gray-600"
+      />
 
       {/* Lista */}
-      {filtrados.length === 0 ? (
+      {carregando ? (
+        <div className="flex justify-center py-12">
+          <Loader2 size={24} className="animate-spin text-neutral-600" />
+        </div>
+      ) : filtrados.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-gray-600 gap-3">
           <Users size={36} className="opacity-30" />
           <p className="text-sm">
-            {aceites.length === 0
-              ? "Nenhum participante inscrito ainda."
-              : "Nenhum resultado para esta busca."}
+            {participantes.length === 0
+              ? "Nenhum participante inscrito neste evento."
+              : "Nenhum resultado encontrado."}
           </p>
         </div>
       ) : (
         <div className="space-y-2">
-          {filtrados.map((a) => (
+          {filtrados.map((p) => (
             <div
-              key={a.participante_id}
+              key={p.id}
               className="flex items-center justify-between bg-axon-bg border border-axon-border rounded-xl px-4 py-3"
             >
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{a.participante_nome}</p>
-                <p className="text-xs text-gray-500">{a.escola_nome}</p>
+                <p className="text-sm font-medium text-white truncate">{p.nome}</p>
+                <p className="text-xs text-gray-500">{p.escola_nome}</p>
               </div>
-
-              <div className="flex items-center gap-4 shrink-0">
-                {/* Regulamento (escola) */}
-                <div className="text-center hidden sm:block">
-                  <p className="text-xs text-gray-600 mb-1">Regulamento</p>
-                  <BadgeStatus aceito={a.escola_aceite} />
-                </div>
-
-                {/* Termo de Imagem */}
-                <div className="text-center">
-                  <p className="text-xs text-gray-600 mb-1">Uso de Imagem</p>
-                  <BadgeStatus aceito={a.imagem_aceite} />
-                </div>
-
-                {/* Credencial */}
-                <div className="text-center hidden md:block">
-                  <p className="text-xs text-gray-600 mb-1">Credencial</p>
-                  {a.escola_aceite && a.imagem_aceite ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-axon-green/10 text-axon-green border border-axon-green/30">
-                      <CheckCircle size={12} /> Liberar
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/30">
-                      <XCircle size={12} /> Barrar
-                    </span>
-                  )}
-                </div>
+              <div className="shrink-0 ml-4">
+                <BadgeStatus assinado={p.termo_assinado} />
               </div>
             </div>
           ))}
@@ -328,7 +514,7 @@ function AbaStatus({ aceites }: { aceites: AceiteStatus[] }) {
           <AlertTriangle size={16} className="text-yellow-500 mt-0.5 shrink-0" />
           <p className="text-sm text-yellow-500/80">
             <strong className="text-yellow-400">{pendentes} participante{pendentes > 1 ? "s" : ""}</strong>{" "}
-            com termos pendentes. O organizador pode barrar a entrega de credencial na porta.
+            com termo pendente. É possível liberar a credencial somente após a assinatura.
           </p>
         </div>
       )}
@@ -341,119 +527,62 @@ function AbaStatus({ aceites }: { aceites: AceiteStatus[] }) {
 export default function TermosPage() {
   const supabase = createClient();
 
-  const [abaAtiva, setAbaAtiva] = useState<"regulamento" | "imagem" | "status">("regulamento");
+  const [produtoraId, setProdutoraId] = useState<string>("");
+  const [eventos, setEventos] = useState<Evento[]>([]);
+  const [eventoSelecionadoId, setEventoSelecionadoId] = useState<string>("");
   const [documentos, setDocumentos] = useState<Documento[]>([]);
-  const [aceites, setAceites] = useState<AceiteStatus[]>([]);
+  const [abaAtiva, setAbaAtiva] = useState<"regulamento" | "uso_imagem" | "autorizacao_menores" | "status">("regulamento");
   const [salvando, setSalvando] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
   const [toastVisivel, setToastVisivel] = useState(false);
+  const [carregandoPagina, setCarregandoPagina] = useState(true);
 
-  // ── Carregar documentos ──
+  // Buscar produtora do usuário
   useEffect(() => {
-    async function carregar() {
-      const { data } = await supabase
-        .from("termos_documentos")
-        .select("*")
-        .eq("ativo", true)
-        .order("criado_em");
-      if (data) setDocumentos(data as Documento[]);
-    }
-    carregar();
-  }, []);
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) return;
 
-  // ── Carregar aceites (JOIN via view ou query manual) ──
-  useEffect(() => {
-    async function carregarAceites() {
-      // Busca todos os participantes com status de aceites
-      const { data: participantes } = await supabase
-        .from("participantes")
-        .select(`
-          id,
-          nome_completo,
-          escola:escolas(nome),
-          aceites:termos_aceites(tipo_assinante, documento_id, aceito_em, nome_assinante)
-        `);
-
-      if (!participantes) return;
-
-      const docRegulamento = documentos.find((d) => d.tipo === "regulamento");
-      const docImagem = documentos.find((d) => d.tipo === "uso_imagem");
-
-      const status: AceiteStatus[] = participantes.map((b: any) => {
-        const aceiteEscola = b.aceites?.some(
-          (a: any) =>
-            a.tipo_assinante === "escola" &&
-            a.documento_id === docRegulamento?.id
-        );
-        const aceiteImagem = b.aceites?.find(
-          (a: any) =>
-            (a.tipo_assinante === "responsavel" ||
-              a.tipo_assinante === "maior_de_idade") &&
-            a.documento_id === docImagem?.id
-        );
-
-        return {
-          participante_id: b.id,
-          participante_nome: b.nome_completo,
-          escola_nome: b.escola?.nome ?? "—",
-          escola_aceite: !!aceiteEscola,
-          imagem_aceite: !!aceiteImagem,
-          imagem_aceito_em: aceiteImagem?.aceito_em ?? null,
-          imagem_assinante: aceiteImagem?.nome_assinante ?? null,
-        };
-      });
-
-      setAceites(status);
-    }
-
-    if (documentos.length > 0) carregarAceites();
-  }, [documentos]);
-
-  // ── Salvar documento ──
-  const salvarDocumento = async (
-    tipo: Documento["tipo"],
-    conteudo: string
-  ) => {
-    setSalvando(true);
-    const existente = documentos.find((d) => d.tipo === tipo);
-
-    if (existente) {
-      await supabase
-        .from("termos_documentos")
-        .update({
-          conteudo,
-          versao: existente.versao + 1,
-          atualizado_em: new Date().toISOString(),
-        })
-        .eq("id", existente.id);
-
-      setDocumentos((prev) =>
-        prev.map((d) =>
-          d.id === existente.id
-            ? { ...d, conteudo, versao: d.versao + 1, atualizado_em: new Date().toISOString() }
-            : d
-        )
-      );
-    } else {
-      const titulo =
-        tipo === "regulamento"
-          ? "Regulamento do Festival"
-          : tipo === "uso_imagem"
-          ? "Termo de Uso de Imagem"
-          : "Termo de Responsabilidade Médica";
-
-      const { data } = await supabase
-        .from("termos_documentos")
-        .insert({ tipo, titulo, conteudo })
-        .select()
+      const { data: usuario } = await supabase
+        .from("usuarios")
+        .select("produtora_id")
+        .eq("id", session.user.id)
         .single();
+      if (usuario?.produtora_id) {
+        setProdutoraId(usuario.produtora_id);
+      }
+    })();
+  }, [supabase]);
 
-      if (data) setDocumentos((prev) => [...prev, data as Documento]);
-    }
+  // Buscar eventos da produtora
+  useEffect(() => {
+    if (!produtoraId) return;
+    supabase
+      .from("eventos")
+      .select("id, nome")
+      .eq("produtora_id", produtoraId)
+      .order("data_inicio", { ascending: false })
+      .then(({ data }) => {
+        if (data) setEventos(data as Evento[]);
+        setCarregandoPagina(false);
+      });
+  }, [produtoraId, supabase]);
 
-    setSalvando(false);
-    mostrarToast("Documento salvo com sucesso!");
-  };
+  // Carregar documentos do evento selecionado
+  useEffect(() => {
+    if (!produtoraId || !eventoSelecionadoId) return;
+    supabase
+      .from("termos_documentos")
+      .select("*")
+      .eq("produtora_id", produtoraId)
+      .eq("evento_id", eventoSelecionadoId)
+      .order("created_at")
+      .then(({ data }) => {
+        setDocumentos((data as Documento[]) ?? []);
+      });
+  }, [produtoraId, eventoSelecionadoId, supabase]);
 
   const mostrarToast = (msg: string) => {
     setToastMsg(msg);
@@ -461,72 +590,167 @@ export default function TermosPage() {
     setTimeout(() => setToastVisivel(false), 2500);
   };
 
-  const docRegulamento = documentos.find((d) => d.tipo === "regulamento") ?? null;
-  const docImagem = documentos.find((d) => d.tipo === "uso_imagem") ?? null;
+  const onSalvarDocumento = async (payload: Partial<Documento>) => {
+    if (!eventoSelecionadoId || !produtoraId) return;
+    setSalvando(true);
+
+    // Verificar documento existente para controle de versão
+    const existente = documentos.find(
+      (d) => d.tipo === payload.tipo && d.evento_id === eventoSelecionadoId
+    );
+
+    const dataPayload = {
+      ...payload,
+      evento_id: eventoSelecionadoId,
+      produtora_id: produtoraId,
+      atualizado_em: new Date().toISOString(),
+      ativo: true,
+    };
+
+    let error = null;
+    if (existente) {
+      const { error: err } = await supabase
+        .from("termos_documentos")
+        .update({
+          ...dataPayload,
+          versao: existente.versao + 1,
+        })
+        .eq("id", existente.id);
+      error = err;
+    } else {
+      const { error: err } = await supabase
+        .from("termos_documentos")
+        .insert({
+          ...dataPayload,
+          versao: 1,
+        });
+      error = err;
+    }
+
+    setSalvando(false);
+    if (!error) {
+      mostrarToast("Documento salvo com sucesso!");
+      // Atualiza lista local
+      const updated = { ...dataPayload, id: existente?.id ?? "", versao: existente ? existente.versao + 1 : 1 };
+      setDocumentos((prev) => {
+        const others = prev.filter((d) => !(d.tipo === payload.tipo && d.evento_id === eventoSelecionadoId));
+        return [...others, updated as Documento];
+      });
+    } else {
+      alert("Erro ao salvar documento: " + error.message);
+    }
+  };
+
+  const getDocumentoByTipo = (tipo: Documento["tipo"]) =>
+    documentos.find((d) => d.tipo === tipo) ?? null;
 
   const abas = [
     { id: "regulamento" as const, label: "Regulamento", icon: FileText },
-    { id: "imagem" as const, label: "Uso de Imagem", icon: FileSignature },
+    { id: "uso_imagem" as const, label: "Uso de Imagem", icon: FileSignature },
+    { id: "autorizacao_menores" as const, label: "Autorização de Menores", icon: FileSignature },
     { id: "status" as const, label: "Status de Assinaturas", icon: Users },
   ];
+
+  // Renderização condicional
+  if (!produtoraId || carregandoPagina) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 size={32} className="animate-spin text-neutral-600" />
+      </div>
+    );
+  }
 
   return (
     <>
       <Toast msg={toastMsg} visivel={toastVisivel} />
 
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6 p-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-white">Termos & Contratos</h1>
           <p className="text-gray-400 mt-1 text-sm">
-            Gestão do edital e termos de responsabilidade — blindagem jurídica do festival.
+            Gestão dos documentos jurídicos vinculados ao evento — blindagem legal do festival.
           </p>
         </div>
 
-        {/* Card principal */}
-        <div className="bg-axon-panel border border-axon-border rounded-2xl overflow-hidden">
-          {/* Abas */}
-          <div className="flex border-b border-axon-border px-4 overflow-x-auto">
-            {abas.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => setAbaAtiva(id)}
-                className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
-                  abaAtiva === id
-                    ? "border-axon-green text-axon-green"
-                    : "border-transparent text-gray-400 hover:text-white"
-                }`}
-              >
-                <Icon size={16} />
-                {label}
-                {id === "status" && aceites.filter((a) => !a.imagem_aceite).length > 0 && (
-                  <span className="ml-1 bg-red-500/20 text-red-400 text-xs font-bold px-1.5 py-0.5 rounded-full border border-red-500/30">
-                    {aceites.filter((a) => !a.imagem_aceite).length}
-                  </span>
-                )}
-              </button>
+        {/* Seletor de Evento */}
+        <div>
+          <label className="text-sm text-neutral-400 mb-2 block">Selecione o evento</label>
+          <select
+            value={eventoSelecionadoId}
+            onChange={(e) => setEventoSelecionadoId(e.target.value)}
+            className="w-full md:w-80 bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-axon-gold"
+          >
+            <option value="" disabled>
+              Escolha um evento...
+            </option>
+            {eventos.map((evento) => (
+              <option key={evento.id} value={evento.id}>
+                {evento.nome}
+              </option>
             ))}
-          </div>
-
-          {/* Conteúdo */}
-          <div className="p-6">
-            {abaAtiva === "regulamento" && (
-              <AbaRegulamento
-                documento={docRegulamento}
-                onSalvar={(c) => salvarDocumento("regulamento", c)}
-                salvando={salvando}
-              />
-            )}
-            {abaAtiva === "imagem" && (
-              <AbaUsoImagem
-                documento={docImagem}
-                onSalvar={(c) => salvarDocumento("uso_imagem", c)}
-                salvando={salvando}
-              />
-            )}
-            {abaAtiva === "status" && <AbaStatus aceites={aceites} />}
-          </div>
+          </select>
+          {eventos.length === 0 && (
+            <p className="text-xs text-neutral-600 mt-2">
+              Nenhum evento cadastrado para sua produtora.
+            </p>
+          )}
         </div>
+
+        {/* Card principal (apenas se evento selecionado) */}
+        {eventoSelecionadoId ? (
+          <div className="bg-axon-panel border border-axon-border rounded-2xl overflow-hidden">
+            {/* Abas */}
+            <div className="flex border-b border-axon-border px-4 overflow-x-auto">
+              {abas.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setAbaAtiva(id)}
+                  className={`flex items-center gap-2 px-4 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                    abaAtiva === id
+                      ? "border-axon-green text-axon-green"
+                      : "border-transparent text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <Icon size={16} />
+                  {label}
+                  {id === "status" && (
+                    <span className="ml-1 bg-red-500/20 text-red-400 text-xs font-bold px-1.5 py-0.5 rounded-full border border-red-500/30">
+                      {documentos.length === 0 ? 0 : "?"}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Conteúdo */}
+            <div className="p-6">
+              {abaAtiva === "status" ? (
+                <StatusAssinaturas
+                  eventoId={eventoSelecionadoId}
+                  produtoraId={produtoraId}
+                />
+              ) : (
+                <DocumentoEditor
+                  tipo={abaAtiva}
+                  documento={getDocumentoByTipo(abaAtiva)}
+                  onSalvar={onSalvarDocumento}
+                  salvando={salvando}
+                  eventoId={eventoSelecionadoId}
+                  produtoraId={produtoraId}
+                />
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-axon-panel border border-axon-border rounded-2xl p-12 text-center">
+            <Info size={36} className="mx-auto text-neutral-600 mb-3" />
+            <p className="text-neutral-500 text-sm">
+              Selecione um evento para começar a configurar os termos e acompanhar as
+              assinaturas.
+            </p>
+          </div>
+        )}
       </div>
     </>
   );
