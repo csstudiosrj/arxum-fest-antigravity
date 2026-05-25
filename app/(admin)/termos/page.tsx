@@ -322,16 +322,7 @@ function DocumentoEditor({
             </button>
           </div>
 
-          {/* Editor */}
-          <div
-            ref={editorRef}
-            contentEditable
-            onInput={handleInput}
-            className="min-h-[300px] bg-axon-bg border border-axon-border rounded-xl p-4 text-gray-300 focus:outline-none focus:border-axon-green text-sm leading-relaxed"
-            placeholder="Digite o conteúdo do documento..."
-            suppressContentEditableWarning
-          />
-
+          
           {/* Botões auxiliares */}
           <div className="flex gap-3">
             <button
