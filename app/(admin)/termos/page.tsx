@@ -23,7 +23,7 @@ import {
   AlertTriangle,
   Loader2,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
 } from "lucide-react";
 import { UploadButton } from "@/utils/uploadthing";
 
@@ -107,7 +107,6 @@ function DocumentoEditor({
 }) {
   const supabase = createClient();
 
-  // Estados locais
   const [exibirPublico, setExibirPublico] = useState(
     documento?.exibir_publico ?? (tipo === "regulamento" ? true : true)
   );
@@ -122,7 +121,6 @@ function DocumentoEditor({
 
   const editorRef = useRef<HTMLDivElement>(null);
 
-  // Sincroniza o conteúdo inicial e mudanças externas no documento
   useEffect(() => {
     if (documento) {
       setConteudoHtml(documento.conteudo ?? "");
@@ -139,7 +137,6 @@ function DocumentoEditor({
     }
   }, [documento, tipo]);
 
-  // Quando o conteúdo HTML mudar, atualiza o editor
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== conteudoHtml) {
       editorRef.current.innerHTML = conteudoHtml;
@@ -152,7 +149,6 @@ function DocumentoEditor({
     }
   }, []);
 
-  // Toolbar commands
   const execCommand = (command: string, value?: string) => {
     document.execCommand(command, false, value);
     editorRef.current?.focus();
@@ -322,7 +318,15 @@ function DocumentoEditor({
             </button>
           </div>
 
-          
+          {/* Editor (corrigido: sem placeholder) */}
+          <div
+            ref={editorRef}
+            contentEditable
+            onInput={handleInput}
+            className="min-h-[300px] bg-axon-bg border border-axon-border rounded-xl p-4 text-gray-300 focus:outline-none focus:border-axon-green text-sm leading-relaxed"
+            suppressContentEditableWarning
+          />
+
           {/* Botões auxiliares */}
           <div className="flex gap-3">
             <button
@@ -350,6 +354,17 @@ function DocumentoEditor({
           {!arquivoUrl ? (
             <UploadButton
               endpoint="imageUploader"
+              appearance={{
+                button:
+                  "ut-ready:bg-axon-panel ut-ready:border ut-ready:border-axon-border ut-ready:text-white ut-ready:hover:bg-axon-gold/20 ut-uploading:bg-axon-panel/80 w-full overflow-hidden truncate px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer",
+                allowedContent: "hidden",
+              }}
+              content={{
+                button({ ready }) {
+                  if (uploading) return "Enviando PDF...";
+                  return ready ? "Selecionar PDF" : "Preparando...";
+                },
+              }}
               onClientUploadComplete={(res) => {
                 setArquivoUrl(res[0].url);
                 setUploading(false);
@@ -359,7 +374,6 @@ function DocumentoEditor({
                 setUploading(false);
               }}
               onUploadBegin={() => setUploading(true)}
-              className="ut-button:bg-axon-panel ut-button:border ut-button:border-axon-border ut-button:text-white ut-button:hover:bg-axon-gold ut-allowed-content:hidden"
             />
           ) : (
             <div className="flex items-center gap-3 bg-axon-bg border border-axon-border rounded-lg p-3">
@@ -415,7 +429,7 @@ function StatusAssinaturas({
     setCarregando(true);
     supabase
       .from("participantes")
-      .select("id, nome, termo_assinado")
+      .select("id, nome: nome_completo, termo_assinado, escola:escolas(nome)")
       .eq("festival_id", eventoId)
       .eq("produtora_id", produtoraId)
       .order("created_at", { ascending: false })
@@ -587,7 +601,6 @@ export default function TermosPage() {
     if (!eventoSelecionadoId || !produtoraId) return;
     setSalvando(true);
 
-    // Verificar documento existente para controle de versão
     const existente = documentos.find(
       (d) => d.tipo === payload.tipo && d.evento_id === eventoSelecionadoId
     );
@@ -623,11 +636,16 @@ export default function TermosPage() {
     setSalvando(false);
     if (!error) {
       mostrarToast("Documento salvo com sucesso!");
-      // Atualiza lista local
-      const updated = { ...dataPayload, id: existente?.id ?? "", versao: existente ? existente.versao + 1 : 1 };
+      const updated = {
+        ...dataPayload,
+        id: existente?.id ?? "",
+        versao: existente ? existente.versao + 1 : 1,
+      } as Documento;
       setDocumentos((prev) => {
-        const others = prev.filter((d) => !(d.tipo === payload.tipo && d.evento_id === eventoSelecionadoId));
-        return [...others, updated as Documento];
+        const others = prev.filter(
+          (d) => !(d.tipo === payload.tipo && d.evento_id === eventoSelecionadoId)
+        );
+        return [...others, updated];
       });
     } else {
       alert("Erro ao salvar documento: " + error.message);
@@ -644,7 +662,6 @@ export default function TermosPage() {
     { id: "status" as const, label: "Status de Assinaturas", icon: Users },
   ];
 
-  // Renderização condicional
   if (!produtoraId || carregandoPagina) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -690,7 +707,7 @@ export default function TermosPage() {
           )}
         </div>
 
-        {/* Card principal (apenas se evento selecionado) */}
+        {/* Card principal */}
         {eventoSelecionadoId ? (
           <div className="bg-axon-panel border border-axon-border rounded-2xl overflow-hidden">
             {/* Abas */}
@@ -739,8 +756,7 @@ export default function TermosPage() {
           <div className="bg-axon-panel border border-axon-border rounded-2xl p-12 text-center">
             <Info size={36} className="mx-auto text-neutral-600 mb-3" />
             <p className="text-neutral-500 text-sm">
-              Selecione um evento para começar a configurar os termos e acompanhar as
-              assinaturas.
+              Selecione um evento para começar a configurar os termos e acompanhar as assinaturas.
             </p>
           </div>
         )}
