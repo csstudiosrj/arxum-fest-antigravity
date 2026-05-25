@@ -17,6 +17,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
+import { UploadButton } from "@/utils/uploadthing";
 
 interface Produto {
   id: string;
@@ -27,6 +28,9 @@ interface Produto {
   tem_variacao: boolean;
   ativo: boolean;
   mostrar_checkout: boolean;
+  imagem_url: string | null;
+  exibir_imagem: boolean;
+  exibir_loja_publica: boolean;
 }
 
 interface Variacao {
@@ -34,6 +38,7 @@ interface Variacao {
   produto_id: string;
   nome: string;
   estoque: number | null;
+  produtos?: { produtora_id: string }; // join pode trazer este campo
 }
 
 interface PedidoItem {
@@ -45,6 +50,7 @@ interface PedidoItem {
   quantidade: number;
   preco_unitario: number;
   status: "pendente" | "entregue";
+  produtora_id?: string;
 }
 
 interface Escola {
@@ -68,9 +74,10 @@ interface ModalProdutoProps {
   variacoes?: Variacao[];
   onClose: () => void;
   onSaved: () => void;
+  produtoraId: string;
 }
 
-function ModalProduto({ produto, variacoes = [], onClose, onSaved }: ModalProdutoProps) {
+function ModalProduto({ produto, variacoes = [], onClose, onSaved, produtoraId }: ModalProdutoProps) {
   const supabase = createClient();
 
   const [nome, setNome] = useState(produto?.nome ?? "");
@@ -82,6 +89,10 @@ function ModalProduto({ produto, variacoes = [], onClose, onSaved }: ModalProdut
   const [temVariacao, setTemVariacao] = useState(produto?.tem_variacao ?? false);
   const [ativo, setAtivo] = useState(produto?.ativo ?? true);
   const [mostrarCheckout, setMostrarCheckout] = useState(produto?.mostrar_checkout ?? false);
+  const [exibirLojaPublica, setExibirLojaPublica] = useState(produto?.exibir_loja_publica ?? true);
+  const [exibirImagem, setExibirImagem] = useState(produto?.exibir_imagem ?? false);
+  const [imagemUrl, setImagemUrl] = useState<string | null>(produto?.imagem_url ?? null);
+  const [uploading, setUploading] = useState(false);
   const [varsLocais, setVarsLocais] = useState<{ id?: string; nome: string; estoque: string }[]>(
     variacoes.length
       ? variacoes.map((v) => ({ id: v.id, nome: v.nome, estoque: v.estoque != null ? String(v.estoque) : "" }))
@@ -104,9 +115,15 @@ function ModalProduto({ produto, variacoes = [], onClose, onSaved }: ModalProdut
 
   async function salvar() {
     setErro(null);
-    if (!nome.trim()) { setErro("Nome e obrigatorio."); return; }
+    if (!nome.trim()) {
+      setErro("Nome é obrigatório.");
+      return;
+    }
     const precoNum = parseFloat(preco.replace(/\./g, "").replace(",", "."));
-    if (isNaN(precoNum)) { setErro("Preco invalido."); return; }
+    if (isNaN(precoNum)) {
+      setErro("Preço inválido.");
+      return;
+    }
 
     setSalvando(true);
 
@@ -118,16 +135,35 @@ function ModalProduto({ produto, variacoes = [], onClose, onSaved }: ModalProdut
       tem_variacao: temVariacao,
       ativo,
       mostrar_checkout: mostrarCheckout,
+      exibir_loja_publica: exibirLojaPublica,
+      exibir_imagem: exibirImagem,
+      imagem_url: exibirImagem ? imagemUrl : null,
     };
 
     let produtoId = produto?.id;
 
     if (produto) {
-      const { error } = await supabase.from("produtos").update(payload).eq("id", produto.id);
-      if (error) { setErro(error.message); setSalvando(false); return; }
+      const { error } = await supabase
+        .from("produtos")
+        .update(payload)
+        .eq("id", produto.id)
+        .eq("produtora_id", produtoraId);
+      if (error) {
+        setErro(error.message);
+        setSalvando(false);
+        return;
+      }
     } else {
-      const { data, error } = await supabase.from("produtos").insert(payload).select("id").single();
-      if (error) { setErro(error.message); setSalvando(false); return; }
+      const { data, error } = await supabase
+        .from("produtos")
+        .insert({ ...payload, produtora_id: produtoraId })
+        .select("id")
+        .single();
+      if (error) {
+        setErro(error.message);
+        setSalvando(false);
+        return;
+      }
       produtoId = data.id;
     }
 
@@ -153,8 +189,14 @@ function ModalProduto({ produto, variacoes = [], onClose, onSaved }: ModalProdut
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-axon-panel border border-axon-border rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-axon-border shrink-0">
           <h2 className="text-base font-semibold text-white">
             {produto ? "Editar Produto" : "Novo Produto"}
@@ -177,19 +219,19 @@ function ModalProduto({ produto, variacoes = [], onClose, onSaved }: ModalProdut
           </div>
 
           <div>
-            <label className="block text-xs text-neutral-400 mb-1">Descricao</label>
+            <label className="block text-xs text-neutral-400 mb-1">Descrição</label>
             <textarea
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
               rows={2}
-              placeholder="Descricao breve do produto..."
+              placeholder="Descrição breve do produto..."
               className="w-full bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors resize-none"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-neutral-400 mb-1">Preco (R$) *</label>
+              <label className="block text-xs text-neutral-400 mb-1">Preço (R$) *</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -214,14 +256,14 @@ function ModalProduto({ produto, variacoes = [], onClose, onSaved }: ModalProdut
 
           <div className="space-y-3 pt-1">
             <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-sm text-neutral-300">Tem variacoes (ex: tamanhos)</span>
-              <button onClick={() => setTemVariacao((p) => !p)} className="text-axon-gold" aria-label="Toggle variacoes">
+              <span className="text-sm text-neutral-300">Tem variações (ex: tamanhos)</span>
+              <button onClick={() => setTemVariacao((p) => !p)} className="text-axon-gold" aria-label="Toggle variações">
                 {temVariacao ? <ToggleRight size={26} /> : <ToggleLeft size={26} className="text-neutral-600" />}
               </button>
             </label>
 
             <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-sm text-neutral-300">Mostrar no checkout de inscricao</span>
+              <span className="text-sm text-neutral-300">Mostrar no checkout de inscrição</span>
               <button onClick={() => setMostrarCheckout((p) => !p)} className="text-axon-gold" aria-label="Toggle checkout">
                 {mostrarCheckout ? <ToggleRight size={26} /> : <ToggleLeft size={26} className="text-neutral-600" />}
               </button>
@@ -233,11 +275,61 @@ function ModalProduto({ produto, variacoes = [], onClose, onSaved }: ModalProdut
                 {ativo ? <ToggleRight size={26} /> : <ToggleLeft size={26} className="text-neutral-600" />}
               </button>
             </label>
+
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="text-sm text-neutral-300">Exibir na página pública do festival</span>
+              <button onClick={() => setExibirLojaPublica((p) => !p)} className="text-axon-gold" aria-label="Toggle loja pública">
+                {exibirLojaPublica ? <ToggleRight size={26} /> : <ToggleLeft size={26} className="text-neutral-600" />}
+              </button>
+            </label>
+
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="text-sm text-neutral-300">Exibir foto do produto</span>
+              <button onClick={() => setExibirImagem((p) => !p)} className="text-axon-gold" aria-label="Toggle exibir foto">
+                {exibirImagem ? <ToggleRight size={26} /> : <ToggleLeft size={26} className="text-neutral-600" />}
+              </button>
+            </label>
           </div>
+
+          {exibirImagem && (
+            <div className="space-y-2">
+              <p className="text-xs text-neutral-500">
+                Dimensão Recomendada: 800x800px (Proporção 1:1, Quadrado) para evitar quebra de layout.
+              </p>
+              {!imagemUrl ? (
+                <UploadButton
+                  endpoint="imageUploader"
+                  onClientUploadComplete={(res) => {
+                    setImagemUrl(res[0].url);
+                    setUploading(false);
+                  }}
+                  onUploadError={(error) => {
+                    setErro(`Erro no upload: ${error.message}`);
+                    setUploading(false);
+                  }}
+                  onUploadBegin={() => setUploading(true)}
+                />
+              ) : (
+                <div className="relative inline-block">
+                  <img
+                    src={imagemUrl}
+                    alt="Preview"
+                    className="w-24 h-24 object-cover rounded-lg border border-axon-border"
+                  />
+                  <button
+                    onClick={() => setImagemUrl(null)}
+                    className="absolute -top-2 -right-2 bg-red-600 rounded-full p-0.5 text-white"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {temVariacao && (
             <div className="space-y-2">
-              <p className="text-xs text-neutral-400">Variacoes</p>
+              <p className="text-xs text-neutral-400">Variações</p>
               {varsLocais.map((v, i) => (
                 <div key={i} className="flex gap-2 items-center">
                   <input
@@ -254,13 +346,13 @@ function ModalProduto({ produto, variacoes = [], onClose, onSaved }: ModalProdut
                     placeholder="Qtd"
                     className="w-20 bg-axon-bg border border-axon-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-axon-gold transition-colors"
                   />
-                  <button onClick={() => removeVariacao(i)} className="text-neutral-600 hover:text-red-400 transition-colors" aria-label="Remover variacao">
+                  <button onClick={() => removeVariacao(i)} className="text-neutral-600 hover:text-red-400 transition-colors" aria-label="Remover variação">
                     <X size={16} />
                   </button>
                 </div>
               ))}
               <button onClick={addVariacao} className="text-xs text-axon-gold hover:opacity-80 transition-opacity flex items-center gap-1">
-                <Plus size={13} /> Adicionar variacao
+                <Plus size={13} /> Adicionar variação
               </button>
             </div>
           )}
@@ -278,11 +370,11 @@ function ModalProduto({ produto, variacoes = [], onClose, onSaved }: ModalProdut
           </button>
           <button
             onClick={salvar}
-            disabled={salvando}
+            disabled={salvando || uploading}
             className="flex-1 px-4 py-2 rounded-lg bg-axon-gold text-black text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
           >
-            {salvando && <Loader2 size={14} className="animate-spin" />}
-            {produto ? "Salvar alteracoes" : "Criar produto"}
+            {(salvando || uploading) && <Loader2 size={14} className="animate-spin" />}
+            {produto ? "Salvar alterações" : "Criar produto"}
           </button>
         </div>
       </div>
@@ -302,42 +394,91 @@ export default function LojaPage() {
   const [modalProduto, setModalProduto] = useState<Produto | null | "novo">(null);
   const [salvandoToggle, setSalvandoToggle] = useState<string | null>(null);
   const [filtroEntrega, setFiltroEntrega] = useState<"todos" | "pendente" | "entregue">("todos");
+  const [produtoraId, setProdutoraId] = useState("");
 
   const carregar = useCallback(async () => {
+    if (!produtoraId) return;
     setCarregando(true);
 
-    const [{ data: prods }, { data: vars }, { data: peds }, { data: escs }] = await Promise.all([
-      supabase.from("produtos").select("*").order("created_at"),
-      supabase.from("produto_variacoes").select("*").order("nome"),
-      supabase.from("pedido_itens").select("*").order("created_at", { ascending: false }),
-      supabase.from("escolas").select("id, nome").order("nome"),
+    const [{ data: prods }, { data: rawVars }, { data: rawPeds }, { data: escs }] = await Promise.all([
+      supabase.from("produtos").select("*").eq("produtora_id", produtoraId).order("created_at"),
+      supabase
+        .from("produto_variacoes")
+        .select("*, produtos!inner(produtora_id)")
+        .eq("produtos.produtora_id", produtoraId)
+        .order("nome"),
+      supabase
+        .from("pedido_itens")
+        .select("*, produtos!inner(produtora_id)")
+        .eq("produtos.produtora_id", produtoraId)
+        .order("created_at", { ascending: false }),
+      supabase.from("escolas").select("id, nome").eq("produtora_id", produtoraId).order("nome"),
     ]);
 
     setProdutos((prods as Produto[]) ?? []);
-    setVariacoes((vars as Variacao[]) ?? []);
-    setPedidos((peds as PedidoItem[]) ?? []);
+    setVariacoes((rawVars as Variacao[]) ?? []);
+    setPedidos((rawPeds as PedidoItem[]) ?? []);
     setEscolas((escs as Escola[]) ?? []);
     setCarregando(false);
+  }, [supabase, produtoraId]);
+
+  useEffect(() => {
+    async function obterProdutora() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data: usuario } = await supabase
+        .from("usuarios")
+        .select("produtora_id")
+        .eq("id", session.user.id)
+        .single();
+      if (usuario?.produtora_id) {
+        setProdutoraId(usuario.produtora_id);
+      }
+    }
+    obterProdutora();
   }, [supabase]);
 
-  useEffect(() => { carregar(); }, [carregar]);
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
 
   async function toggleField(id: string, campo: "ativo" | "mostrar_checkout", valor: boolean) {
     setSalvandoToggle(id + campo);
-    await supabase.from("produtos").update({ [campo]: valor }).eq("id", id);
-    setProdutos((p) => p.map((pr) => (pr.id === id ? { ...pr, [campo]: valor } : pr)));
+    const { error } = await supabase
+      .from("produtos")
+      .update({ [campo]: valor })
+      .eq("id", id)
+      .eq("produtora_id", produtoraId);
+    if (!error) {
+      setProdutos((p) => p.map((pr) => (pr.id === id ? { ...pr, [campo]: valor } : pr)));
+    }
     setSalvandoToggle(null);
   }
 
   async function excluirProduto(id: string) {
     if (!confirm("Excluir este produto?")) return;
-    await supabase.from("produtos").delete().eq("id", id);
-    setProdutos((p) => p.filter((pr) => pr.id !== id));
+    const { error } = await supabase
+      .from("produtos")
+      .delete()
+      .eq("id", id)
+      .eq("produtora_id", produtoraId);
+    if (!error) {
+      setProdutos((p) => p.filter((pr) => pr.id !== id));
+    }
   }
 
   async function alterarStatusPedido(id: string, status: "pendente" | "entregue") {
-    await supabase.from("pedido_itens").update({ status }).eq("id", id);
-    setPedidos((p) => p.map((pe) => (pe.id === id ? { ...pe, status } : pe)));
+    const { error } = await supabase
+      .from("pedido_itens")
+      .update({ status })
+      .eq("id", id)
+      .eq("produtora_id", produtoraId);
+    if (!error) {
+      setPedidos((p) => p.map((pe) => (pe.id === id ? { ...pe, status } : pe)));
+    }
   }
 
   const totalReceita = pedidos.reduce((s, p) => s + p.preco_unitario * p.quantidade, 0);
@@ -367,6 +508,7 @@ export default function LojaPage() {
           }
           onClose={() => setModalProduto(null)}
           onSaved={carregar}
+          produtoraId={produtoraId}
         />
       )}
 
@@ -423,7 +565,7 @@ export default function LojaPage() {
         <div className="flex border-b border-axon-border">
           {[
             { id: "produtos", label: "Produtos" },
-            { id: "entregas", label: "Relatorio de Entregas" },
+            { id: "entregas", label: "Relatório de Entregas" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -469,6 +611,20 @@ export default function LojaPage() {
                               {p.mostrar_checkout && (
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-axon-gold-dim text-axon-gold border border-axon-gold/20">
                                   No checkout
+                                </span>
+                              )}
+                              {p.exibir_loja_publica ? (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-axon-green-dim text-axon-green border border-axon-green/20">
+                                  Público
+                                </span>
+                              ) : (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-500">
+                                  Oculto na Loja
+                                </span>
+                              )}
+                              {p.exibir_imagem && p.imagem_url && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400 border border-blue-400/20">
+                                  Com Foto
                                 </span>
                               )}
                             </div>
