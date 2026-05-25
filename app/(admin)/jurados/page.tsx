@@ -312,12 +312,7 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
       })
       .eq("id", usuarioCriadoTyped.id);
 
-    if (!usuarioCriadoTyped.produtora_id) {
-      await supabase
-        .from("usuarios")
-        .update({ produtora_id: produtoraId })
-        .eq("id", usuarioCriadoTyped.id);
-    }
+    // Correção: bloco de update condicional removido (já tratado acima)
 
     setSalvando(false);
     setEtapa("confirmacao");
@@ -331,23 +326,31 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
   }
 
   function abrirWhatsApp() {
+    const numeroLimpo = telefone.replace(/\D/g, "");
     const link = `${window.location.origin}/jurado`;
     const msg = encodeURIComponent(
       `Olá, ${nome.trim()}! Você foi convidado para ser jurado em ${termo.organizacao}.\n\nAcesse o link para criar sua senha:\n\n${link}`
     );
-    window.open(`https://wa.me/?text=${msg}`, "_blank");
+    if (numeroLimpo) {
+      window.open(`https://api.whatsapp.com/send?phone=55${numeroLimpo}&text=${msg}`, "_blank");
+    } else {
+      window.open(`https://api.whatsapp.com/send?text=${msg}`, "_blank");
+    }
   }
 
   return (
+    // Correção: backdrop unificado com overflow-y-auto e p-4
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-xl border border-axon-border bg-axon-panel shadow-2xl"
+        // Caixa interna com scroll controlado (max-h-[90vh] flex flex-col)
+        className="w-full max-w-md max-h-[90vh] flex flex-col rounded-xl border border-axon-border bg-axon-panel shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-axon-border px-6 py-4">
+        {/* Cabeçalho com shrink-0 */}
+        <div className="shrink-0 flex items-center justify-between border-b border-axon-border px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-white">
               {etapa === "formulario"
@@ -375,7 +378,8 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
 
         {etapa === "formulario" && (
           <>
-            <div className="space-y-4 p-6">
+            {/* Área de conteúdo scrollável (flex-1 overflow-y-auto) */}
+            <div className="space-y-4 p-6 overflow-y-auto flex-1">
               <Dica>
                 {editando
                   ? "Edite os dados globais do jurado. Os campos privados só serão bloqueados se o e-mail informado colidir com outro cadastro protegido."
@@ -600,7 +604,8 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
               )}
             </div>
 
-            <div className="flex gap-3 border-t border-axon-border px-6 py-4">
+            {/* Rodapé com shrink-0 */}
+            <div className="shrink-0 flex gap-3 border-t border-axon-border px-6 py-4">
               <button
                 onClick={onClose}
                 className="flex-1 rounded-lg border border-axon-border px-4 py-2 text-sm text-gray-400 transition-all duration-200 hover:border-gray-500 hover:text-white"
@@ -621,7 +626,7 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
 
         {etapa === "confirmacao" && (
           <>
-            <div className="space-y-5 p-6">
+            <div className="space-y-5 p-6 overflow-y-auto flex-1">
               <div className="flex items-center gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
                 <CheckCircle2 size={18} className="shrink-0 text-emerald-400" />
                 <div>
@@ -655,7 +660,7 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
               </div>
             </div>
 
-            <div className="border-t border-axon-border px-6 py-4">
+            <div className="shrink-0 border-t border-axon-border px-6 py-4">
               <button
                 onClick={onClose}
                 className="w-full rounded-lg bg-axon-gold px-4 py-2 text-sm font-bold text-black transition-all duration-200 hover:bg-axon-gold/80 active:scale-95"
@@ -673,7 +678,7 @@ function ModalJurado({ termo, produtoraId, jurado, onClose, onSaved }: ModalJura
 interface ConfirmarExclusaoJuradoProps {
   jurado: Jurado;
   onClose: () => void;
-  onConfirmar: () => Promise<void>;
+  onConfirmar: () => Promise<string | null>;
 }
 
 function ConfirmarExclusaoJurado({
@@ -682,20 +687,30 @@ function ConfirmarExclusaoJurado({
   onConfirmar,
 }: ConfirmarExclusaoJuradoProps) {
   const [excluindo, setExcluindo] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   async function handleConfirmar() {
     setExcluindo(true);
-    await onConfirmar();
-    setExcluindo(false);
+    setErro(null);
+    const erroMsg = await onConfirmar();
+    if (erroMsg) {
+      setErro(erroMsg);
+      setExcluindo(false);
+      // Não fecha o modal se houver erro
+    } else {
+      setExcluindo(false);
+      onClose();
+    }
   }
 
   return (
+    // Backdrop unificado
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-xl border border-red-500/20 bg-axon-panel shadow-2xl"
+        className="w-full max-w-md rounded-xl border border-red-500/20 bg-axon-panel shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-axon-border px-6 py-4">
@@ -726,6 +741,12 @@ function ConfirmarExclusaoJurado({
             Use esta ação apenas quando o cadastro realmente não precisar mais existir na base
             central de jurados.
           </p>
+
+          {erro && (
+            <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
+              Não foi possível excluir o jurado. Ele pode estar escalado em festivais ativos.
+            </div>
+          )}
         </div>
 
         <div className="flex gap-3 border-t border-axon-border px-6 py-4">
@@ -844,20 +865,22 @@ export default function JuradosPage() {
     void carregar();
   }, [carregar]);
 
-  async function excluirJurado(jurado: Jurado | null) {
-    if (!jurado || !produtoraId) return;
+  async function excluirJurado(jurado: Jurado | null): Promise<string | null> {
+    if (!jurado || !produtoraId) return null;
 
     const supabase = createClient();
 
-    await supabase
+    const { error } = await supabase
       .from("usuarios")
       .delete()
       .eq("id", jurado.id)
       .eq("produtora_id", produtoraId)
       .eq("role", "jurado");
 
-    setJuradoExclusao(null);
+    if (error) return error.message;
+
     await carregar();
+    return null;
   }
 
   return (
