@@ -643,7 +643,7 @@ export default function MarketingPage() {
     setCarregandoProdutos(true);
     const { data, error } = await supabase
       .from("evento_produtos")
-      .select("id, preco_evento, estoque_evento, ativo_evento, pdv_produtos!inner(id, nome, preco, descricao), eventos!inner(produtora_id)")
+      .select("id, preco_evento, estoque_evento, ativo_evento, produtos!inner(id, nome, preco, descricao), eventos!inner(produtora_id)")
       .eq("evento_id", eventoSelecionadoId)
       .eq("ativo_evento", true)
       .eq("eventos.produtora_id", produtoraId);
@@ -651,9 +651,9 @@ export default function MarketingPage() {
     if (!error && data) {
       const produtos = (data as any[])
         .map((item) => {
-          const produtoData = Array.isArray(item.pdv_produtos)
-            ? item.pdv_produtos[0]
-            : item.pdv_produtos;
+          const produtoData = Array.isArray(item.produtos)
+            ? item.produtos[0]
+            : item.produtos;
           if (!produtoData) return null;
           return {
             id: item.id,
