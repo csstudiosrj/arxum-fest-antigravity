@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Settings,
@@ -23,6 +23,10 @@ import {
   AlertTriangle,
   ChevronRight,
 } from "lucide-react";
+
+const supabase = createClient();
+
+// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type PerfilFestival = {
   id: string;
@@ -56,7 +60,6 @@ type TenantConfig = {
   perfil_id: string | null;
   nome_organizacao: string | null;
   logo_url: string | null;
-  cor_primaria: string | null;
   termo_inscricao: string | null;
   termo_participante: string | null;
   termo_grupo: string | null;
@@ -73,6 +76,8 @@ type Toast = {
 
 type AbaId = "perfil" | "estilos" | "terminologia" | "organizacao";
 
+// ─── Ícones estáticos ─────────────────────────────────────────────────────────
+
 const ICONE_MAP: Record<string, React.ReactNode> = {
   PersonStanding: <PersonStanding size={26} />,
   Music2: <Music2 size={26} />,
@@ -81,6 +86,8 @@ const ICONE_MAP: Record<string, React.ReactNode> = {
   Zap: <Zap size={26} />,
   Sparkles: <Sparkles size={26} />,
 };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 let toastId = 0;
 
@@ -92,9 +99,9 @@ function ToastContainer({
   remover: (id: number) => void;
 }) {
   const cores: Record<Toast["tipo"], string> = {
-    sucesso: "border-emerald-500/40 bg-[#1a1413]",
-    erro: "border-red-500/40 bg-[#1a1413]",
-    aviso: "border-yellow-500/40 bg-[#1a1413]",
+    sucesso: "border-emerald-500/40 bg-arxum-panel",
+    erro: "border-red-500/40 bg-arxum-panel",
+    aviso: "border-yellow-500/40 bg-arxum-panel",
   };
 
   const icones: Record<Toast["tipo"], React.ReactNode> = {
@@ -135,6 +142,14 @@ function ModalConfirmacao({
   onCancelar: () => void;
   carregando: boolean;
 }) {
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !carregando) onCancelar();
+    };
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [carregando, onCancelar]);
+
   return (
     <>
       <div
@@ -142,7 +157,10 @@ function ModalConfirmacao({
         onClick={!carregando ? onCancelar : undefined}
       />
       <div className="fixed inset-0 flex items-center justify-center z-[100] p-4">
-        <div className="bg-[#1a1413] border border-[#2e2825] rounded-2xl w-full max-w-md p-7 space-y-5 shadow-2xl">
+        <div
+          className="bg-arxum-panel border border-arxum-border rounded-2xl w-full max-w-md p-7 space-y-5 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="flex items-start gap-4">
             <div className="p-2.5 bg-yellow-500/10 rounded-xl border border-yellow-500/20 shrink-0">
               <AlertTriangle size={22} className="text-yellow-400" />
@@ -187,7 +205,7 @@ function ModalConfirmacao({
 
 function Skeleton({ className }: { className?: string }) {
   return (
-    <div className={`animate-pulse bg-[#2e282560] rounded-lg ${className ?? ""}`} />
+    <div className={`animate-pulse bg-arxum-border/30 rounded-lg ${className ?? ""}`} />
   );
 }
 
@@ -202,8 +220,8 @@ function LoadingSkeleton() {
         <Skeleton className="h-10 w-32" />
       </div>
 
-      <div className="bg-[#1a1413] border border-[#2e2825] rounded-xl overflow-hidden">
-        <div className="flex border-b border-[#2e2825] px-4 gap-2 py-1">
+      <div className="bg-arxum-panel border border-arxum-border rounded-xl overflow-hidden">
+        <div className="flex border-b border-arxum-border px-4 gap-2 py-1">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-10 w-32 my-2" />
           ))}
@@ -223,11 +241,6 @@ function LoadingSkeleton() {
 }
 
 export default function ConfiguracoesPage() {
-  // FIX 1: createClient() movido para useRef para evitar recriação a cada render
-  // e consequente loop no useEffect que depende de `supabase`.
-  const supabaseRef = useRef(createClient());
-  const supabase = supabaseRef.current;
-
   const [abaAtiva, setAbaAtiva] = useState<AbaId>("perfil");
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -263,9 +276,6 @@ export default function ConfiguracoesPage() {
     setToasts((p) => p.filter((t) => t.id !== id));
   }, []);
 
-  // FIX 2: carregarEstilosDoPerfil agora está em useCallback para ser
-  // referenciado de forma estável no useEffect e em outros handlers,
-  // evitando warnings de exhaustive-deps e re-execuções desnecessárias.
   const carregarEstilosDoPerfil = useCallback(
     async (perfilId: string) => {
       try {
@@ -281,7 +291,7 @@ export default function ConfiguracoesPage() {
         addToast("erro", "Erro ao carregar estilos do perfil.");
       }
     },
-    [supabase, addToast]
+    [addToast]
   );
 
   useEffect(() => {
@@ -372,9 +382,7 @@ export default function ConfiguracoesPage() {
     }
 
     void carregar();
-    // supabase vem do ref e é estável; carregarEstilosDoPerfil e addToast
-    // são memoizados com useCallback — sem risco de loop.
-  }, [supabase, addToast, carregarEstilosDoPerfil]);
+  }, [addToast, carregarEstilosDoPerfil]);
 
   function selecionarPerfil(perfil: PerfilFestival) {
     if (formConfig.perfil_id === perfil.id) return;
@@ -395,16 +403,8 @@ export default function ConfiguracoesPage() {
         throw new Error("produtora_id não encontrada.");
       }
 
-      if (estilosAtivos.length > 0) {
-        const { error } = await supabase
-          .from("tenant_estilos_ativos")
-          .delete()
-          .eq("produtora_id", produtoraId);
-
-        if (error) throw error;
-        setEstilosAtivos([]);
-      }
-
+      // Apenas limpar estado local — NÃO deletar do banco ainda
+      setEstilosAtivos([]);
       setFormConfig((p) => ({ ...p, perfil_id: perfil.id }));
       await carregarEstilosDoPerfil(perfil.id);
       addToast("sucesso", `Perfil ${perfil.nome} selecionado. Salve para confirmar.`);
@@ -418,14 +418,6 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // ============================================================
-  // toggleEstilo
-  // FIX 3: o branch de INSERT (registro inexistente) usava
-  // onConflict: 'id', mas não enviava nenhum `id`, tornando o
-  // conflito inoperante e abrindo espaço para duplicatas.
-  // Ambos os branches agora usam onConflict: 'produtora_id,estilo_id',
-  // que reflete a unique constraint real da tabela.
-  // ============================================================
   async function toggleEstilo(estilo: Estilo) {
     if (!produtoraId) return;
 
@@ -467,13 +459,6 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // ============================================================
-  // toggleTodos
-  // FIX 4: o branch de desativação usava onConflict: 'id', que
-  // funciona apenas quando todos os registros já possuem `id`.
-  // Unificado para onConflict: 'produtora_id,estilo_id' em ambos
-  // os branches, garantindo consistência com a constraint da tabela.
-  // ============================================================
   async function toggleTodos(ativar: boolean) {
     if (!produtoraId) return;
 
@@ -554,9 +539,6 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // ============================================================
-  // criarEstiloManual — INSERT novo estilo + INSERT novo registro ativo
-  // ============================================================
   async function criarEstiloManual() {
     if (!novoEstilo.nome.trim() || !formConfig.perfil_id || !produtoraId) return;
 
@@ -586,8 +568,7 @@ export default function ConfiguracoesPage() {
 
       setEstilos((p) => [...p, estiloData]);
 
-      // Novo estilo: nunca terá registro em tenant_estilos_ativos ainda,
-      // então faz INSERT direto (sem id) com onConflict correto.
+      // Novo estilo sempre ativo
       const { data: ativoData, error: ativoError } = await supabase
         .from("tenant_estilos_ativos")
         .insert({
@@ -618,17 +599,32 @@ export default function ConfiguracoesPage() {
     setSalvandoPerfil(true);
 
     try {
+      const perfilAnterior = config.perfil_id;
+      const perfilNovo = formConfig.perfil_id;
+
+      // 1. Atualizar tenant_config
       const { error } = await supabase
         .from("tenant_config")
         .update({
-          perfil_id: formConfig.perfil_id,
+          perfil_id: perfilNovo,
           updated_at: new Date().toISOString(),
         })
         .eq("produtora_id", produtoraId);
 
       if (error) throw error;
 
-      setConfig((c) => (c ? { ...c, perfil_id: formConfig.perfil_id ?? null } : c));
+      // 2. Se mudou de perfil, deletar estilos ativos do banco
+      if (perfilNovo && perfilNovo !== perfilAnterior) {
+        const { error: deleteError } = await supabase
+          .from("tenant_estilos_ativos")
+          .delete()
+          .eq("produtora_id", produtoraId);
+
+        if (deleteError) throw deleteError;
+        setEstilosAtivos([]); // já estava vazio, mas garante
+      }
+
+      setConfig((c) => (c ? { ...c, perfil_id: perfilNovo ?? null } : c));
       addToast("sucesso", "Tipo de festival salvo com sucesso!");
     } catch {
       addToast("erro", "Erro ao salvar tipo de festival.");
@@ -689,7 +685,6 @@ export default function ConfiguracoesPage() {
         .update({
           nome_organizacao: formConfig.nome_organizacao,
           logo_url: formConfig.logo_url,
-          cor_primaria: formConfig.cor_primaria,
           updated_at: new Date().toISOString(),
         })
         .eq("produtora_id", produtoraId);
@@ -702,7 +697,6 @@ export default function ConfiguracoesPage() {
               ...c,
               nome_organizacao: formConfig.nome_organizacao ?? null,
               logo_url: formConfig.logo_url ?? null,
-              cor_primaria: formConfig.cor_primaria ?? null,
             }
           : c
       );
@@ -715,13 +709,19 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // FIX 5: previewTimeoutRef removido — o callback era `() => {}` (vazio),
-  // portanto o debounce não tinha efeito algum. A função agora atualiza
-  // o formConfig diretamente, que já é reativo e alimenta o preview em
-  // tempo real sem necessidade de timeout.
   function handleTerminologiaChange(campo: keyof TenantConfig, valor: string) {
     setFormConfig((p) => ({ ...p, [campo]: valor }));
   }
+
+  // Fechar modal de novo estilo com Escape e overlay
+  useEffect(() => {
+    if (!modalEstilo || criandoEstilo) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setModalEstilo(false);
+    };
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [modalEstilo, criandoEstilo]);
 
   if (loading) return <LoadingSkeleton />;
 
@@ -758,7 +758,10 @@ export default function ConfiguracoesPage() {
             onClick={() => !criandoEstilo && setModalEstilo(false)}
           />
           <div className="fixed inset-0 flex items-center justify-center z-[100] p-4">
-            <div className="bg-[#1a1413] border border-[#2e2825] rounded-2xl w-full max-w-md p-7 space-y-5 shadow-2xl">
+            <div
+              className="bg-arxum-panel border border-arxum-border rounded-2xl w-full max-w-md p-7 space-y-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-semibold text-white">
@@ -796,7 +799,7 @@ export default function ConfiguracoesPage() {
                     }
                     disabled={criandoEstilo}
                     onKeyDown={(e) => e.key === "Enter" && void criarEstiloManual()}
-                    className="w-full bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#C5A059] transition-colors disabled:opacity-50"
+                    className="w-full bg-arxum-bg border border-arxum-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-arxum-gold transition-colors disabled:opacity-50"
                   />
                 </div>
 
@@ -812,7 +815,7 @@ export default function ConfiguracoesPage() {
                       setNovoEstilo((p) => ({ ...p, descricao: e.target.value }))
                     }
                     disabled={criandoEstilo}
-                    className="w-full bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#C5A059] transition-colors disabled:opacity-50"
+                    className="w-full bg-arxum-bg border border-arxum-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-arxum-gold transition-colors disabled:opacity-50"
                   />
                 </div>
               </div>
@@ -829,7 +832,7 @@ export default function ConfiguracoesPage() {
                 <button
                   onClick={() => void criarEstiloManual()}
                   disabled={criandoEstilo || !novoEstilo.nome.trim()}
-                  className="flex items-center gap-2 bg-[#C5A059] text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-[#d4b06a] transition-colors text-sm disabled:opacity-40 min-w-[140px] justify-center"
+                  className="flex items-center gap-2 bg-arxum-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-arxum-gold-dim transition-colors text-sm disabled:opacity-40 min-w-[140px] justify-center"
                 >
                   {criandoEstilo ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -848,7 +851,7 @@ export default function ConfiguracoesPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 mb-1">
-              <Settings size={20} className="text-[#C5A059]" />
+              <Settings size={20} className="text-arxum-gold" />
               <h1 className="text-2xl font-bold text-white tracking-tight">
                 Configurações do Sistema
               </h1>
@@ -859,15 +862,15 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        <div className="bg-[#1a1413] border border-[#2e2825] rounded-2xl overflow-hidden">
-          <div className="flex border-b border-[#2e2825] px-2 overflow-x-auto scrollbar-none">
+        <div className="bg-arxum-panel border border-arxum-border rounded-2xl overflow-hidden">
+          <div className="flex border-b border-arxum-border px-2 overflow-x-auto scrollbar-none">
             {abas.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setAbaAtiva(id)}
                 className={`flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-all duration-200 ${
                   abaAtiva === id
-                    ? "border-[#C5A059] text-[#C5A059]"
+                    ? "border-arxum-gold text-arxum-gold"
                     : "border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-600"
                 }`}
               >
@@ -894,7 +897,7 @@ export default function ConfiguracoesPage() {
                   <button
                     onClick={() => void salvarPerfil()}
                     disabled={salvandoPerfil || !formConfig.perfil_id}
-                    className="flex items-center gap-2 bg-[#C5A059] text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-[#d4b06a] transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
+                    className="flex items-center gap-2 bg-arxum-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-arxum-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
                     {salvandoPerfil ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -915,17 +918,17 @@ export default function ConfiguracoesPage() {
                         onClick={() => selecionarPerfil(perfil)}
                         className={`relative flex flex-col items-center text-center gap-3 p-5 rounded-xl border transition-all duration-200 ${
                           ativo
-                            ? "border-[#C5A059] bg-[#C5A05908] shadow-[0_0_20px_rgba(197,160,89,0.08)]"
-                            : "border-[#2e2825] bg-[#0d0807] hover:border-[#3e3835] hover:bg-[#1a1413]"
+                            ? "border-arxum-gold bg-arxum-gold-dim shadow-[0_0_20px_rgba(197,160,89,0.08)]"
+                            : "border-arxum-border bg-arxum-bg hover:border-arxum-gold hover:bg-arxum-panel"
                         }`}
                       >
                         {ativo && (
                           <div className="absolute top-3 right-3">
-                            <CheckCircle size={15} className="text-[#C5A059]" />
+                            <CheckCircle size={15} className="text-arxum-gold" />
                           </div>
                         )}
 
-                        <div className={ativo ? "text-[#C5A059]" : "text-gray-600"}>
+                        <div className={ativo ? "text-arxum-gold" : "text-gray-600"}>
                           {ICONE_MAP[perfil.icone] ?? <Sparkles size={26} />}
                         </div>
 
@@ -941,17 +944,17 @@ export default function ConfiguracoesPage() {
                 </div>
 
                 {perfilAtivo && (
-                  <div className="bg-[#C5A05908] border border-[#C5A05925] rounded-xl p-4 flex items-center justify-between gap-3">
+                  <div className="bg-arxum-gold-dim border border-arxum-gold-dim rounded-xl p-4 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <CheckCircle size={16} className="text-[#C5A059] shrink-0" />
-                      <p className="text-sm text-[#C5A059]">
+                      <CheckCircle size={16} className="text-arxum-gold shrink-0" />
+                      <p className="text-sm text-arxum-gold">
                         <strong>{perfilAtivo.nome}</strong> selecionado. Vá para{" "}
                         <strong>Estilos / Modalidades</strong> para configurar as opções.
                       </p>
                     </div>
                     <button
                       onClick={() => setAbaAtiva("estilos")}
-                      className="flex items-center gap-1 text-xs text-[#C5A059] hover:text-white transition-colors whitespace-nowrap"
+                      className="flex items-center gap-1 text-xs text-arxum-gold hover:text-white transition-colors whitespace-nowrap"
                     >
                       Ver estilos <ChevronRight size={13} />
                     </button>
@@ -976,7 +979,7 @@ export default function ConfiguracoesPage() {
                   {formConfig.perfil_id && (
                     <button
                       onClick={() => setModalEstilo(true)}
-                      className="flex items-center gap-2 text-sm border border-[#2e2825] text-gray-400 hover:text-white hover:border-[#3e3835] px-4 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                      className="flex items-center gap-2 text-sm border border-arxum-border text-gray-400 hover:text-white hover:border-arxum-gold px-4 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0"
                     >
                       <Plus size={14} />
                       Adicionar estilo
@@ -990,7 +993,7 @@ export default function ConfiguracoesPage() {
                     <p className="text-sm">Selecione um tipo de festival primeiro.</p>
                     <button
                       onClick={() => setAbaAtiva("perfil")}
-                      className="text-[#C5A059] text-sm hover:text-[#d4b06a] transition-colors mt-2 flex items-center gap-1 mx-auto"
+                      className="text-arxum-gold text-sm hover:text-white transition-colors mt-2 flex items-center gap-1 mx-auto"
                     >
                       Ir para Tipo de Festival <ChevronRight size={13} />
                     </button>
@@ -1000,7 +1003,7 @@ export default function ConfiguracoesPage() {
                     <p className="text-sm">Nenhum estilo encontrado para este perfil.</p>
                     <button
                       onClick={() => setModalEstilo(true)}
-                      className="text-[#C5A059] text-sm hover:text-[#d4b06a] transition-colors mt-2"
+                      className="text-arxum-gold text-sm hover:text-white transition-colors mt-2"
                     >
                       Criar o primeiro estilo
                     </button>
@@ -1017,13 +1020,13 @@ export default function ConfiguracoesPage() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => void toggleTodos(true)}
-                          className="text-xs text-gray-500 hover:text-white px-3 py-1.5 rounded-lg border border-[#2e2825] hover:border-[#3e3835] transition-colors"
+                          className="text-xs text-gray-500 hover:text-white px-3 py-1.5 rounded-lg border border-arxum-border hover:border-arxum-gold transition-colors"
                         >
                           Ativar todos
                         </button>
                         <button
                           onClick={() => void toggleTodos(false)}
-                          className="text-xs text-gray-500 hover:text-red-400 px-3 py-1.5 rounded-lg border border-[#2e2825] hover:border-red-500/30 transition-colors"
+                          className="text-xs text-gray-500 hover:text-red-400 px-3 py-1.5 rounded-lg border border-arxum-border hover:border-red-500/30 transition-colors"
                         >
                           Desativar todos
                         </button>
@@ -1042,8 +1045,8 @@ export default function ConfiguracoesPage() {
                             onClick={() => void toggleEstilo(estilo)}
                             className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all duration-200 ${
                               ativo
-                                ? "border-[#C5A05935] bg-[#C5A05905]"
-                                : "border-[#2e2825] bg-[#0d0807] hover:border-[#3e3835]"
+                                ? "border-arxum-gold-dim bg-arxum-gold-dim"
+                                : "border-arxum-border bg-arxum-bg hover:border-arxum-gold"
                             }`}
                           >
                             <div className="flex-1 min-w-0">
@@ -1063,7 +1066,7 @@ export default function ConfiguracoesPage() {
 
                             <div
                               className={`ml-4 shrink-0 transition-colors ${
-                                ativo ? "text-[#C5A059]" : "text-gray-700"
+                                ativo ? "text-arxum-gold" : "text-gray-700"
                               }`}
                             >
                               {ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
@@ -1093,7 +1096,7 @@ export default function ConfiguracoesPage() {
                   <button
                     onClick={() => void salvarTerminologia()}
                     disabled={salvandoTerminologia}
-                    className="flex items-center gap-2 bg-[#C5A059] text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-[#d4b06a] transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
+                    className="flex items-center gap-2 bg-arxum-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-arxum-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
                     {salvandoTerminologia ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -1145,13 +1148,13 @@ export default function ConfiguracoesPage() {
                         onChange={(e) =>
                           handleTerminologiaChange(campo as keyof TenantConfig, e.target.value)
                         }
-                        className="w-full bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-[#C5A059] transition-colors"
+                        className="w-full bg-arxum-bg border border-arxum-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-arxum-gold transition-colors"
                       />
                     </div>
                   ))}
                 </div>
 
-                <div className="bg-[#0d0807] border border-[#2e2825] rounded-xl p-5 space-y-3">
+                <div className="bg-arxum-bg border border-arxum-border rounded-xl p-5 space-y-3">
                   <p className="text-xs text-gray-600 font-medium uppercase tracking-wider">
                     Preview em tempo real
                   </p>
@@ -1180,7 +1183,7 @@ export default function ConfiguracoesPage() {
                     .
                   </p>
 
-                  <div className="pt-2 border-t border-[#2e2825] grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="pt-2 border-t border-arxum-border grid grid-cols-2 md:grid-cols-5 gap-3">
                     {[
                       { label: "Evento", valor: formConfig.termo_evento || "Evento" },
                       { label: "Inscrição", valor: formConfig.termo_inscricao || "Inscrição" },
@@ -1196,7 +1199,7 @@ export default function ConfiguracoesPage() {
                     ].map(({ label, valor }) => (
                       <div key={label} className="text-center">
                         <p className="text-xs text-gray-600">{label}</p>
-                        <p className="text-xs text-[#C5A059] font-medium mt-0.5 truncate">
+                        <p className="text-xs text-arxum-gold font-medium mt-0.5 truncate">
                           {valor}
                         </p>
                       </div>
@@ -1221,7 +1224,7 @@ export default function ConfiguracoesPage() {
                   <button
                     onClick={() => void salvarOrganizacao()}
                     disabled={salvandoOrganizacao}
-                    className="flex items-center gap-2 bg-[#C5A059] text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-[#d4b06a] transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
+                    className="flex items-center gap-2 bg-arxum-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-arxum-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
                     {salvandoOrganizacao ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -1244,7 +1247,7 @@ export default function ConfiguracoesPage() {
                       onChange={(e) =>
                         setFormConfig((p) => ({ ...p, nome_organizacao: e.target.value }))
                       }
-                      className="w-full bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-[#C5A059] transition-colors"
+                      className="w-full bg-arxum-bg border border-arxum-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-arxum-gold transition-colors"
                     />
                   </div>
 
@@ -1260,82 +1263,19 @@ export default function ConfiguracoesPage() {
                         onChange={(e) =>
                           setFormConfig((p) => ({ ...p, logo_url: e.target.value }))
                         }
-                        className="flex-1 bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-[#C5A059] transition-colors"
+                        className="flex-1 bg-arxum-bg border border-arxum-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-arxum-gold transition-colors"
                       />
                       {formConfig.logo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={formConfig.logo_url}
                           alt="Preview do logo"
-                          className="w-10 h-10 rounded-lg object-contain border border-[#2e2825] bg-[#0d0807] p-1"
+                          className="w-10 h-10 rounded-lg object-contain border border-arxum-border bg-arxum-bg p-1"
                           onError={(e) => {
                             e.currentTarget.style.display = "none";
                           }}
                         />
                       ) : null}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Cor Primária
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <input
-                          type="color"
-                          value={formConfig.cor_primaria ?? "#C5A059"}
-                          onChange={(e) =>
-                            setFormConfig((p) => ({ ...p, cor_primaria: e.target.value }))
-                          }
-                          className="w-11 h-11 rounded-lg border border-[#2e2825] bg-[#0d0807] cursor-pointer p-1 appearance-none"
-                        />
-                      </div>
-                      <input
-                        type="text"
-                        value={formConfig.cor_primaria ?? "#C5A059"}
-                        onChange={(e) =>
-                          setFormConfig((p) => ({ ...p, cor_primaria: e.target.value }))
-                        }
-                        className="flex-1 bg-[#0d0807] border border-[#2e2825] rounded-lg px-4 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-[#C5A059] transition-colors"
-                        maxLength={7}
-                      />
-                    </div>
-                    <p className="text-xs text-gray-600">
-                      Usada em botões, destaques e elementos principais do sistema.
-                    </p>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Preview
-                    </label>
-                    <div className="bg-[#0d0807] border border-[#2e2825] rounded-lg p-4 space-y-2.5">
-                      <button
-                        style={{ backgroundColor: formConfig.cor_primaria ?? "#C5A059" }}
-                        className="w-full py-2 rounded-lg text-black font-semibold text-sm transition-opacity hover:opacity-90"
-                      >
-                        Botão Principal
-                      </button>
-
-                      <div className="flex items-center gap-2">
-                        <div
-                          style={{
-                            borderColor: formConfig.cor_primaria ?? "#C5A059",
-                            color: formConfig.cor_primaria ?? "#C5A059",
-                          }}
-                          className="border rounded-lg px-3 py-1.5 text-xs font-medium"
-                        >
-                          Badge Ativo
-                        </div>
-
-                        <div
-                          style={{ color: formConfig.cor_primaria ?? "#C5A059" }}
-                          className="text-xs font-medium"
-                        >
-                          Link de ação
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </div>
