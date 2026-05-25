@@ -103,6 +103,18 @@ interface CategoriaPremiacao {
   premio_dinheiro_3: number | null;
 }
 
+interface ProdutoLoja {
+  id: string;
+  preco_evento: number | null;
+  estoque_evento: number | null;
+  nome: string;
+  preco: number;
+  descricao: string | null;
+  imagem_url: string | null;
+  exibir_imagem: boolean;
+  exibir_loja_publica: boolean;
+}
+
 interface EventoRow {
   id: string;
   nome: string;
@@ -171,13 +183,39 @@ interface CategoriaPremiacaoRow {
   premio_dinheiro_3: number | null;
 }
 
+interface EventoProdutoRow {
+  id: string;
+  preco_evento: number | null;
+  estoque_evento: number | null;
+  ativo_evento: boolean;
+  produtos:
+    | {
+        id: string;
+        nome: string;
+        preco: number;
+        descricao: string | null;
+        imagem_url: string | null;
+        exibir_imagem: boolean;
+        exibir_loja_publica: boolean;
+      }
+    | {
+        id: string;
+        nome: string;
+        preco: number;
+        descricao: string | null;
+        imagem_url: string | null;
+        exibir_imagem: boolean;
+        exibir_loja_publica: boolean;
+      }[];
+}
+
 interface DadosEventoPublico {
   evento: Evento;
   jurados: JuradoPublico[];
   locais: LocalEvento[];
   termos: TermoDocumento[];
   categoriasPremiacao: CategoriaPremiacao[];
-  produtosLoja: any[];
+  produtosLoja: ProdutoLoja[];
 }
 
 function formatarData(iso: string | null): string {
@@ -744,7 +782,7 @@ async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null
     ev.exibir_loja_publica
       ? supabase
           .from("evento_produtos")
-          .select("id, preco_evento, estoque_evento, ativo_evento, produtos!inner(id, nome, preco, descricao)")
+          .select("id, preco_evento, estoque_evento, ativo_evento, produtos!inner(id, nome, preco, descricao, imagem_url, exibir_imagem, exibir_loja_publica)")
           .eq("evento_id", ev.id)
           .eq("ativo_evento", true)
       : Promise.resolve({ data: null, error: null }),
@@ -805,11 +843,11 @@ async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null
         )
       : [];
 
-  const produtosLoja: any[] = [];
+  const produtosLoja: ProdutoLoja[] = [];
   if (produtosRes.data) {
-    for (const item of produtosRes.data as any[]) {
+    for (const item of produtosRes.data as EventoProdutoRow[]) {
       const produtoData = Array.isArray(item.produtos) ? item.produtos[0] : item.produtos;
-      if (produtoData) {
+      if (produtoData && produtoData.exibir_loja_publica !== false) {
         produtosLoja.push({
           id: item.id,
           preco_evento: item.preco_evento,
@@ -817,6 +855,9 @@ async function fetchDadosEvento(slug: string): Promise<DadosEventoPublico | null
           nome: produtoData.nome,
           preco: produtoData.preco,
           descricao: produtoData.descricao,
+          imagem_url: produtoData.imagem_url,
+          exibir_imagem: produtoData.exibir_imagem ?? false,
+          exibir_loja_publica: produtoData.exibir_loja_publica ?? true,
         });
       }
     }
@@ -1110,39 +1151,52 @@ export default async function PaginaPublicaFestivalPage({ params }: PageProps) {
               headingClass={tema.heading}
             />
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {produtosLoja.map((produto: any) => {
+              {produtosLoja.map((produto) => {
                 const preco = produto.preco_evento ?? produto.preco;
                 return (
                   <div
                     key={produto.id}
-                    className={`rounded-2xl border p-5 ${tema.card}`}
+                    className={`rounded-2xl border overflow-hidden ${tema.card}`}
                     style={{ borderColor: `${corPrimaria}22` }}
                   >
-                    <div
-                      className="mb-4 inline-flex rounded-xl p-3"
-                      style={{ background: `${corPrimaria}16` }}
-                    >
-                      <ShoppingBag size={18} style={{ color: corPrimaria }} />
-                    </div>
-                    <h3 className={`text-base font-bold ${tema.heading}`}>{produto.nome}</h3>
-                    <p className="mt-2 text-sm font-semibold" style={{ color: corPrimaria }}>
-                      {formatarMoeda(preco)}
-                    </p>
-                    {produto.descricao && (
-                      <p className={`mt-2 text-sm leading-relaxed ${tema.text}`}>
-                        {produto.descricao}
-                      </p>
+                    {produto.exibir_imagem && produto.imagem_url ? (
+                      <img
+                        src={produto.imagem_url}
+                        alt={produto.nome}
+                        className="w-full h-48 object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="p-5 pb-0">
+                        <div
+                          className="mb-4 inline-flex rounded-xl p-3"
+                          style={{ background: `${corPrimaria}16` }}
+                        >
+                          <ShoppingBag size={18} style={{ color: corPrimaria }} />
+                        </div>
+                      </div>
                     )}
-                    <button
-                      className="mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
-                      style={{
-                        background: corPrimaria,
-                        color: corTextoContraste(corPrimaria),
-                      }}
-                    >
-                      Ver detalhes
-                      <ArrowRight size={14} />
-                    </button>
+                    <div className={`p-5 ${produto.exibir_imagem && produto.imagem_url ? '' : 'pt-0'}`}>
+                      <h3 className={`text-base font-bold ${tema.heading}`}>{produto.nome}</h3>
+                      <p className="mt-2 text-sm font-semibold" style={{ color: corPrimaria }}>
+                        {formatarMoeda(preco)}
+                      </p>
+                      {produto.descricao && (
+                        <p className={`mt-2 text-sm leading-relaxed ${tema.text}`}>
+                          {produto.descricao}
+                        </p>
+                      )}
+                      <button
+                        className="mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
+                        style={{
+                          background: corPrimaria,
+                          color: corTextoContraste(corPrimaria),
+                        }}
+                      >
+                        Ver detalhes
+                        <ArrowRight size={14} />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
