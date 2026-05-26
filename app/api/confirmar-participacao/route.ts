@@ -1,11 +1,12 @@
-import { createClient } from "@/lib/supabase/admin"; // service-role client
+import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cálculo de idade — fuso horário America/Sao_Paulo para evitar
 // falso-positivo de maioridade em servidores UTC externos.
 // ─────────────────────────────────────────────────────────────────────────────
-function calcularIdade(dataNascimento: string): number {
+function calcularIdade(dataNascimento: string | null | undefined): number {
+  if (!dataNascimento) return 0;
   const partes = dataNascimento.split("-");
   if (partes.length !== 3) return 0;
   const anoNasc = parseInt(partes[0], 10);
@@ -31,7 +32,11 @@ function calcularIdade(dataNascimento: string): number {
 // Handler POST principal
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
-  const supabase = createClient(); // admin client (RLS bypass)
+  // Cliente administrativo com service role key — bypass de RLS
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "0.0.0.0";
@@ -205,7 +210,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Invalida o token na mesma operação de finalização
+      // Invalida o token após assinatura bem-sucedida
       const { error: nullTokenError } = await supabase
         .from("grupo_participante")
         .update({ token_confirmacao: null })
@@ -239,7 +244,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Garante que o participante é realmente menor
+      // Garante que o participante é realmente menor de idade
       if (idade >= 18) {
         return NextResponse.json(
           {
@@ -252,8 +257,7 @@ export async function POST(request: NextRequest) {
 
       // Valida que a assinatura corresponde ao nome do responsável
       if (
-        respAssinatura.trim().toLowerCase() !==
-        respNome.trim().toLowerCase()
+        respAssinatura.trim().toLowerCase() !== respNome.trim().toLowerCase()
       ) {
         return NextResponse.json(
           {
@@ -294,7 +298,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Invalida o token na mesma operação de finalização
+      // Invalida o token após assinatura bem-sucedida
       const { error: nullTokenError } = await supabase
         .from("grupo_participante")
         .update({ token_confirmacao: null })
@@ -335,8 +339,8 @@ export async function POST(request: NextRequest) {
       //   to: emailResponsavel,
       //   subject: `Autorização de participação — ${participante.nome}`,
       //   html: `
-      //     <p>Você recebeu uma solicitação de autorização para o menor ${participante.nome}
-      //     participar do evento ${grupo?.nome}.</p>
+      //     <p>Você recebeu uma solicitação de autorização para o menor
+      //     ${participante.nome} participar do evento ${grupo?.nome}.</p>
       //     <p>Clique no link abaixo para assinar a autorização:</p>
       //     <a href="${process.env.NEXT_PUBLIC_BASE_URL}/confirmar-participacao/${token}?responsavel=true">
       //       Assinar autorização
@@ -348,8 +352,8 @@ export async function POST(request: NextRequest) {
       //   return NextResponse.json({ error: "Falha no envio do e-mail." }, { status: 500 });
       // }
       //
-      // O token NÃO é invalidado aqui — o link continua válido para o responsável
-      // acessar via ?responsavel=true e assinar presencialmente.
+      // O token NÃO é invalidado aqui — o link continua válido para o
+      // responsável acessar via ?responsavel=true e assinar presencialmente.
 
       return NextResponse.json({ success: true });
     }
