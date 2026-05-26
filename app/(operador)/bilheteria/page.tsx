@@ -8,24 +8,37 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import QRCode from "qrcode";
 
-// ─── Tipos (idênticos ao caixa) ───────────────────────────────────────────────
+// ─── Tipos (alinhados com o Admin) ─────────────────────────────────────────────
 
 interface Produto {
   id: string; nome: string; preco: number; categoria: string;
   tipo: "cantina" | "bilheteria"; estoque: number | null; ativo: boolean; ordem: number;
 }
 interface ItemCarrinho { produto: Produto; quantidade: number; }
+
+// Agora no formato plano (um registro por item de produto)
 interface VendaLocal {
-  id: string; operador_id: string | null;
-  itens: { produto_id: string; nome: string; preco: number; quantidade: number }[];
-  total: number; forma_pagamento: string; sincronizado: boolean; created_at: string;
-}
-interface PdvConfig {
-  pin_vendedor: string; chave_pix: string | null;
-  nome_recebedor: string | null; cidade_recebedor: string | null;
+  id: string;
+  produto_id: string;
+  produto_nome: string;
+  quantidade: number;
+  preco_unitario: number;
+  total: number;
+  forma_pagamento: string;
+  produtora_id: string | null;
+  operador_nome: string | null;
+  sincronizado: boolean;
+  created_at: string;
 }
 
-// ─── IndexedDB (mesmas funções) ───────────────────────────────────────────────
+interface PdvConfig {
+  pin_admin: string;          // era pin_vendedor
+  pix_chave: string | null;   // era chave_pix
+  pix_nome: string | null;    // era nome_recebedor
+  pix_cidade: string | null;  // era cidade_recebedor
+}
+
+// ─── IndexedDB (adaptado para VendaLocal plano) ────────────────────────────────
 
 function abrirDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -62,7 +75,11 @@ async function marcarSincronizada(id: string) {
     const tx = db.transaction("vendas", "readwrite");
     const store = tx.objectStore("vendas");
     const req = store.get(id);
-    req.onsuccess = () => { const v = req.result as VendaLocal; if (v) { v.sincronizado = true; store.put(v); } resolve(); };
+    req.onsuccess = () => {
+      const v = req.result as VendaLocal;
+      if (v) { v.sincronizado = true; store.put(v); }
+      resolve();
+    };
     req.onerror = () => reject(req.error);
   });
 }
@@ -82,14 +99,23 @@ async function buscarProdutosCache(): Promise<Produto[]> {
   });
 }
 
-// ─── PIX EMV ─────────────────────────────────────────────────────────────────
+// ─── PIX EMV (com os nomes reais das colunas) ─────────────────────────────────
 
 function gerarPixEMV(chave: string, nome: string, cidade: string, valor: number): string {
   function tlv(tag: string, value: string) { return `${tag}${value.length.toString().padStart(2, "0")}${value}`; }
   const merchantAccountInfo = tlv("00", "BR.GOV.BCB.PIX") + tlv("01", chave);
-  const payload = [tlv("00","01"),tlv("26",merchantAccountInfo),tlv("52","0000"),tlv("53","986"),
-    tlv("54",valor.toFixed(2)),tlv("58","BR"),tlv("59",nome.substring(0,25)),
-    tlv("60",cidade.substring(0,15)),tlv("62",tlv("05","***")),"6304"].join("");
+  const payload = [
+    tlv("00","01"),
+    tlv("26",merchantAccountInfo),
+    tlv("52","0000"),
+    tlv("53","986"),
+    tlv("54",valor.toFixed(2)),
+    tlv("58","BR"),
+    tlv("59",nome.substring(0,25)),
+    tlv("60",cidade.substring(0,15)),
+    tlv("62",tlv("05","***")),
+    "6304"
+  ].join("");
   let crc = 0xffff;
   for (let i = 0; i < payload.length; i++) {
     crc ^= payload.charCodeAt(i) << 8;
@@ -98,26 +124,26 @@ function gerarPixEMV(chave: string, nome: string, cidade: string, valor: number)
   return payload + (crc & 0xffff).toString(16).toUpperCase().padStart(4, "0");
 }
 
-// ─── Modal PIX ────────────────────────────────────────────────────────────────
+// ─── Modal PIX (atualizado para usar as propriedades reais) ───────────────────
 
 function ModalPIX({ total, config, onConfirmar, onCancelar }:
   { total: number; config: PdvConfig; onConfirmar: () => void; onCancelar: () => void }) {
   const [qrDataUrl, setQrDataUrl] = useState("");
   useEffect(() => {
-    if (!config.chave_pix || !config.nome_recebedor || !config.cidade_recebedor) return;
-    const emv = gerarPixEMV(config.chave_pix, config.nome_recebedor, config.cidade_recebedor, total);
+    if (!config.pix_chave || !config.pix_nome || !config.pix_cidade) return;
+    const emv = gerarPixEMV(config.pix_chave, config.pix_nome, config.pix_cidade, total);
     QRCode.toDataURL(emv, { width: 280, margin: 2, color: { dark: "#000000", light: "#ffffff" } }).then(setQrDataUrl);
   }, [total, config]);
-  const semConfig = !config.chave_pix || !config.nome_recebedor || !config.cidade_recebedor;
+  const semConfig = !config.pix_chave || !config.pix_nome || !config.pix_cidade;
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1a1413] border border-[#2e2825] rounded-2xl p-6 w-full max-w-sm space-y-5">
+      <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 w-full max-w-sm space-y-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2"><QrCode size={20} className="text-[#C5A059]" /> Pagamento PIX</h2>
+          <h2 className="text-lg font-bold text-white flex items-center gap-2"><QrCode size={20} className="text-axon-gold" /> Pagamento PIX</h2>
           <button onClick={onCancelar} className="text-gray-500 hover:text-white"><X size={20} /></button>
         </div>
         <div className="text-center">
-          <p className="text-3xl font-bold text-[#C5A059] mb-1">R$ {total.toFixed(2).replace(".", ",")}</p>
+          <p className="text-3xl font-bold text-axon-gold mb-1">R$ {total.toFixed(2).replace(".", ",")}</p>
           <p className="text-xs text-gray-500">Valor exato a ser cobrado</p>
         </div>
         {semConfig ? (
@@ -129,13 +155,13 @@ function ModalPIX({ total, config, onConfirmar, onCancelar }:
             {qrDataUrl
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={qrDataUrl} alt="QR Code PIX" width={220} height={220} className="rounded-xl bg-white p-2" />
-              : <div className="w-[220px] h-[220px] bg-[#0d0807] border border-[#2e2825] rounded-xl animate-pulse" />}
+              : <div className="w-[220px] h-[220px] bg-axon-bg border border-axon-border rounded-xl animate-pulse" />}
           </div>
         )}
         <p className="text-xs text-gray-500 text-center">Após o cliente pagar, confirme o recebimento.</p>
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={onCancelar} className="py-3 rounded-xl border border-[#2e2825] text-gray-400 hover:text-white text-sm font-medium transition-colors">Cancelar</button>
-          <button onClick={onConfirmar} className="py-3 rounded-xl bg-[#C5A059] text-black font-bold text-sm hover:bg-[#d4af6a] transition-colors flex items-center justify-center gap-2">
+          <button onClick={onCancelar} className="py-3 rounded-xl border border-axon-border text-gray-400 hover:text-white text-sm font-medium transition-colors">Cancelar</button>
+          <button onClick={onConfirmar} className="py-3 rounded-xl bg-axon-gold text-black font-bold text-sm hover:bg-axon-gold/80 transition-colors flex items-center justify-center gap-2">
             <CheckCircle size={16} /> Confirmar
           </button>
         </div>
@@ -153,7 +179,7 @@ function ModalTroco({ total, onConfirmar, onCancelar }:
   const troco = valorNum - total;
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1a1413] border border-[#2e2825] rounded-2xl p-6 w-full max-w-sm space-y-5">
+      <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 w-full max-w-sm space-y-5">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-white flex items-center gap-2"><Banknote size={20} className="text-yellow-400" /> Pagamento em Dinheiro</h2>
           <button onClick={onCancelar} className="text-gray-500 hover:text-white"><X size={20} /></button>
@@ -165,19 +191,19 @@ function ModalTroco({ total, onConfirmar, onCancelar }:
         <div className="space-y-1.5">
           <label className="text-xs text-gray-400 uppercase tracking-wider">Valor Recebido</label>
           <input type="number" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)}
-            className="w-full bg-[#0d0807] border border-[#2e2825] rounded-xl px-4 py-3 text-white text-2xl font-bold text-right focus:outline-none focus:border-[#C5A059]"
+            className="w-full bg-axon-bg border border-axon-border rounded-xl px-4 py-3 text-white text-2xl font-bold text-right focus:outline-none focus:border-axon-gold"
             placeholder="0,00" autoFocus />
         </div>
         {valorNum >= total && (
-          <div className="bg-[#C5A059]/10 border border-[#C5A059]/30 rounded-xl p-4 text-center">
+          <div className="bg-axon-gold/10 border border-axon-gold/30 rounded-xl p-4 text-center">
             <p className="text-xs text-gray-400 mb-1">Troco</p>
-            <p className="text-3xl font-bold text-[#C5A059]">R$ {troco.toFixed(2).replace(".", ",")}</p>
+            <p className="text-3xl font-bold text-axon-gold">R$ {troco.toFixed(2).replace(".", ",")}</p>
           </div>
         )}
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={onCancelar} className="py-3 rounded-xl border border-[#2e2825] text-gray-400 hover:text-white text-sm font-medium transition-colors">Cancelar</button>
+          <button onClick={onCancelar} className="py-3 rounded-xl border border-axon-border text-gray-400 hover:text-white text-sm font-medium transition-colors">Cancelar</button>
           <button onClick={onConfirmar} disabled={valorNum < total}
-            className="py-3 rounded-xl bg-[#C5A059] text-black font-bold text-sm hover:bg-[#d4af6a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            className="py-3 rounded-xl bg-axon-gold text-black font-bold text-sm hover:bg-axon-gold/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Confirmar
           </button>
         </div>
@@ -191,9 +217,9 @@ function ModalTroco({ total, onConfirmar, onCancelar }:
 function TelaVendaFinalizada({ onNova }: { onNova: () => void }) {
   useEffect(() => { const t = setTimeout(onNova, 3000); return () => clearTimeout(t); }, [onNova]);
   return (
-    <div className="fixed inset-0 bg-[#0d0807] flex flex-col items-center justify-center gap-6 z-50">
-      <div className="w-24 h-24 rounded-full bg-[#C5A059]/20 border-2 border-[#C5A059] flex items-center justify-center animate-bounce">
-        <CheckCircle size={48} className="text-[#C5A059]" />
+    <div className="fixed inset-0 bg-axon-bg flex flex-col items-center justify-center gap-6 z-50">
+      <div className="w-24 h-24 rounded-full bg-axon-gold/20 border-2 border-axon-gold flex items-center justify-center animate-bounce">
+        <CheckCircle size={48} className="text-axon-gold" />
       </div>
       <h2 className="text-2xl font-bold text-white">Ingresso Vendido!</h2>
       <p className="text-gray-500 text-sm">Próximo atendimento em instantes...</p>
@@ -213,6 +239,10 @@ export default function BilheteriaPage() {
   const [vendaFinalizada, setVendaFinalizada] = useState(false);
   const [categoriaAtiva, setCategoriaAtiva] = useState("Todos");
 
+  // Tenant isolation
+  const [produtoraId, setProdutoraId] = useState<string | null>(null);
+  const [operadorNome, setOperadorNome] = useState<string | null>(null);
+
   useEffect(() => {
     setOnline(navigator.onLine);
     window.addEventListener("online", () => setOnline(true));
@@ -221,24 +251,84 @@ export default function BilheteriaPage() {
 
   useEffect(() => {
     async function init() {
-      const { data: cfg } = await supabase.from("pdv_config").select("*").limit(1).maybeSingle();
-      if (cfg) setConfig(cfg as PdvConfig);
-      if (navigator.onLine) {
-        const { data: prods } = await supabase.from("pdv_produtos").select("*")
-          .eq("ativo", true).eq("tipo", "bilheteria").order("ordem"); // ← única diferença
-        if (prods) { setProdutos(prods as Produto[]); await cachearProdutos(prods as Produto[]); return; }
+      // Autenticação e obtenção do tenant
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: userData } = await supabase
+        .from("usuarios")
+        .select("nome, produtora_id")
+        .eq("id", user.id)
+        .single();
+
+      const pid = userData?.produtora_id ?? null;
+      const nomeOp = userData?.nome ?? null;
+      setProdutoraId(pid);
+      setOperadorNome(nomeOp);
+
+      // Carregar configurações PIX filtradas por produtora
+      if (pid) {
+        const { data: cfg } = await supabase
+          .from("pdv_config")
+          .select("*")
+          .eq("produtora_id", pid)
+          .maybeSingle();
+        if (cfg) {
+          setConfig(cfg as PdvConfig);
+        } else {
+          // Configuração padrão para o tenant (sem registro ainda)
+          setConfig({
+            pin_admin: "",
+            pix_chave: null,
+            pix_nome: null,
+            pix_cidade: null,
+          });
+        }
+      } else {
+        setConfig({
+          pin_admin: "",
+          pix_chave: null,
+          pix_nome: null,
+          pix_cidade: null,
+        });
       }
+
+      // Carregar produtos (bilheteria)
+      if (navigator.onLine && pid) {
+        const { data: prods } = await supabase
+          .from("pdv_produtos")
+          .select("*")
+          .eq("produtora_id", pid)
+          .eq("ativo", true)
+          .eq("tipo", "bilheteria")
+          .order("ordem");
+        if (prods) {
+          setProdutos(prods as Produto[]);
+          await cachearProdutos(prods as Produto[]);
+          return;
+        }
+      }
+
+      // Fallback offline / sem conexão
       const cache = await buscarProdutosCache();
       setProdutos(cache.filter((p) => p.tipo === "bilheteria" && p.ativo));
     }
     init();
-  }, []);
+  }, [supabase]);
 
   const sincronizar = useCallback(async () => {
     const pendentes = await buscarVendasPendentes();
-    for (const v of pendentes) {
-      const { error } = await supabase.from("pdv_vendas").insert({ ...v, sincronizado: true });
-      if (!error) await marcarSincronizada(v.id);
+    if (pendentes.length === 0) return;
+
+    // Envia em lote (bulk insert) para o Supabase
+    const vendasParaEnviar = pendentes.map(({ sincronizado, ...v }) => ({
+      ...v,
+      sincronizado: true,
+    }));
+    const { error } = await supabase.from("pdv_vendas").insert(vendasParaEnviar);
+    if (!error) {
+      // Marca todas como sincronizadas no IndexedDB
+      await Promise.all(pendentes.map((v) => marcarSincronizada(v.id)));
     }
   }, [supabase]);
 
@@ -259,18 +349,38 @@ export default function BilheteriaPage() {
   const total = carrinho.reduce((a, i) => a + i.produto.preco * i.quantidade, 0);
 
   const finalizar = async (forma: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const venda: VendaLocal = {
-      id: crypto.randomUUID(), operador_id: user?.id ?? null,
-      itens: carrinho.map((i) => ({ produto_id: i.produto.id, nome: i.produto.nome, preco: i.produto.preco, quantidade: i.quantidade })),
-      total, forma_pagamento: forma, sincronizado: false, created_at: new Date().toISOString(),
-    };
-    await salvarVendaLocal(venda);
+    if (!produtoraId) return;
+
+    // Gera um objeto de venda plano para cada item do carrinho
+    const vendasGeradas: VendaLocal[] = carrinho.map((item) => ({
+      id: crypto.randomUUID(),
+      produto_id: item.produto.id,
+      produto_nome: item.produto.nome,
+      quantidade: item.quantidade,
+      preco_unitario: item.produto.preco,
+      total: item.produto.preco * item.quantidade,
+      forma_pagamento: forma,
+      produtora_id: produtoraId,
+      operador_nome: operadorNome,
+      sincronizado: false,
+      created_at: new Date().toISOString(),
+    }));
+
+    // Salva todas no IndexedDB
+    await Promise.all(vendasGeradas.map((v) => salvarVendaLocal(v)));
+
+    // Se online, envia em lote para o Supabase
     if (navigator.onLine) {
-      const { error } = await supabase.from("pdv_vendas").insert({ ...venda, sincronizado: true });
-      if (!error) await marcarSincronizada(venda.id);
+      const { error } = await supabase
+        .from("pdv_vendas")
+        .insert(vendasGeradas.map(({ sincronizado, ...v }) => ({ ...v, sincronizado: true })));
+      if (!error) {
+        await Promise.all(vendasGeradas.map((v) => marcarSincronizada(v.id)));
+      }
     }
-    setModal(null); setVendaFinalizada(true);
+
+    setModal(null);
+    setVendaFinalizada(true);
   };
 
   const resetar = () => { setCarrinho([]); setVendaFinalizada(false); };
@@ -278,8 +388,8 @@ export default function BilheteriaPage() {
   const produtosFiltrados = categoriaAtiva === "Todos" ? produtos : produtos.filter((p) => p.categoria === categoriaAtiva);
 
   if (!config) return (
-    <div className="fixed inset-0 bg-[#0d0807] flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+    <div className="fixed inset-0 bg-axon-bg flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-axon-gold border-t-transparent rounded-full animate-spin" />
     </div>
   );
 
@@ -290,8 +400,8 @@ export default function BilheteriaPage() {
       {modal === "pix" && config && <ModalPIX total={total} config={config} onConfirmar={() => finalizar("pix")} onCancelar={() => setModal(null)} />}
       {modal === "dinheiro" && <ModalTroco total={total} onConfirmar={() => finalizar("dinheiro")} onCancelar={() => setModal(null)} />}
 
-      <div className="h-screen flex flex-col bg-[#0d0807] overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2e2825] bg-[#1a1413] shrink-0">
+      <div className="h-screen flex flex-col bg-axon-bg overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-axon-border bg-axon-panel shrink-0">
           <span className="text-white font-bold text-sm">🎟️ Bilheteria</span>
           <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border ${
             online ? "bg-green-500/10 text-green-400 border-green-500/30" : "bg-red-500/10 text-red-400 border-red-500/30"}`}>
@@ -302,11 +412,11 @@ export default function BilheteriaPage() {
 
         <div className="flex flex-1 overflow-hidden">
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex gap-2 px-4 py-3 overflow-x-auto border-b border-[#2e2825] shrink-0">
+            <div className="flex gap-2 px-4 py-3 overflow-x-auto border-b border-axon-border shrink-0">
               {categorias.map((c) => (
                 <button key={c} onClick={() => setCategoriaAtiva(c)}
                   className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
-                    categoriaAtiva === c ? "bg-[#C5A059] text-black" : "bg-[#1a1413] border border-[#2e2825] text-gray-400 hover:text-white"}`}>
+                    categoriaAtiva === c ? "bg-axon-gold text-black" : "bg-axon-panel border border-axon-border text-gray-400 hover:text-white"}`}>
                   {c}
                 </button>
               ))}
@@ -317,17 +427,17 @@ export default function BilheteriaPage() {
                 <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-3">
                   <Ticket size={40} className="opacity-20" />
                   <p className="text-sm">Nenhum ingresso cadastrado.</p>
-                  <p className="text-xs text-gray-600">Cadastre em <span className="text-[#C5A059]">PDV → Produtos → Bilheteria</span></p>
+                  <p className="text-xs text-gray-600">Cadastre em <span className="text-axon-gold">PDV → Produtos → Bilheteria</span></p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                   {produtosFiltrados.map((p) => (
                     <button key={p.id} onClick={() => adicionar(p)}
-                      className="bg-[#1a1413] border border-[#2e2825] rounded-2xl p-4 flex flex-col items-center justify-center text-center h-32 active:scale-95 hover:border-[#C5A059] transition-all group">
-                      <Ticket size={20} className="text-gray-600 group-hover:text-[#C5A059] mb-2 transition-colors" />
+                      className="bg-axon-panel border border-axon-border rounded-2xl p-4 flex flex-col items-center justify-center text-center h-32 active:scale-95 hover:border-axon-gold transition-all group">
+                      <Ticket size={20} className="text-gray-600 group-hover:text-axon-gold mb-2 transition-colors" />
                       <span className="text-xs text-gray-500 mb-1">{p.categoria}</span>
-                      <span className="text-sm font-semibold text-white group-hover:text-[#C5A059] transition-colors leading-tight mb-1">{p.nome}</span>
-                      <span className="text-lg font-bold text-[#C5A059]">R$ {p.preco.toFixed(2).replace(".", ",")}</span>
+                      <span className="text-sm font-semibold text-white group-hover:text-axon-gold transition-colors leading-tight mb-1">{p.nome}</span>
+                      <span className="text-lg font-bold text-axon-gold">R$ {p.preco.toFixed(2).replace(".", ",")}</span>
                       {p.estoque !== null && <span className="text-xs text-gray-600 mt-1">Restam: {p.estoque}</span>}
                     </button>
                   ))}
@@ -336,13 +446,13 @@ export default function BilheteriaPage() {
             </div>
           </div>
 
-          <div className="w-72 lg:w-80 bg-[#1a1413] border-l border-[#2e2825] flex flex-col shrink-0">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2e2825]">
+          <div className="w-72 lg:w-80 bg-axon-panel border-l border-axon-border flex flex-col shrink-0">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-axon-border">
               <div className="flex items-center gap-2 text-white font-medium text-sm">
-                <Ticket size={16} className="text-[#C5A059]" />
+                <Ticket size={16} className="text-axon-gold" />
                 Pedido
                 {carrinho.length > 0 && (
-                  <span className="bg-[#C5A059] text-black text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                  <span className="bg-axon-gold text-black text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
                     {carrinho.reduce((a, i) => a + i.quantidade, 0)}
                   </span>
                 )}
@@ -358,42 +468,42 @@ export default function BilheteriaPage() {
                 </div>
               ) : (
                 carrinho.map((item) => (
-                  <div key={item.produto.id} className="flex items-center justify-between bg-[#0d0807] border border-[#2e2825] rounded-xl px-3 py-2.5">
+                  <div key={item.produto.id} className="flex items-center justify-between bg-axon-bg border border-axon-border rounded-xl px-3 py-2.5">
                     <div className="flex-1 min-w-0 pr-2">
                       <p className="text-xs font-medium text-white truncate">{item.produto.nome}</p>
-                      <p className="text-xs text-[#C5A059] font-bold mt-0.5">R$ {(item.produto.preco * item.quantidade).toFixed(2).replace(".", ",")}</p>
+                      <p className="text-xs text-axon-gold font-bold mt-0.5">R$ {(item.produto.preco * item.quantidade).toFixed(2).replace(".", ",")}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button onClick={() => ajustar(item.produto.id, -1)} className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-white active:scale-95"><Minus size={13} /></button>
                       <span className="text-sm font-bold text-white w-4 text-center">{item.quantidade}</span>
-                      <button onClick={() => ajustar(item.produto.id, 1)} className="w-7 h-7 rounded-full bg-[#C5A059]/20 flex items-center justify-center text-[#C5A059] hover:bg-[#C5A059]/30 active:scale-95"><Plus size={13} /></button>
+                      <button onClick={() => ajustar(item.produto.id, 1)} className="w-7 h-7 rounded-full bg-axon-gold/20 flex items-center justify-center text-axon-gold hover:bg-axon-gold/30 active:scale-95"><Plus size={13} /></button>
                     </div>
                   </div>
                 ))
               )}
             </div>
 
-            <div className="p-3 border-t border-[#2e2825] space-y-3">
+            <div className="p-3 border-t border-axon-border space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-gray-400 text-sm">Total</span>
-                <span className="text-xl font-bold text-[#C5A059]">R$ {total.toFixed(2).replace(".", ",")}</span>
+                <span className="text-xl font-bold text-axon-gold">R$ {total.toFixed(2).replace(".", ",")}</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <button disabled={!carrinho.length} onClick={() => setModal("pix")}
-                  className="flex flex-col items-center gap-1 py-3 rounded-xl bg-[#0d0807] border border-[#2e2825] text-gray-400 hover:text-[#C5A059] hover:border-[#C5A059]/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl bg-axon-bg border border-axon-border text-gray-400 hover:text-axon-gold hover:border-axon-gold/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
                   <QrCode size={18} /><span className="text-xs font-medium">PIX</span>
                 </button>
                 <button disabled={!carrinho.length} onClick={() => setModal("dinheiro")}
-                  className="flex flex-col items-center gap-1 py-3 rounded-xl bg-[#0d0807] border border-[#2e2825] text-gray-400 hover:text-yellow-400 hover:border-yellow-400/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl bg-axon-bg border border-axon-border text-gray-400 hover:text-yellow-400 hover:border-yellow-400/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
                   <Banknote size={18} /><span className="text-xs font-medium">Dinheiro</span>
                 </button>
                 <button disabled={!carrinho.length} onClick={() => finalizar("cartao")}
-                  className="flex flex-col items-center gap-1 py-3 rounded-xl bg-[#0d0807] border border-[#2e2825] text-gray-400 hover:text-blue-400 hover:border-blue-400/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl bg-axon-bg border border-axon-border text-gray-400 hover:text-blue-400 hover:border-blue-400/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
                   <CreditCard size={18} /><span className="text-xs font-medium">Cartão</span>
                 </button>
               </div>
               <button disabled={!carrinho.length} onClick={() => setModal("pix")}
-                className="w-full py-3.5 rounded-xl bg-[#C5A059] text-black font-bold text-sm hover:bg-[#d4af6a] transition-colors disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
+                className="w-full py-3.5 rounded-xl bg-axon-gold text-black font-bold text-sm hover:bg-axon-gold/80 transition-colors disabled:opacity-30 disabled:cursor-not-allowed active:scale-95">
                 Cobrar
               </button>
             </div>
