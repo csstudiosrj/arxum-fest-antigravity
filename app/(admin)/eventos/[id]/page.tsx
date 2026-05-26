@@ -39,6 +39,8 @@ import {
   Globe,
 } from "lucide-react";
 
+const supabase = createClient();
+
 const PRESETS: Record<
   string,
   {
@@ -210,6 +212,7 @@ type Apresentacao = {
   tipo: string | null;
   ordem_apresentacao: number | null;
   status_pagamento?: string | null;
+  elenco?: { participante_id: string; nome: string }[];
 };
 
 type Toast = {
@@ -467,6 +470,16 @@ function ModalConfirmarExclusaoCategoria({
   onConfirm: () => void | Promise<void>;
   loading: boolean;
 }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && open) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
   if (!open || !categoria) return null;
 
   return (
@@ -553,7 +566,6 @@ function ModalConfigurarJuradosEvento({
 
   const carregar = useCallback(async () => {
     if (!open || !produtoraId) return;
-    const supabase = createClient();
     setLoading(true);
 
     const [{ data: cadastroData }, { data: eventoJuradosData }] = await Promise.all([
@@ -599,6 +611,17 @@ function ModalConfigurarJuradosEvento({
     void carregar();
   }, [carregar]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && open) {
+        onClose();
+        void onSaved();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose, onSaved]);
+
   const idsEscalados = useMemo(
     () => new Set(juradosEscalados.map((j) => j.jurado_id)),
     [juradosEscalados]
@@ -618,7 +641,6 @@ function ModalConfigurarJuradosEvento({
   }, [juradosCadastro, idsEscalados, search]);
 
   async function adicionarJurado(jurado: JuradoCadastro) {
-    const supabase = createClient();
     setAddingIds((prev) => ({ ...prev, [jurado.id]: true }));
 
     try {
@@ -671,7 +693,6 @@ function ModalConfigurarJuradosEvento({
     const jurado = juradosEscalados.find((item) => item.vinculo_id === vinculoId);
     if (!jurado) return;
 
-    const supabase = createClient();
     setSavingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
     try {
@@ -704,7 +725,6 @@ function ModalConfigurarJuradosEvento({
   }
 
   async function removerJurado(vinculoId: string) {
-    const supabase = createClient();
     setRemovingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
     try {
@@ -1017,7 +1037,6 @@ function ModalConfigurarPdvEvento({
 
   const carregar = useCallback(async () => {
     if (!open || !produtoraId) return;
-    const supabase = createClient();
     setLoading(true);
 
     const [{ data: catalogoData }, { data: eventoProdutosData }] = await Promise.all([
@@ -1064,6 +1083,17 @@ function ModalConfigurarPdvEvento({
     void carregar();
   }, [carregar]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && open) {
+        onClose();
+        void onSaved();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose, onSaved]);
+
   const idsVinculados = useMemo(
     () => new Set(produtosVinculados.map((p) => p.produto_id)),
     [produtosVinculados]
@@ -1091,7 +1121,6 @@ function ModalConfigurarPdvEvento({
   );
 
   async function adicionarProduto(produto: ProdutoCatalogo) {
-    const supabase = createClient();
     setAddingIds((prev) => ({ ...prev, [produto.id]: true }));
 
     try {
@@ -1146,7 +1175,6 @@ function ModalConfigurarPdvEvento({
     const produto = produtosVinculados.find((item) => item.vinculo_id === vinculoId);
     if (!produto) return;
 
-    const supabase = createClient();
     setSavingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
     try {
@@ -1180,7 +1208,6 @@ function ModalConfigurarPdvEvento({
   }
 
   async function removerProduto(vinculoId: string) {
-    const supabase = createClient();
     setRemovingIds((prev) => ({ ...prev, [vinculoId]: true }));
 
     try {
@@ -1541,6 +1568,16 @@ export default function PainelEventoPage() {
     setHasMounted(true);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && modalCat) {
+        setModalCat(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [modalCat]);
+
   const addToast = useCallback((tipo: Toast["tipo"], mensagem: string) => {
     const id = ++toastId;
     setToasts((p) => [...p, { id, tipo, mensagem }]);
@@ -1555,7 +1592,6 @@ export default function PainelEventoPage() {
 
   const carregarLocais = useCallback(async () => {
     if (!eventoId) return;
-    const supabase = createClient();
     setLoadingLocais(true);
 
     const { data } = await supabase
@@ -1570,7 +1606,6 @@ export default function PainelEventoPage() {
 
   const carregarEvento = useCallback(
     async (silent = false) => {
-      const supabase = createClient();
       if (!silent) setLoading(true);
 
       try {
@@ -1624,7 +1659,29 @@ export default function PainelEventoPage() {
         }
 
         const cats = (catsRes.data ?? []) as Categoria[];
-        const apres = (apresRes.data ?? []) as Apresentacao[];
+        let apres = (apresRes.data ?? []) as Apresentacao[];
+
+        // Buscar elenco das apresentações para o alerta de troca rápida
+        const apresentacoesIds = apres.map((a) => a.id);
+        if (apresentacoesIds.length > 0) {
+          const { data: elencoData } = await supabase
+            .from("apresentacao_elenco")
+            .select("apresentacao_id, participante_id, participantes(nome)")
+            .in("apresentacao_id", apresentacoesIds);
+
+          const elencoMap = new Map<string, { participante_id: string; nome: string }[]>();
+          (elencoData ?? []).forEach((row: any) => {
+            const apId = row.apresentacao_id;
+            const nome = row.participantes?.nome ?? "Sem nome";
+            if (!elencoMap.has(apId)) elencoMap.set(apId, []);
+            elencoMap.get(apId)!.push({ participante_id: row.participante_id, nome });
+          });
+
+          apres = apres.map((a) => ({
+            ...a,
+            elenco: elencoMap.get(a.id) ?? [],
+          }));
+        }
 
         const pais = cats
           .filter((c) => !c.categoria_pai_id)
@@ -1663,7 +1720,6 @@ export default function PainelEventoPage() {
             .from("evento_produtos")
             .select("id", { count: "exact", head: true })
             .eq("evento_id", eventoId);
-
           setPdvConfigurado((produtosCount ?? 0) > 0);
         } catch (err) {
           console.error("Erro ao checar produtos do PDV:", err);
@@ -1689,7 +1745,6 @@ export default function PainelEventoPage() {
   }, [form.multilocal, carregarLocais]);
 
   async function salvarEvento() {
-    const supabase = createClient();
     setSalvando(true);
 
     try {
@@ -1740,7 +1795,6 @@ export default function PainelEventoPage() {
       return;
     }
 
-    const supabase = createClient();
     setSalvandoLocal(true);
 
     try {
@@ -1780,7 +1834,6 @@ export default function PainelEventoPage() {
   }
 
   async function removerLocalEvento(id: string) {
-    const supabase = createClient();
     setRemovendoLocalId(id);
 
     try {
@@ -1808,7 +1861,6 @@ export default function PainelEventoPage() {
   }
 
   async function recarregarCategorias() {
-    const supabase = createClient();
     const { data } = await supabase
       .from("categorias")
       .select("*")
@@ -1862,7 +1914,6 @@ export default function PainelEventoPage() {
   async function confirmarExclusaoCategoria() {
     if (!categoriaParaExcluir) return;
 
-    const supabase = createClient();
     setExcluindoCategoria(true);
 
     try {
@@ -1890,7 +1941,6 @@ export default function PainelEventoPage() {
   }
 
   async function salvarCategoria() {
-    const supabase = createClient();
     if (!formCat.nome.trim()) return;
 
     const isCategoriaPrincipal = !formCat.categoria_pai_id;
@@ -1952,7 +2002,6 @@ export default function PainelEventoPage() {
   }
 
   async function onDragEnd(result: DropResult) {
-    const supabase = createClient();
     if (!result.destination) return;
 
     const items = Array.from(apresentacoes);
@@ -1990,6 +2039,22 @@ export default function PainelEventoPage() {
   async function handleModalPdvSaved() {
     await carregarEvento(true);
   }
+
+  const alertasTroca = useMemo(() => {
+    return apresentacoes.map((ap, idx) => {
+      if (!ap.elenco || ap.elenco.length === 0) return null;
+      for (let offset = 1; offset <= 2; offset++) {
+        const nextIdx = idx + offset;
+        if (nextIdx >= apresentacoes.length) break;
+        const nextAp = apresentacoes[nextIdx];
+        if (!nextAp.elenco) continue;
+        const idsAtual = new Set(ap.elenco.map((e) => e.participante_id));
+        const conflito = nextAp.elenco.find((e) => idsAtual.has(e.participante_id));
+        if (conflito) return conflito.nome;
+      }
+      return null;
+    });
+  }, [apresentacoes]);
 
   if (loading) {
     return (
@@ -2831,8 +2896,17 @@ export default function PainelEventoPage() {
                                     {index + 1}
                                   </div>
 
-                                  <div className="flex-1">
-                                    <p className="text-white text-sm font-medium">{ap.nome}</p>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="text-white text-sm font-medium truncate">
+                                        {ap.nome}
+                                      </p>
+                                      {alertasTroca[index] && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 whitespace-nowrap">
+                                          ⚠️ Troca rápida: {alertasTroca[index]}
+                                        </span>
+                                      )}
+                                    </div>
                                     <p className="text-xs text-gray-400 mt-0.5">
                                       {ap.tipo ?? "Tipo não informado"}
                                     </p>
