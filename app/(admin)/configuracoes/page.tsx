@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Settings,
@@ -22,6 +22,9 @@ import {
   ToggleRight,
   AlertTriangle,
   ChevronRight,
+  Upload,
+  Trash2,
+  Image,
 } from "lucide-react";
 
 const supabase = createClient();
@@ -99,9 +102,9 @@ function ToastContainer({
   remover: (id: number) => void;
 }) {
   const cores: Record<Toast["tipo"], string> = {
-    sucesso: "border-emerald-500/40 bg-arxum-panel",
-    erro: "border-red-500/40 bg-arxum-panel",
-    aviso: "border-yellow-500/40 bg-arxum-panel",
+    sucesso: "border-emerald-500/40 bg-axon-panel",
+    erro: "border-red-500/40 bg-axon-panel",
+    aviso: "border-yellow-500/40 bg-axon-panel",
   };
 
   const icones: Record<Toast["tipo"], React.ReactNode> = {
@@ -158,7 +161,7 @@ function ModalConfirmacao({
       />
       <div className="fixed inset-0 flex items-center justify-center z-[100] p-4">
         <div
-          className="bg-arxum-panel border border-arxum-border rounded-2xl w-full max-w-md p-7 space-y-5 shadow-2xl"
+          className="bg-axon-panel border border-axon-border rounded-2xl w-full max-w-md p-7 space-y-5 shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-start gap-4">
@@ -205,7 +208,7 @@ function ModalConfirmacao({
 
 function Skeleton({ className }: { className?: string }) {
   return (
-    <div className={`animate-pulse bg-arxum-border/30 rounded-lg ${className ?? ""}`} />
+    <div className={`animate-pulse bg-axon-border/30 rounded-lg ${className ?? ""}`} />
   );
 }
 
@@ -220,8 +223,8 @@ function LoadingSkeleton() {
         <Skeleton className="h-10 w-32" />
       </div>
 
-      <div className="bg-arxum-panel border border-arxum-border rounded-xl overflow-hidden">
-        <div className="flex border-b border-arxum-border px-4 gap-2 py-1">
+      <div className="bg-axon-panel border border-axon-border rounded-xl overflow-hidden">
+        <div className="flex border-b border-axon-border px-4 gap-2 py-1">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-10 w-32 my-2" />
           ))}
@@ -263,6 +266,10 @@ export default function ConfiguracoesPage() {
   const [modalEstilo, setModalEstilo] = useState(false);
   const [novoEstilo, setNovoEstilo] = useState({ nome: "", descricao: "" });
   const [criandoEstilo, setCriandoEstilo] = useState(false);
+
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const addToast = useCallback((tipo: Toast["tipo"], mensagem: string) => {
     const id = ++toastId;
@@ -709,6 +716,59 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !produtoraId) return;
+
+    // Validação de tipo
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      addToast("erro", "Apenas arquivos JPG, PNG ou WebP são aceitos.");
+      return;
+    }
+
+    // Validação de tamanho (5 MB)
+    if (file.size > 5 * 1024 * 1024) {
+      addToast("erro", "O arquivo deve ter no máximo 5MB.");
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      const path = `tenant/logo-${produtoraId}-${Date.now()}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from("axon-assets")
+        .upload(path, file, { upsert: true });
+
+      if (error) throw error;
+
+      const publicUrl = supabase.storage
+        .from("axon-assets")
+        .getPublicUrl(path).data.publicUrl;
+
+      setFormConfig((p) => ({ ...p, logo_url: publicUrl }));
+      addToast("sucesso", "Logo enviado com sucesso!");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro no upload.";
+      addToast("erro", msg);
+    } finally {
+      setUploadingLogo(false);
+      // Limpar o input file
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  function removerLogo() {
+    setFormConfig((p) => ({ ...p, logo_url: null }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
   function handleTerminologiaChange(campo: keyof TenantConfig, valor: string) {
     setFormConfig((p) => ({ ...p, [campo]: valor }));
   }
@@ -759,7 +819,7 @@ export default function ConfiguracoesPage() {
           />
           <div className="fixed inset-0 flex items-center justify-center z-[100] p-4">
             <div
-              className="bg-arxum-panel border border-arxum-border rounded-2xl w-full max-w-md p-7 space-y-5 shadow-2xl"
+              className="bg-axon-panel border border-axon-border rounded-2xl w-full max-w-md p-7 space-y-5 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between">
@@ -799,7 +859,7 @@ export default function ConfiguracoesPage() {
                     }
                     disabled={criandoEstilo}
                     onKeyDown={(e) => e.key === "Enter" && void criarEstiloManual()}
-                    className="w-full bg-arxum-bg border border-arxum-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-arxum-gold transition-colors disabled:opacity-50"
+                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50"
                   />
                 </div>
 
@@ -815,7 +875,7 @@ export default function ConfiguracoesPage() {
                       setNovoEstilo((p) => ({ ...p, descricao: e.target.value }))
                     }
                     disabled={criandoEstilo}
-                    className="w-full bg-arxum-bg border border-arxum-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-arxum-gold transition-colors disabled:opacity-50"
+                    className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50"
                   />
                 </div>
               </div>
@@ -832,7 +892,7 @@ export default function ConfiguracoesPage() {
                 <button
                   onClick={() => void criarEstiloManual()}
                   disabled={criandoEstilo || !novoEstilo.nome.trim()}
-                  className="flex items-center gap-2 bg-arxum-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-arxum-gold-dim transition-colors text-sm disabled:opacity-40 min-w-[140px] justify-center"
+                  className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 min-w-[140px] justify-center"
                 >
                   {criandoEstilo ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -851,7 +911,7 @@ export default function ConfiguracoesPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 mb-1">
-              <Settings size={20} className="text-arxum-gold" />
+              <Settings size={20} className="text-axon-gold" />
               <h1 className="text-2xl font-bold text-white tracking-tight">
                 Configurações do Sistema
               </h1>
@@ -862,15 +922,15 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        <div className="bg-arxum-panel border border-arxum-border rounded-2xl overflow-hidden">
-          <div className="flex border-b border-arxum-border px-2 overflow-x-auto scrollbar-none">
+        <div className="bg-axon-panel border border-axon-border rounded-2xl overflow-hidden">
+          <div className="flex border-b border-axon-border px-2 overflow-x-auto scrollbar-none">
             {abas.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setAbaAtiva(id)}
                 className={`flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-all duration-200 ${
                   abaAtiva === id
-                    ? "border-arxum-gold text-arxum-gold"
+                    ? "border-axon-gold text-axon-gold"
                     : "border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-600"
                 }`}
               >
@@ -897,7 +957,7 @@ export default function ConfiguracoesPage() {
                   <button
                     onClick={() => void salvarPerfil()}
                     disabled={salvandoPerfil || !formConfig.perfil_id}
-                    className="flex items-center gap-2 bg-arxum-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-arxum-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
+                    className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
                     {salvandoPerfil ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -918,17 +978,17 @@ export default function ConfiguracoesPage() {
                         onClick={() => selecionarPerfil(perfil)}
                         className={`relative flex flex-col items-center text-center gap-3 p-5 rounded-xl border transition-all duration-200 ${
                           ativo
-                            ? "border-arxum-gold bg-arxum-gold-dim shadow-[0_0_20px_rgba(197,160,89,0.08)]"
-                            : "border-arxum-border bg-arxum-bg hover:border-arxum-gold hover:bg-arxum-panel"
+                            ? "border-axon-gold bg-axon-gold-dim shadow-[0_0_20px_rgba(197,160,89,0.08)]"
+                            : "border-axon-border bg-axon-bg hover:border-axon-gold hover:bg-axon-panel"
                         }`}
                       >
                         {ativo && (
                           <div className="absolute top-3 right-3">
-                            <CheckCircle size={15} className="text-arxum-gold" />
+                            <CheckCircle size={15} className="text-axon-gold" />
                           </div>
                         )}
 
-                        <div className={ativo ? "text-arxum-gold" : "text-gray-600"}>
+                        <div className={ativo ? "text-axon-gold" : "text-gray-600"}>
                           {ICONE_MAP[perfil.icone] ?? <Sparkles size={26} />}
                         </div>
 
@@ -944,17 +1004,17 @@ export default function ConfiguracoesPage() {
                 </div>
 
                 {perfilAtivo && (
-                  <div className="bg-arxum-gold-dim border border-arxum-gold-dim rounded-xl p-4 flex items-center justify-between gap-3">
+                  <div className="bg-axon-gold-dim border border-axon-gold-dim rounded-xl p-4 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <CheckCircle size={16} className="text-arxum-gold shrink-0" />
-                      <p className="text-sm text-arxum-gold">
+                      <CheckCircle size={16} className="text-axon-gold shrink-0" />
+                      <p className="text-sm text-axon-gold">
                         <strong>{perfilAtivo.nome}</strong> selecionado. Vá para{" "}
                         <strong>Estilos / Modalidades</strong> para configurar as opções.
                       </p>
                     </div>
                     <button
                       onClick={() => setAbaAtiva("estilos")}
-                      className="flex items-center gap-1 text-xs text-arxum-gold hover:text-white transition-colors whitespace-nowrap"
+                      className="flex items-center gap-1 text-xs text-axon-gold hover:text-white transition-colors whitespace-nowrap"
                     >
                       Ver estilos <ChevronRight size={13} />
                     </button>
@@ -979,7 +1039,7 @@ export default function ConfiguracoesPage() {
                   {formConfig.perfil_id && (
                     <button
                       onClick={() => setModalEstilo(true)}
-                      className="flex items-center gap-2 text-sm border border-arxum-border text-gray-400 hover:text-white hover:border-arxum-gold px-4 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                      className="flex items-center gap-2 text-sm border border-axon-border text-gray-400 hover:text-white hover:border-axon-gold px-4 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0"
                     >
                       <Plus size={14} />
                       Adicionar estilo
@@ -993,7 +1053,7 @@ export default function ConfiguracoesPage() {
                     <p className="text-sm">Selecione um tipo de festival primeiro.</p>
                     <button
                       onClick={() => setAbaAtiva("perfil")}
-                      className="text-arxum-gold text-sm hover:text-white transition-colors mt-2 flex items-center gap-1 mx-auto"
+                      className="text-axon-gold text-sm hover:text-white transition-colors mt-2 flex items-center gap-1 mx-auto"
                     >
                       Ir para Tipo de Festival <ChevronRight size={13} />
                     </button>
@@ -1003,7 +1063,7 @@ export default function ConfiguracoesPage() {
                     <p className="text-sm">Nenhum estilo encontrado para este perfil.</p>
                     <button
                       onClick={() => setModalEstilo(true)}
-                      className="text-arxum-gold text-sm hover:text-white transition-colors mt-2"
+                      className="text-axon-gold text-sm hover:text-white transition-colors mt-2"
                     >
                       Criar o primeiro estilo
                     </button>
@@ -1020,13 +1080,13 @@ export default function ConfiguracoesPage() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => void toggleTodos(true)}
-                          className="text-xs text-gray-500 hover:text-white px-3 py-1.5 rounded-lg border border-arxum-border hover:border-arxum-gold transition-colors"
+                          className="text-xs text-gray-500 hover:text-white px-3 py-1.5 rounded-lg border border-axon-border hover:border-axon-gold transition-colors"
                         >
                           Ativar todos
                         </button>
                         <button
                           onClick={() => void toggleTodos(false)}
-                          className="text-xs text-gray-500 hover:text-red-400 px-3 py-1.5 rounded-lg border border-arxum-border hover:border-red-500/30 transition-colors"
+                          className="text-xs text-gray-500 hover:text-red-400 px-3 py-1.5 rounded-lg border border-axon-border hover:border-red-500/30 transition-colors"
                         >
                           Desativar todos
                         </button>
@@ -1045,8 +1105,8 @@ export default function ConfiguracoesPage() {
                             onClick={() => void toggleEstilo(estilo)}
                             className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all duration-200 ${
                               ativo
-                                ? "border-arxum-gold-dim bg-arxum-gold-dim"
-                                : "border-arxum-border bg-arxum-bg hover:border-arxum-gold"
+                                ? "border-axon-gold-dim bg-axon-gold-dim"
+                                : "border-axon-border bg-axon-bg hover:border-axon-gold"
                             }`}
                           >
                             <div className="flex-1 min-w-0">
@@ -1066,7 +1126,7 @@ export default function ConfiguracoesPage() {
 
                             <div
                               className={`ml-4 shrink-0 transition-colors ${
-                                ativo ? "text-arxum-gold" : "text-gray-700"
+                                ativo ? "text-axon-gold" : "text-gray-700"
                               }`}
                             >
                               {ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
@@ -1096,7 +1156,7 @@ export default function ConfiguracoesPage() {
                   <button
                     onClick={() => void salvarTerminologia()}
                     disabled={salvandoTerminologia}
-                    className="flex items-center gap-2 bg-arxum-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-arxum-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
+                    className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
                     {salvandoTerminologia ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -1148,13 +1208,13 @@ export default function ConfiguracoesPage() {
                         onChange={(e) =>
                           handleTerminologiaChange(campo as keyof TenantConfig, e.target.value)
                         }
-                        className="w-full bg-arxum-bg border border-arxum-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-arxum-gold transition-colors"
+                        className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-axon-gold transition-colors"
                       />
                     </div>
                   ))}
                 </div>
 
-                <div className="bg-arxum-bg border border-arxum-border rounded-xl p-5 space-y-3">
+                <div className="bg-axon-bg border border-axon-border rounded-xl p-5 space-y-3">
                   <p className="text-xs text-gray-600 font-medium uppercase tracking-wider">
                     Preview em tempo real
                   </p>
@@ -1183,7 +1243,7 @@ export default function ConfiguracoesPage() {
                     .
                   </p>
 
-                  <div className="pt-2 border-t border-arxum-border grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="pt-2 border-t border-axon-border grid grid-cols-2 md:grid-cols-5 gap-3">
                     {[
                       { label: "Evento", valor: formConfig.termo_evento || "Evento" },
                       { label: "Inscrição", valor: formConfig.termo_inscricao || "Inscrição" },
@@ -1199,7 +1259,7 @@ export default function ConfiguracoesPage() {
                     ].map(({ label, valor }) => (
                       <div key={label} className="text-center">
                         <p className="text-xs text-gray-600">{label}</p>
-                        <p className="text-xs text-arxum-gold font-medium mt-0.5 truncate">
+                        <p className="text-xs text-axon-gold font-medium mt-0.5 truncate">
                           {valor}
                         </p>
                       </div>
@@ -1224,7 +1284,7 @@ export default function ConfiguracoesPage() {
                   <button
                     onClick={() => void salvarOrganizacao()}
                     disabled={salvandoOrganizacao}
-                    className="flex items-center gap-2 bg-arxum-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-arxum-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
+                    className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
                     {salvandoOrganizacao ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -1247,35 +1307,71 @@ export default function ConfiguracoesPage() {
                       onChange={(e) =>
                         setFormConfig((p) => ({ ...p, nome_organizacao: e.target.value }))
                       }
-                      className="w-full bg-arxum-bg border border-arxum-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-arxum-gold transition-colors"
+                      className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-axon-gold transition-colors"
                     />
                   </div>
 
                   <div className="space-y-1.5 md:col-span-2">
                     <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      URL do Logo
+                      Logo da Organização
                     </label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="url"
-                        placeholder="https://..."
-                        value={formConfig.logo_url ?? ""}
-                        onChange={(e) =>
-                          setFormConfig((p) => ({ ...p, logo_url: e.target.value }))
-                        }
-                        className="flex-1 bg-arxum-bg border border-arxum-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-arxum-gold transition-colors"
-                      />
-                      {formConfig.logo_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={formConfig.logo_url}
-                          alt="Preview do logo"
-                          className="w-10 h-10 rounded-lg object-contain border border-arxum-border bg-arxum-bg p-1"
-                          onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                          }}
+
+                    <div className="flex items-start gap-4">
+                      {/* Preview do logo atual */}
+                      <div className="shrink-0">
+                        {formConfig.logo_url ? (
+                          <div className="relative group w-20 h-20 rounded-xl overflow-hidden border border-axon-border bg-axon-bg">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={formConfig.logo_url}
+                              alt="Logo"
+                              className="w-full h-full object-contain p-1"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
+                            <button
+                              onClick={removerLogo}
+                              className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                              title="Remover logo"
+                            >
+                              <Trash2 size={18} className="text-red-400" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="w-20 h-20 rounded-xl border border-dashed border-axon-border bg-axon-bg flex items-center justify-center">
+                            <Image size={24} className="text-gray-600" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Botões de ação */}
+                      <div className="flex flex-col gap-2">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                          id="logo-upload-input"
                         />
-                      ) : null}
+                        <label
+                          htmlFor="logo-upload-input"
+                          className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-axon-gold transition-colors ${
+                            uploadingLogo ? "pointer-events-none opacity-50" : ""
+                          }`}
+                        >
+                          {uploadingLogo ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Upload size={14} />
+                          )}
+                          {uploadingLogo ? "Enviando..." : formConfig.logo_url ? "Alterar Logo" : "Fazer upload do logo"}
+                        </label>
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                          JPG, PNG ou WebP. Máx. 5MB.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
