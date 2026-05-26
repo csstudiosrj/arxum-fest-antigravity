@@ -1,23 +1,64 @@
 import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 import { Users, Ticket, Mic2, TrendingUp } from "lucide-react";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: userData } = await supabase
+    .from("usuarios")
+    .select("role, produtora_id")
+    .eq("id", user.id)
+    .single();
+
+  // Consultas base dinâmicas
+  const qInscricoes = supabase
+    .from("apresentacoes")
+    .select("*", { count: "exact", head: true });
+
+  const qParticipantes = supabase
+    .from("participantes")
+    .select("*", { count: "exact", head: true });
+
+  const qMidias = supabase
+    .from("apresentacoes")
+    .select("*", { count: "exact", head: true })
+    .is("arquivo_audio", null);
+
+  const qReceita = supabase
+    .from("apresentacoes")
+    .select("valor_total")
+    .eq("status_pagamento", "Pendente")
+    .not("valor_total", "is", null);
+
+  // Aplica filtro de inquilino para usuários que não são super_admin
+  if (userData?.role !== "super_admin" && userData?.produtora_id) {
+    qInscricoes.eq("produtora_id", userData.produtora_id);
+    qParticipantes.eq("produtora_id", userData.produtora_id);
+    qMidias.eq("produtora_id", userData.produtora_id);
+    qReceita.eq("produtora_id", userData.produtora_id);
+  }
 
   const [
     { count: totalInscricoes },
     { count: totalParticipantes },
     { count: midiasPendentes },
     { data: receitaData },
-  ] = await Promise.all([
-    supabase.from("apresentacoes").select("*", { count: "exact", head: true }),
-    supabase.from("participantes").select("*", { count: "exact", head: true }),
-    supabase.from("apresentacoes").select("*", { count: "exact", head: true }).is("arquivo_audio", null),
-    supabase.from("apresentacoes").select("valor_total").eq("status_pagamento", "Pendente").not("valor_total", "is", null),
-  ]);
+  ] = await Promise.all([qInscricoes, qParticipantes, qMidias, qReceita]);
 
   const receitaTotal = receitaData?.reduce((acc, c) => acc + (c.valor_total ?? 0), 0) ?? 0;
-  const receitaFormatada = receitaTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const receitaFormatada = receitaTotal.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 
   const kpis = [
     {
@@ -65,7 +106,10 @@ export default async function DashboardPage() {
         {kpis.map((kpi) => {
           const Icon = kpi.icon;
           return (
-            <div key={kpi.label} className="bg-axon-panel border border-axon-border rounded-xl p-6 flex flex-col gap-4">
+            <div
+              key={kpi.label}
+              className="bg-axon-panel border border-axon-border rounded-xl p-6 flex flex-col gap-4"
+            >
               <div className="flex items-center justify-between text-gray-400">
                 <span className="text-sm font-medium">{kpi.label}</span>
                 <Icon size={20} className={kpi.iconColor} />
