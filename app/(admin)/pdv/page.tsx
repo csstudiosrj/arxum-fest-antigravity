@@ -26,6 +26,7 @@ import {
   ClipboardList,
   Coffee,
   Ticket,
+  Globe,
 } from "lucide-react";
 
 type TipoProduto = "cantina" | "bilheteria";
@@ -1091,6 +1092,49 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
               placeholder="••••"
               maxLength={6}
             />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-axon-panel border border-axon-border rounded-xl p-5">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 rounded-lg bg-axon-gold/10 border border-axon-gold/20 flex items-center justify-center">
+            <Globe size={16} className="text-axon-gold" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white">Terminais de Operação Local</h3>
+            <p className="text-xs text-gray-500">Guia de acesso para operadores nos terminais</p>
+          </div>
+        </div>
+
+        <div className="space-y-4 text-sm text-gray-300">
+          <div>
+            <p className="text-xs text-gray-500 mb-1">URL do Terminal da Cantina (Caixa)</p>
+            <code className="block bg-black/30 border border-axon-border rounded-lg px-3 py-2 text-axon-gold font-mono text-xs">
+              /fest/caixa
+            </code>
+          </div>
+
+          <div>
+            <p className="text-xs text-gray-500 mb-1">URL do Terminal da Bilheteria</p>
+            <code className="block bg-black/30 border border-axon-border rounded-lg px-3 py-2 text-axon-gold font-mono text-xs">
+              /fest/bilheteria
+            </code>
+          </div>
+
+          <div className="pt-3 border-t border-axon-border/50">
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Os operadores devem realizar login com uma conta de usuário ativa vinculada a esta
+              produtora. O acesso aos terminais exige autenticação padrão da plataforma.
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              O PIN Administrativo configurado acima será exigido localmente nos terminais para
+              autorizar operações críticas, como abertura de gaveta, cancelamento de vendas ou
+              ajuste de valores.
+            </p>
           </div>
         </div>
       </div>
