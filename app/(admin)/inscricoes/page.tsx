@@ -22,6 +22,9 @@ import {
   Music,
 } from "lucide-react";
 
+// Instância global do cliente Supabase
+const supabase = createClient();
+
 // ============================================================
 // TIPOS
 // ============================================================
@@ -58,6 +61,17 @@ interface Vinculo {
   confirmado: boolean;
   token_confirmacao: string | null;
   data_vinculo: string;
+}
+
+interface VinculoComGrupo {
+  funcao: string;
+  confirmado: boolean;
+  data_vinculo: string;
+  grupos: { nome: string } | null;
+}
+
+interface TenantEstiloAtivo {
+  estilos: { nome: string } | null;
 }
 
 // ============================================================
@@ -111,6 +125,15 @@ function ConfirmModal({
   onCancel,
   loading,
 }: ConfirmModalProps) {
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, onCancel]);
+
   if (!open) return null;
 
   return (
@@ -178,6 +201,15 @@ function ModalGrupo({
   const [erro, setErro] = useState("");
 
   useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
     if (grupo) {
       setNome(grupo.nome);
       setResponsavel(grupo.responsavel || "");
@@ -209,7 +241,6 @@ function ModalGrupo({
     if (tipoDocumento === "cnpj" && docLimpo.length !== 14)
       return setErro("CNPJ deve ter 14 dígitos.");
     setSalvando(true);
-    const supabase = createClient();
 
     if (grupo) {
       const { error } = await supabase
@@ -414,6 +445,15 @@ function ModalParticipante({
   const [nomeMascarado, setNomeMascarado] = useState("");
 
   useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
     if (participante) {
       setNome(participante.nome);
       setNomeArtistico(participante.nome_artistico || "");
@@ -441,7 +481,6 @@ function ModalParticipante({
     const verificarMatch = async () => {
       const cpfLimpo = cpf.replace(/\D/g, "");
       if (cpfLimpo.length === 11 && !participante) {
-        const supabase = createClient();
         const { data } = await supabase
           .from("participantes")
           .select("nome")
@@ -486,7 +525,6 @@ function ModalParticipante({
       return setErro("E-mail de contato é obrigatório.");
     if (!funcao) return setErro("Selecione a função.");
     setSalvando(true);
-    const supabase = createClient();
 
     if (participante) {
       const updateData: Record<string, unknown> = {
@@ -750,6 +788,15 @@ function ModalVincular({
   const [erro, setErro] = useState("");
 
   useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
     if (!open) {
       setBusca("");
       setResultados([]);
@@ -766,7 +813,6 @@ function ModalVincular({
     if (!termo) return;
     setBuscando(true);
     setErro("");
-    const supabase = createClient();
     let query = supabase.from("participantes").select("*");
     if (termo.length === 11 || /^\d+$/.test(termo)) {
       query = query.eq("documento", termo.replace(/\D/g, ""));
@@ -782,7 +828,6 @@ function ModalVincular({
   async function vincular() {
     if (!selecionado) return setErro("Selecione um participante.");
     setSalvando(true);
-    const supabase = createClient();
 
     const { data: existente } = await supabase
       .from("grupo_participante")
@@ -942,10 +987,18 @@ function DrawerParticipante({ open, participante, onClose }: DrawerParticipanteP
   const [carregando, setCarregando] = useState(false);
 
   useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
     if (!open || !participante) return;
     const carregarDados = async () => {
       setCarregando(true);
-      const supabase = createClient();
       const { data, error } = await supabase
         .from("grupo_participante")
         .select(
@@ -956,9 +1009,11 @@ function DrawerParticipante({ open, participante, onClose }: DrawerParticipanteP
           grupos:grupo_id (nome)
         `
         )
-        .eq("participante_id", participante.id);
+        .eq("participante_id", participante.id)
+        .returns<VinculoComGrupo[]>();
+
       if (!error && data) {
-        const formatted = data.map((v: any) => ({
+        const formatted = data.map((v: VinculoComGrupo) => ({
           grupo_nome: v.grupos?.nome || "Grupo desconhecido",
           funcao: v.funcao,
           confirmado: v.confirmado,
@@ -1141,10 +1196,18 @@ function DrawerGrupo({
     participanteNome?: string;
   }>({ open: false, type: "remover" });
 
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
   const carregarDados = useCallback(async () => {
     if (!grupo) return;
     setCarregando(true);
-    const supabase = createClient();
 
     // REFATORAÇÃO #2 — Removido o filtro .eq("status", "ativo") que causava Erro 400.
     // A tabela grupo_participante não possui essa coluna. Filtra apenas por grupo_id.
@@ -1167,13 +1230,29 @@ function DrawerGrupo({
       const bloqueadosIds = bloqueados?.map((b) => b.participante_id) || [];
 
       if (parts) {
-        const combined = vinculos.map((v) => ({
-          ...(parts.find((p) => p.id === v.participante_id)!),
-          funcao: v.funcao,
-          confirmado: v.confirmado,
-          vinculoId: v.id,
-          bloqueado: bloqueadosIds.includes(v.participante_id),
-        }));
+        const combined = vinculos.map((v) => {
+          const part = parts.find((p) => p.id === v.participante_id);
+          const fallback: Participante = {
+            id: v.participante_id,
+            nome: "Participante desconhecido",
+            nome_artistico: null,
+            documento: null,
+            data_nascimento: "",
+            email_contato: "N/A",
+            termo_assinado: false,
+            funcao: null,
+            created_at: "",
+            origem_produtora_id: null,
+          };
+          const base = part ?? fallback;
+          return {
+            ...base,
+            funcao: v.funcao,
+            confirmado: v.confirmado,
+            vinculoId: v.id,
+            bloqueado: bloqueadosIds.includes(v.participante_id),
+          };
+        });
         setParticipantes(combined);
       }
     }
@@ -1197,7 +1276,6 @@ function DrawerGrupo({
   }
 
   async function confirmarAcao() {
-    const supabase = createClient();
     if (confirmModal.type === "remover" && confirmModal.participanteId) {
       const vinculo = participantes.find(
         (p) => p.id === confirmModal.participanteId
@@ -1406,7 +1484,6 @@ export default function InscricoesPage() {
   // REFATORAÇÃO #3 — useEffect principal com busca dinâmica de estilos ativos
   useEffect(() => {
     const fetchUserData = async () => {
-      const supabase = createClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -1432,11 +1509,12 @@ export default function InscricoesPage() {
               .from("tenant_estilos_ativos")
               .select("estilos:estilo_id (nome)")
               .eq("produtora_id", data.produtora_id)
-              .eq("ativo", true);
+              .eq("ativo", true)
+              .returns<TenantEstiloAtivo[]>();
 
             const nomes: string[] =
               estilosAtivos
-                ?.map((e: any) => e.estilos?.nome as string)
+                ?.map((e: TenantEstiloAtivo) => e.estilos?.nome as string)
                 .filter(Boolean) ?? [];
 
             setOpcoesFuncao(nomes.length > 0 ? nomes : FALLBACK_OPCOES_FUNCAO);
@@ -1454,7 +1532,6 @@ export default function InscricoesPage() {
   const carregarDados = useCallback(async () => {
     if (!produtoraId) return;
     setCarregando(true);
-    const supabase = createClient();
 
     // Grupos: segue a lógica existente (próprios + inscritos nos seus eventos)
     let gruposQuery;
@@ -1572,7 +1649,6 @@ export default function InscricoesPage() {
       )
     )
       return;
-    const supabase = createClient();
     const { error } = await supabase.from("grupos").delete().eq("id", id);
     if (error) mostrarToast(error.message, "erro");
     else {
