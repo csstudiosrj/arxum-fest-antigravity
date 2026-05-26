@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
+const supabase = createClient();
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Perfil {
@@ -24,7 +26,7 @@ function Toast({ msg, tipo, visivel }: { msg: string; tipo: "ok" | "erro"; visiv
     <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-5 py-3 rounded-full font-semibold text-sm shadow-xl transition-all duration-300 ${
       visivel ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
     } ${tipo === "ok"
-      ? "bg-[#C5A059] text-black"
+      ? "bg-axon-gold text-black"
       : "bg-red-500/90 text-white"
     }`}>
       {tipo === "ok" ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
@@ -46,23 +48,23 @@ function AvatarUpload({
   return (
     <div className="flex flex-col items-center gap-3">
       <div className="relative">
-        <div className="w-24 h-24 rounded-full border-2 border-[#C5A059]/40 overflow-hidden bg-[#1a1413] flex items-center justify-center">
+        <div className="w-24 h-24 rounded-full border-2 border-axon-gold-dim overflow-hidden bg-axon-panel flex items-center justify-center">
           {fotoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={fotoUrl} alt="Foto de perfil" className="w-full h-full object-cover" />
           ) : (
-            <span className="text-2xl font-bold text-[#C5A059]">{iniciais}</span>
+            <span className="text-2xl font-bold text-axon-gold">{iniciais}</span>
           )}
           {uploading && (
             <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-              <Loader2 size={24} className="animate-spin text-[#C5A059]" />
+              <Loader2 size={24} className="animate-spin text-axon-gold" />
             </div>
           )}
         </div>
         <button
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
-          className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-[#C5A059] text-black flex items-center justify-center hover:bg-[#d4af6a] transition-colors shadow-lg disabled:opacity-50"
+          className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-axon-gold text-black flex items-center justify-center hover:bg-axon-gold-dim transition-colors shadow-lg disabled:opacity-50"
         >
           <Camera size={14} />
         </button>
@@ -103,7 +105,7 @@ function Campo({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-full bg-axon-bg border border-axon-border rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-[#C5A059] disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-gray-600 transition-colors"
+          className="w-full bg-axon-bg border border-axon-border rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-axon-gold disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-gray-600 transition-colors"
         />
         {extra}
       </div>
@@ -113,7 +115,11 @@ function Campo({
 
 // ─── Seção de Senha ───────────────────────────────────────────────────────────
 
-function SecaoSenha({ onSalvar, salvando }: { onSalvar: (nova: string) => Promise<void>; salvando: boolean }) {
+function SecaoSenha({
+  email, onSalvar, salvando,
+}: {
+  email: string; onSalvar: (nova: string, atual: string) => Promise<void>; salvando: boolean;
+}) {
   const [atual, setAtual] = useState("");
   const [nova, setNova] = useState("");
   const [confirma, setConfirma] = useState("");
@@ -125,7 +131,7 @@ function SecaoSenha({ onSalvar, salvando }: { onSalvar: (nova: string) => Promis
   const handleSalvar = async () => {
     if (!valido) { setErro("As senhas não coincidem ou são muito curtas (mín. 6 caracteres)."); return; }
     setErro("");
-    await onSalvar(nova);
+    await onSalvar(nova, atual);
     setAtual(""); setNova(""); setConfirma("");
   };
 
@@ -134,7 +140,7 @@ function SecaoSenha({ onSalvar, salvando }: { onSalvar: (nova: string) => Promis
   return (
     <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 space-y-5">
       <div className="flex items-center gap-2.5">
-        <Lock size={18} className="text-[#C5A059]" />
+        <Lock size={18} className="text-axon-gold" />
         <h2 className="text-white font-semibold">Alterar Senha</h2>
       </div>
 
@@ -153,7 +159,7 @@ function SecaoSenha({ onSalvar, salvando }: { onSalvar: (nova: string) => Promis
                 value={val}
                 onChange={(e) => set(e.target.value)}
                 placeholder={ph}
-                className="w-full bg-axon-bg border border-axon-border rounded-xl pl-10 pr-10 py-3 text-white text-sm focus:outline-none focus:border-[#C5A059] placeholder:text-gray-600 transition-colors"
+                className="w-full bg-axon-bg border border-axon-border rounded-xl pl-10 pr-10 py-3 text-white text-sm focus:outline-none focus:border-axon-gold placeholder:text-gray-600 transition-colors"
               />
               <button
                 type="button"
@@ -177,7 +183,7 @@ function SecaoSenha({ onSalvar, salvando }: { onSalvar: (nova: string) => Promis
         <button
           onClick={handleSalvar}
           disabled={!valido || salvando || !atual}
-          className="flex items-center gap-2 bg-[#C5A059] text-black px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#d4af6a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 bg-axon-gold text-black px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-axon-gold-dim transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {salvando ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
           {salvando ? "Salvando..." : "Atualizar Senha"}
@@ -198,8 +204,6 @@ function SecaoSenha({ onSalvar, salvando }: { onSalvar: (nova: string) => Promis
 // ─── Componente Principal ─────────────────────────────────────────────────────
 
 export default function PerfilPage() {
-  const supabase = createClient();
-
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [email, setEmail] = useState("");
   const [nome, setNome] = useState("");
@@ -243,16 +247,28 @@ export default function PerfilPage() {
     carregar();
   }, []);
 
-  // ── Upload de foto ──
+  // ── Upload de foto com limpeza do arquivo anterior ──
   const handleUploadFoto = async (file: File) => {
+    if (!perfil?.id) {
+      mostrarToast("ID do perfil não encontrado.", "erro");
+      return;
+    }
+
     if (file.size > 5 * 1024 * 1024) {
       mostrarToast("Arquivo muito grande. Máximo 5MB.", "erro");
       return;
     }
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      mostrarToast("Formato não permitido. Use JPG, PNG ou WebP.", "erro");
+      return;
+    }
+
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const path = `perfil/${perfil?.id ?? "user"}-${Date.now()}.${ext}`;
+      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      const path = `perfil/user-${perfil.id}-${Date.now()}.${ext}`;
 
       const { error: upErr } = await supabase.storage
         .from("axon-assets")
@@ -267,14 +283,27 @@ export default function PerfilPage() {
       const publicUrl = urlData.publicUrl;
       setFotoUrl(publicUrl);
 
-      await supabase
+      // Atualiza no banco
+      const { error: updateError } = await supabase
         .from("usuarios")
         .update({ foto_url: publicUrl })
-        .eq("id", perfil!.id);
+        .eq("id", perfil.id);
+
+      if (updateError) throw updateError;
+
+      // Remove arquivo antigo do storage, se houver
+      if (fotoUrl && fotoUrl.includes("axon-assets")) {
+        const urlObj = new URL(fotoUrl);
+        const oldPath = urlObj.pathname.replace(/^\/storage\/v1\/object\/public\/axon-assets\//, "");
+        if (oldPath && oldPath !== path) {
+          await supabase.storage.from("axon-assets").remove([oldPath]);
+        }
+      }
 
       mostrarToast("Foto atualizada com sucesso!");
-    } catch {
-      mostrarToast("Erro ao fazer upload da foto.", "erro");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao fazer upload da foto.";
+      mostrarToast(msg, "erro");
     } finally {
       setUploading(false);
     }
@@ -299,12 +328,25 @@ export default function PerfilPage() {
     }
   };
 
-  // ── Alterar senha ──
-  const alterarSenha = async (novaSenha: string) => {
+  // ── Alterar senha com re-autenticação ──
+  const alterarSenha = async (novaSenha: string, senhaAtual: string) => {
     setSalvandoSenha(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: novaSenha });
-      if (error) throw error;
+      // Re-autenticar para confirmar senha atual
+      const { error: reAuthError } = await supabase.auth.signInWithPassword({
+        email,
+        password: senhaAtual,
+      });
+
+      if (reAuthError) {
+        mostrarToast("A senha atual inserida está incorreta.", "erro");
+        setSalvandoSenha(false);
+        return;
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({ password: novaSenha });
+      if (updateError) throw updateError;
+
       mostrarToast("Senha alterada com sucesso!");
     } catch {
       mostrarToast("Erro ao alterar senha.", "erro");
@@ -317,7 +359,7 @@ export default function PerfilPage() {
   if (carregando) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 size={32} className="animate-spin text-[#C5A059]" />
+        <Loader2 size={32} className="animate-spin text-axon-gold" />
       </div>
     );
   }
@@ -336,7 +378,7 @@ export default function PerfilPage() {
         {/* Card principal */}
         <div className="bg-axon-panel border border-axon-border rounded-2xl p-6 space-y-6">
           <div className="flex items-center gap-2.5 border-b border-axon-border pb-5">
-            <User size={18} className="text-[#C5A059]" />
+            <User size={18} className="text-axon-gold" />
             <h2 className="text-white font-semibold">Informações Pessoais</h2>
           </div>
 
@@ -377,7 +419,7 @@ export default function PerfilPage() {
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">Cargo</label>
               <div className="flex items-center h-[46px] px-3.5 bg-axon-bg border border-axon-border rounded-xl">
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#C5A059]/10 text-[#C5A059] border border-[#C5A059]/30 capitalize">
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-axon-gold-dim text-axon-gold border border-axon-gold-dim capitalize">
                   {perfil?.role ?? "admin"}
                 </span>
               </div>
@@ -389,7 +431,7 @@ export default function PerfilPage() {
             <button
               onClick={salvarPerfil}
               disabled={salvando}
-              className="flex items-center gap-2 bg-[#C5A059] text-black px-6 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#d4af6a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 bg-axon-gold text-black px-6 py-2.5 rounded-xl font-semibold text-sm hover:bg-axon-gold-dim transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {salvando ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
               {salvando ? "Salvando..." : "Salvar Alterações"}
@@ -398,16 +440,16 @@ export default function PerfilPage() {
         </div>
 
         {/* Seção de senha */}
-        <SecaoSenha onSalvar={alterarSenha} salvando={salvandoSenha} />
+        <SecaoSenha email={email} onSalvar={alterarSenha} salvando={salvandoSenha} />
 
         {/* Card SaaS — placeholder pra lapidação final */}
         <div className="bg-axon-panel border border-axon-border rounded-2xl p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-2 h-2 rounded-full bg-[#C5A059] animate-pulse" />
+              <div className="w-2 h-2 rounded-full bg-axon-gold animate-pulse" />
               <h2 className="text-white font-semibold">Plano & Assinatura</h2>
             </div>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-[#C5A059]/10 text-[#C5A059] border border-[#C5A059]/30 font-semibold">
+            <span className="text-xs px-2.5 py-1 rounded-full bg-axon-gold-dim text-axon-gold border border-axon-gold-dim font-semibold">
               Em breve
             </span>
           </div>
