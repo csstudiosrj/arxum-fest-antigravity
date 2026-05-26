@@ -15,6 +15,8 @@ import {
   X,
 } from "lucide-react";
 
+const supabase = createClient();
+
 // ============================================================
 // MAPEAMENTO DE PRESETS DINÂMICOS
 // ============================================================
@@ -165,8 +167,6 @@ export default function EventosPage() {
     data_fim: "",
   });
 
-  const supabase = createClient();
-
   const carregarEventos = useCallback(
     async (pid: string) => {
       setLoading(true);
@@ -234,6 +234,18 @@ export default function EventosPage() {
 
     void init();
   }, [supabase, carregarEventos]);
+
+  // Fechar modal via tecla Escape
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && modalNovo && !criando) {
+        setModalNovo(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalNovo, criando]);
 
   async function criarEvento() {
     if (!form.nome.trim() || !form.data_inicio || !form.data_fim) return;
