@@ -928,6 +928,7 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
 
       if (data) {
         setConfig(data as ConfigPdv);
+        setPinConfirm(data.pin_admin ?? "");
       } else {
         setConfig({
           produtora_id: produtoraId,
@@ -936,6 +937,7 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
           pix_cidade: "",
           pin_admin: "",
         });
+        setPinConfirm("");
       }
 
       setCarregando(false);
@@ -948,7 +950,7 @@ function AbaConfiguracoes({ produtoraId }: AbaConfiguracoesProps) {
     setErro("");
     setSucesso("");
 
-    if (config.pin_admin && config.pin_admin !== pinConfirm && pinConfirm !== "") {
+    if (config.pin_admin !== pinConfirm) {
       setErro("Os PINs não coincidem.");
       return;
     }
