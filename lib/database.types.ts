@@ -319,23 +319,43 @@ export type Database = {
       estilos: {
         Row: {
           id: string
+          perfil_id: string
           nome: string
+          slug: string
           descricao: string | null
+          ativo: boolean
+          ordem: number
           criado_em: string
         }
         Insert: {
           id?: string
+          perfil_id: string
           nome: string
+          slug: string
           descricao?: string | null
+          ativo?: boolean
+          ordem?: number
           criado_em?: string
         }
         Update: {
           id?: string
+          perfil_id?: string
           nome?: string
+          slug?: string
           descricao?: string | null
+          ativo?: boolean
+          ordem?: number
           criado_em?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "estilos_perfil_id_fkey"
+            columns: ["perfil_id"]
+            isOneToOne: false
+            referencedRelation: "perfis_festival"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       inscricoes_grupo_evento: {
         Row: {
@@ -439,7 +459,7 @@ export type Database = {
         }
         Update: {
           id?: string
-          termo_id?: string
+          tero_id?: string
           participante_id?: string
           aceito?: boolean
           ip_assinatura?: string | null
@@ -448,7 +468,7 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "termos_aceites_termo_id_fkey"
-            columns: ["termo_id"]
+            columns: ["tero_id"]
             isOneToOne: false
             referencedRelation: "termos_documentos"
             referencedColumns: ["id"]
@@ -683,7 +703,7 @@ export type Database = {
           }
         ]
       }
-      evento_jurados: {
+      eventojurados: {
         Row: {
           id: string
           evento_id: string
@@ -707,7 +727,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "evento_jurados_evento_id_fkey"
+            foreignKeyName: "eventojurados_evento_id_fkey"
             columns: ["evento_id"]
             isOneToOne: false
             referencedRelation: "eventos"
@@ -924,6 +944,92 @@ export type Database = {
         ]
       }
     }
+      tenant_config: {
+        Row: {
+          id: string
+          produtora_id: string
+          perfil_id: string | null
+          nome_organizacao: string | null
+          logo_url: string | null
+          termo_inscricao: string | null
+          termo_participante: string | null
+          termo_grupo: string | null
+          termo_apresentacao: string | null
+          termo_evento: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          produtora_id: string
+          perfil_id?: string | null
+          nome_organizacao?: string | null
+          logo_url?: string | null
+          termo_inscricao?: string | null
+          termo_participante?: string | null
+          termo_grupo?: string | null
+          termo_apresentacao?: string | null
+          termo_evento?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          produtora_id?: string
+          perfil_id?: string | null
+          nome_organizacao?: string | null
+          logo_url?: string | null
+          termo_inscricao?: string | null
+          termo_participante?: string | null
+          termo_grupo?: string | null
+          termo_apresentacao?: string | null
+          termo_evento?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_config_produtora_id_fkey"
+            columns: ["produtora_id"]
+            isOneToOne: false
+            referencedRelation: "produtoras"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      tenant_estilos_ativos: {
+        Row: {
+          id: string
+          estilo_id: string
+          produtora_id: string
+          ativo: boolean
+        }
+        Insert: {
+          id?: string
+          estilo_id: string
+          produtora_id: string
+          ativo?: boolean
+        }
+        Update: {
+          id?: string
+          estilo_id?: string
+          produtora_id?: string
+          ativo?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_estilos_ativos_estilo_id_fkey"
+            columns: ["estilo_id"]
+            isOneToOne: false
+            referencedRelation: "estilos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_estilos_ativos_produtora_id_fkey"
+            columns: ["produtora_id"]
+            isOneToOne: false
+            referencedRelation: "produtoras"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     Views: {
       [_ in never]: never
     }
