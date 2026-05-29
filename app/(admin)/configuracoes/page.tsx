@@ -27,7 +27,6 @@ import {
   Image,
 } from "lucide-react";
 
-const supabase = createClient();
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -244,6 +243,7 @@ function LoadingSkeleton() {
 }
 
 export default function ConfiguracoesPage() {
+  const [supabase] = useState(() => createClient());
   const [abaAtiva, setAbaAtiva] = useState<AbaId>("perfil");
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
