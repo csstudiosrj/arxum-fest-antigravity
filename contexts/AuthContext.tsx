@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  // Usa o cliente tipado do lib/supabase.ts
+  // Usa o cliente tipado do lib/supabase (browser only via barrel)
   const supabase = createClient()
 
   useEffect(() => {
