@@ -2,10 +2,10 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
+import { createBrowserClient } from '@supabase/ssr'
 import { Database } from '@/lib/database.types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
-// Tipo baseado na tabela usuarios do schema
  type User = Database['public']['Tables']['usuarios']['Row']
  type Role = User['role']
 
@@ -15,6 +15,7 @@ interface AuthContextType {
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
+  supabase: SupabaseClient<Database>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -25,8 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  // Usa o cliente tipado do lib/supabase (browser only via barrel)
-  const supabase = createClient()
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   useEffect(() => {
     checkSession()
@@ -97,7 +100,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
     })
     if (error) throw error
-    // onAuthStateChange dispara automaticamente e atualiza o estado
   }
 
   const signOut = async () => {
@@ -108,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, role, loading, signIn, signOut, supabase }}>
       {children}
     </AuthContext.Provider>
   )
