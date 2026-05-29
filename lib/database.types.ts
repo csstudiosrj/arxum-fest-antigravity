@@ -40,6 +40,7 @@ export type Database = {
           ativo?: boolean
           criado_em?: string
         }
+        Relationships: []
       }
       usuarios: {
         Row: {
@@ -72,6 +73,102 @@ export type Database = {
           ativo?: boolean
           criado_em?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "usuarios_produtora_id_fkey"
+            columns: ["produtora_id"]
+            isOneToOne: false
+            referencedRelation: "produtoras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usuarios_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      grupos: {
+        Row: {
+          id: string
+          nome: string
+          documento: string | null
+          email: string
+          email_contato: string | null
+          cidade: string | null
+          estado: string | null
+          produtora_id: string | null
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          nome: string
+          documento?: string | null
+          email: string
+          email_contato?: string | null
+          cidade?: string | null
+          estado?: string | null
+          produtora_id?: string | null
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          nome?: string
+          documento?: string | null
+          email?: string
+          email_contato?: string | null
+          cidade?: string | null
+          estado?: string | null
+          produtora_id?: string | null
+          criado_em?: string
+        }
+        Relationships: []
+      }
+      participantes: {
+        Row: {
+          id: string
+          nome: string
+          data_nascimento: string
+          documento: string | null
+          grupo_id: string | null
+          produtora_id: string | null
+          confirmado_vinculo: boolean
+          termo_assinado: boolean
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          nome: string
+          data_nascimento: string
+          documento?: string | null
+          grupo_id?: string | null
+          produtora_id?: string | null
+          confirmado_vinculo?: boolean
+          termo_assinado?: boolean
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          nome?: string
+          data_nascimento?: string
+          documento?: string | null
+          grupo_id?: string | null
+          produtora_id?: string | null
+          confirmado_vinculo?: boolean
+          termo_assinado?: boolean
+          criado_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "participantes_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       eventos: {
         Row: {
@@ -110,41 +207,135 @@ export type Database = {
           perfil_id?: string | null
           criado_em?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "eventos_produtora_id_fkey"
+            columns: ["produtora_id"]
+            isOneToOne: false
+            referencedRelation: "produtoras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eventos_perfil_id_fkey"
+            columns: ["perfil_id"]
+            isOneToOne: false
+            referencedRelation: "perfis_festival"
+            referencedColumns: ["id"]
+          }
+        ]
       }
-      grupos: {
+      categorias: {
         Row: {
           id: string
           nome: string
-          documento: string | null
-          email: string
-          email_contato: string | null
-          cidade: string | null
-          estado: string | null
-          produtora_id: string | null
+          descricao: string | null
+          evento_id: string | null
+          idade_minima: number | null
+          idade_maxima: number | null
           criado_em: string
         }
         Insert: {
           id?: string
           nome: string
-          documento?: string | null
-          email: string
-          email_contato?: string | null
-          cidade?: string | null
-          estado?: string | null
-          produtora_id?: string | null
+          descricao?: string | null
+          evento_id?: string | null
+          idade_minima?: number | null
+          idade_maxima?: number | null
           criado_em?: string
         }
         Update: {
           id?: string
           nome?: string
-          documento?: string | null
-          email?: string
-          email_contato?: string | null
-          cidade?: string | null
-          estado?: string | null
-          produtora_id?: string | null
+          descricao?: string | null
+          evento_id?: string | null
+          idade_minima?: number | null
+          idade_maxima?: number | null
           criado_em?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "categorias_evento_id_fkey"
+            columns: ["evento_id"]
+            isOneToOne: false
+            referencedRelation: "eventos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      locais_evento: {
+        Row: {
+          id: string
+          nome: string
+          endereco: string | null
+          cidade: string | null
+          estado: string | null
+          capacidade: number | null
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          nome: string
+          endereco?: string | null
+          cidade?: string | null
+          estado?: string | null
+          capacidade?: number | null
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          nome?: string
+          endereco?: string | null
+          cidade?: string | null
+          estado?: string | null
+          capacidade?: number | null
+          criado_em?: string
+        }
+        Relationships: []
+      }
+      perfis_festival: {
+        Row: {
+          id: string
+          nome: string
+          descricao: string | null
+          tipo: 'festival_danca' | 'competicao_rua' | 'outro'
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          nome: string
+          descricao?: string | null
+          tipo?: 'festival_danca' | 'competicao_rua' | 'outro'
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          nome?: string
+          descricao?: string | null
+          tipo?: 'festival_danca' | 'competicao_rua' | 'outro'
+          criado_em?: string
+        }
+        Relationships: []
+      }
+      estilos: {
+        Row: {
+          id: string
+          nome: string
+          descricao: string | null
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          nome: string
+          descricao?: string | null
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          nome?: string
+          descricao?: string | null
+          criado_em?: string
+        }
+        Relationships: []
       }
       inscricoes_grupo_evento: {
         Row: {
@@ -174,41 +365,146 @@ export type Database = {
           origem?: 'auto' | 'convite' | 'admin'
           data_inscricao?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "inscricoes_evento_id_fkey"
+            columns: ["evento_id"]
+            isOneToOne: false
+            referencedRelation: "eventos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inscricoes_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos"
+            referencedColumns: ["id"]
+          }
+        ]
       }
-      participantes: {
+      termos_documentos: {
         Row: {
           id: string
-          nome: string
-          data_nascimento: string
-          documento: string | null
-          grupo_id: string | null
-          produtora_id: string | null
-          confirmado_vinculo: boolean
-          termo_assinado: boolean
+          titulo: string
+          conteudo: string
+          tipo: 'regulamento' | 'autorizacao_imagem' | 'termo_responsabilidade'
+          evento_id: string | null
+          obrigatorio: boolean
           criado_em: string
         }
         Insert: {
           id?: string
-          nome: string
-          data_nascimento: string
-          documento?: string | null
-          grupo_id?: string | null
-          produtora_id?: string | null
-          confirmado_vinculo?: boolean
-          termo_assinado?: boolean
+          titulo: string
+          conteudo: string
+          tipo?: 'regulamento' | 'autorizacao_imagem' | 'termo_responsabilidade'
+          evento_id?: string | null
+          obrigatorio?: boolean
           criado_em?: string
         }
         Update: {
           id?: string
-          nome?: string
-          data_nascimento?: string
-          documento?: string | null
-          grupo_id?: string | null
-          produtora_id?: string | null
-          confirmado_vinculo?: boolean
-          termo_assinado?: boolean
+          titulo?: string
+          conteudo?: string
+          tipo?: 'regulamento' | 'autorizacao_imagem' | 'termo_responsabilidade'
+          evento_id?: string | null
+          obrigatorio?: boolean
           criado_em?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "termos_documentos_evento_id_fkey"
+            columns: ["evento_id"]
+            isOneToOne: false
+            referencedRelation: "eventos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      termos_aceites: {
+        Row: {
+          id: string
+          termo_id: string
+          participante_id: string
+          aceito: boolean
+          ip_assinatura: string | null
+          data_aceite: string
+        }
+        Insert: {
+          id?: string
+          termo_id: string
+          participante_id: string
+          aceito?: boolean
+          ip_assinatura?: string | null
+          data_aceite?: string
+        }
+        Update: {
+          id?: string
+          termo_id?: string
+          participante_id?: string
+          aceito?: boolean
+          ip_assinatura?: string | null
+          data_aceite?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "termos_aceites_termo_id_fkey"
+            columns: ["termo_id"]
+            isOneToOne: false
+            referencedRelation: "termos_documentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "termos_aceites_participante_id_fkey"
+            columns: ["participante_id"]
+            isOneToOne: false
+            referencedRelation: "participantes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      convites: {
+        Row: {
+          id: string
+          email: string
+          token: string
+          tipo: 'grupo' | 'participante' | 'jurado'
+          evento_id: string | null
+          produtora_id: string
+          status: 'pendente' | 'aceito' | 'expirado'
+          data_expiracao: string
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          token: string
+          tipo: 'grupo' | 'participante' | 'jurado'
+          evento_id?: string | null
+          produtora_id: string
+          status?: 'pendente' | 'aceito' | 'expirado'
+          data_expiracao: string
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          token?: string
+          tipo?: 'grupo' | 'participante' | 'jurado'
+          evento_id?: string | null
+          produtora_id?: string
+          status?: 'pendente' | 'aceito' | 'expirado'
+          data_expiracao?: string
+          criado_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "convites_evento_id_fkey"
+            columns: ["evento_id"]
+            isOneToOne: false
+            referencedRelation: "eventos"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       apresentacoes: {
         Row: {
@@ -244,6 +540,103 @@ export type Database = {
           status_audio?: 'pendente' | 'enviado' | 'aprovado'
           criado_em?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "apresentacoes_evento_id_fkey"
+            columns: ["evento_id"]
+            isOneToOne: false
+            referencedRelation: "eventos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apresentacoes_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apresentacoes_categoria_id_fkey"
+            columns: ["categoria_id"]
+            isOneToOne: false
+            referencedRelation: "categorias"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      apresentacao_elenco: {
+        Row: {
+          id: string
+          apresentacao_id: string
+          participante_id: string
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          apresentacao_id: string
+          participante_id: string
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          apresentacao_id?: string
+          participante_id?: string
+          criado_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apresentacao_elenco_apresentacao_id_fkey"
+            columns: ["apresentacao_id"]
+            isOneToOne: false
+            referencedRelation: "apresentacoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apresentacao_elenco_participante_id_fkey"
+            columns: ["participante_id"]
+            isOneToOne: false
+            referencedRelation: "participantes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      criterios_avaliacao: {
+        Row: {
+          id: string
+          nome: string
+          descricao: string | null
+          peso: number
+          evento_id: string
+          ordem: number
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          nome: string
+          descricao?: string | null
+          peso?: number
+          evento_id: string
+          ordem?: number
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          nome?: string
+          descricao?: string | null
+          peso?: number
+          evento_id?: string
+          ordem?: number
+          criado_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "criterios_avaliacao_evento_id_fkey"
+            columns: ["evento_id"]
+            isOneToOne: false
+            referencedRelation: "eventos"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       avaliacoes: {
         Row: {
@@ -273,6 +666,178 @@ export type Database = {
           sincronizado?: boolean
           criado_em?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "avaliacoes_apresentacao_id_fkey"
+            columns: ["apresentacao_id"]
+            isOneToOne: false
+            referencedRelation: "apresentacoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "avaliacoes_criterio_id_fkey"
+            columns: ["criterio_id"]
+            isOneToOne: false
+            referencedRelation: "criterios_avaliacao"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      evento_jurados: {
+        Row: {
+          id: string
+          evento_id: string
+          jurado_id: string
+          ativo: boolean
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          evento_id: string
+          jurado_id: string
+          ativo?: boolean
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          evento_id?: string
+          jurado_id?: string
+          ativo?: boolean
+          criado_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evento_jurados_evento_id_fkey"
+            columns: ["evento_id"]
+            isOneToOne: false
+            referencedRelation: "eventos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      produtos: {
+        Row: {
+          id: string
+          nome: string
+          descricao: string | null
+          preco: number
+          estoque: number | null
+          ativo: boolean
+          produtora_id: string
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          nome: string
+          descricao?: string | null
+          preco: number
+          estoque?: number | null
+          ativo?: boolean
+          produtora_id: string
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          nome?: string
+          descricao?: string | null
+          preco?: number
+          estoque?: number | null
+          ativo?: boolean
+          produtora_id?: string
+          criado_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "produtos_produtora_id_fkey"
+            columns: ["produtora_id"]
+            isOneToOne: false
+            referencedRelation: "produtoras"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pdv_produtos: {
+        Row: {
+          id: string
+          evento_id: string
+          produto_id: string
+          preco_evento: number
+          estoque_evento: number | null
+          ativo: boolean
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          evento_id: string
+          produto_id: string
+          preco_evento: number
+          estoque_evento?: number | null
+          ativo?: boolean
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          evento_id?: string
+          produto_id?: string
+          preco_evento?: number
+          estoque_evento?: number | null
+          ativo?: boolean
+          criado_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdv_produtos_evento_id_fkey"
+            columns: ["evento_id"]
+            isOneToOne: false
+            referencedRelation: "eventos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdv_produtos_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pedido_itens: {
+        Row: {
+          id: string
+          venda_id: string
+          produto_id: string
+          quantidade: number
+          preco_unitario: number
+          total: number
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          venda_id: string
+          produto_id: string
+          quantidade: number
+          preco_unitario: number
+          total: number
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          venda_id?: string
+          produto_id?: string
+          quantidade?: number
+          preco_unitario?: number
+          total?: number
+          criado_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pedido_itens_venda_id_fkey"
+            columns: ["venda_id"]
+            isOneToOne: false
+            referencedRelation: "pdv_vendas"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       pdv_vendas: {
         Row: {
@@ -302,13 +867,167 @@ export type Database = {
           sincronizado?: boolean
           criado_em?: string
         }
+        Relationships: []
+      }
+      certificados: {
+        Row: {
+          id: string
+          participante_id: string
+          evento_id: string
+          apresentacao_id: string | null
+          tipo: 'participacao' | 'premiacao' | 'jurado'
+          codigo_validacao: string
+          url_pdf: string | null
+          emitido: boolean
+          data_emissao: string | null
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          participante_id: string
+          evento_id: string
+          apresentacao_id?: string | null
+          tipo?: 'participacao' | 'premiacao' | 'jurado'
+          codigo_validacao: string
+          url_pdf?: string | null
+          emitido?: boolean
+          data_emissao?: string | null
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          participante_id?: string
+          evento_id?: string
+          apresentacao_id?: string | null
+          tipo?: 'participacao' | 'premiacao' | 'jurado'
+          codigo_validacao?: string
+          url_pdf?: string | null
+          emitido?: boolean
+          data_emissao?: string | null
+          criado_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "certificados_participante_id_fkey"
+            columns: ["participante_id"]
+            isOneToOne: false
+            referencedRelation: "participantes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "certificados_evento_id_fkey"
+            columns: ["evento_id"]
+            isOneToOne: false
+            referencedRelation: "eventos"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
-    Views: {}
-    Functions: {
-      get_meu_role: { Returns: string }
-      get_minha_produtora_id: { Returns: string }
+    Views: {
+      [_ in never]: never
     }
-    Enums: {}
+    Functions: {
+      get_meu_role: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      get_minha_produtora_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      can_group_view_event: {
+        Args: { p_evento_id: string; p_grupo_id: string }
+        Returns: boolean
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
 }
+
+type PublicSchema = Database[Extract<keyof Database, "public">]
+
+export type Tables<
+  PublicTableNameOrOptions extends
+    | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
+        Database[PublicTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
+      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : PublicTableNameOrOptions extends keyof (PublicSchema["Tables"] &
+        PublicSchema["Views"])
+    ? (PublicSchema["Tables"] &
+        PublicSchema["Views"])[PublicTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  PublicTableNameOrOptions extends
+    | keyof PublicSchema["Tables"]
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
+    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  PublicTableNameOrOptions extends
+    | keyof PublicSchema["Tables"]
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
+    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  PublicEnumNameOrOptions extends
+    | keyof PublicSchema["Enums"]
+    | { schema: keyof Database },
+  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = PublicEnumNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
+    ? PublicSchema["Enums"][PublicEnumNameOrOptions]
+    : never
