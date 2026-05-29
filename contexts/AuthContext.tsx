@@ -5,6 +5,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 import { Database } from '@/lib/database.types'
 
+// Define o tipo de usuário baseado na tabela do banco
 type User = Database['public']['Tables']['usuarios']['Row']
 type Role = User['role']
 
@@ -24,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
   
-  // Correção: Usando createBrowserClient do pacote @supabase/ssr
+  // Cria o cliente usando as variáveis de ambiente corretamente
   const supabase = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -60,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchUserData = async (userId: string) => {
     try {
       // Busca os dados extras na tabela publica.usuarios
+      // Usamos 'as any' aqui para contornar erros de tipagem se o schema ainda não estiver 100% sincronizado
       const { data, error } = await supabase
         .from('usuarios')
         .select('*')
@@ -68,8 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error
       
-      setUser(data)
-      setRole(data.role)
+      // Verificação de segurança para garantir que data existe e tem a propriedade role
+      if (data) {
+        setUser(data as User)
+        // Garante que estamos acessando uma propriedade válida
+        setRole((data as any).role || null) 
+      }
     } catch (error) {
       console.error('Erro ao buscar dados do usuário:', error)
       setUser(null)
