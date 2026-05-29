@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createBrowserClient } from "@supabase/ssr"
+import { Database } from "@/lib/database.types";
 import {
   Settings,
   PersonStanding,
@@ -243,7 +244,10 @@ function LoadingSkeleton() {
 }
 
 export default function ConfiguracoesPage() {
-  const [supabase] = useState(() => createClient());
+  const [supabase] = useState(() => createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON!
+  ));
   const [abaAtiva, setAbaAtiva] = useState<AbaId>("perfil");
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
