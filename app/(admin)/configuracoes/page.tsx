@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { Database } from "@/lib/database.types";
 import {
   Settings,
   PersonStanding,
@@ -27,60 +28,25 @@ import {
   Image,
 } from "lucide-react";
 
-type PerfilFestival = {
-  id: string;
-  slug: string;
-  nome: string;
-  icone: string | null;
-  descricao: string | null;
-  ordem: number | null;
-  ativo?: boolean | null;
-  created_at?: string | null;
-  criado_em?: string | null;
-};
+// ─── Tipos derivados do schema real do Supabase ───────────────────────────────
+ type PerfilFestival = Database["public"]["Tables"]["perfisfestival"]["Row"];
+ type Estilo = Database["public"]["Tables"]["estilos"]["Row"];
+ type EstiloAtivo = Database["public"]["Tables"]["tenantestilosativos"]["Row"];
+ type TenantConfig = Database["public"]["Tables"]["tenantconfig"]["Row"];
+ type TenantConfigInsert = Database["public"]["Tables"]["tenantconfig"]["Insert"];
+ type TenantConfigUpdate = Database["public"]["Tables"]["tenantconfig"]["Update"];
+ type EstiloInsert = Database["public"]["Tables"]["estilos"]["Insert"];
 
-type Estilo = {
-  id: string;
-  perfil_id: string | null;
-  nome: string;
-  slug: string;
-  descricao: string | null;
-  ativo: boolean | null;
-  ordem: number | null;
-  created_at?: string | null;
-  criado_em?: string | null;
-};
-
-type EstiloAtivo = {
-  id: string;
-  estilo_id: string;
-  produtora_id: string;
-  ativo: boolean | null;
-  criado_em?: string | null;
-};
-
-type TenantConfig = {
-  id: string;
-  produtora_id: string;
-  perfil_id: string | null;
-  nome_organizacao: string | null;
-  logo_url: string | null;
-  termo_inscricao: string | null;
-  termo_participante: string | null;
-  termo_grupo: string | null;
-  termo_apresentacao: string | null;
-  termo_evento: string | null;
-  updated_at?: string | null;
-};
-
-type Toast = {
+// ─── Tipos auxiliares ─────────────────────────────────────────────────────────
+ type Toast = {
   id: number;
   tipo: "sucesso" | "erro" | "aviso";
   mensagem: string;
 };
 
-type AbaId = "perfil" | "estilos" | "terminologia" | "organizacao";
+ type AbaId = "perfil" | "estilos" | "terminologia" | "organizacao";
 
+// ─── Mapeamento de ícones ─────────────────────────────────────────────────────
 const ICONE_MAP: Record<string, React.ReactNode> = {
   PersonStanding: <PersonStanding size={26} />,
   Music2: <Music2 size={26} />,
@@ -92,6 +58,7 @@ const ICONE_MAP: Record<string, React.ReactNode> = {
 
 let toastId = 0;
 
+// ─── Componentes auxiliares ───────────────────────────────────────────────────
 function ToastContainer({
   toasts,
   remover,
@@ -239,6 +206,7 @@ function LoadingSkeleton() {
   );
 }
 
+// ─── Página principal ─────────────────────────────────────────────────────────
 export default function ConfiguracoesPage() {
   const { supabase } = useAuth();
   const [abaAtiva, setAbaAtiva] = useState<AbaId>("perfil");
@@ -286,7 +254,7 @@ export default function ConfiguracoesPage() {
         const { data, error } = await supabase
           .from("estilos")
           .select("*")
-          .eq("perfil_id", perfilId)
+          .eq("perfilid", perfilId)
           .order("ordem");
 
         if (error) throw error;
@@ -336,16 +304,16 @@ export default function ConfiguracoesPage() {
           { data: configData, error: configError },
           { data: estilosAtivosData, error: estilosAtivosError },
         ] = await Promise.all([
-          supabase.from("perfis_festival").select("*").order("ordem"),
+          supabase.from("perfisfestival").select("*").order("ordem"),
           supabase
-            .from("tenant_config")
+            .from("tenantconfig")
             .select("*")
-            .eq("produtora_id", pid)
+            .eq("produtoraid", pid)
             .maybeSingle(),
           supabase
-            .from("tenant_estilos_ativos")
+            .from("tenantestilosativos")
             .select("*")
-            .eq("produtora_id", pid),
+            .eq("produtoraid", pid),
         ]);
 
         if (perfisError) throw perfisError;
@@ -359,13 +327,13 @@ export default function ConfiguracoesPage() {
           setConfig(configData);
           setFormConfig(configData);
 
-          if (configData.perfil_id) {
-            await carregarEstilosDoPerfil(configData.perfil_id);
+          if (configData.perfilid) {
+            await carregarEstilosDoPerfil(configData.perfilid);
           }
         } else {
           const { data: novaConfig, error: criacaoError } = await supabase
-            .from("tenant_config")
-            .insert({ produtora_id: pid })
+            .from("tenantconfig")
+            .insert({ produtoraid: pid })
             .select()
             .single();
 
@@ -389,9 +357,9 @@ export default function ConfiguracoesPage() {
   }, [addToast, carregarEstilosDoPerfil, supabase]);
 
   function selecionarPerfil(perfil: PerfilFestival) {
-    if (formConfig.perfil_id === perfil.id) return;
+    if (formConfig.perfilid === perfil.id) return;
 
-    if (formConfig.perfil_id && estilosAtivos.length > 0) {
+    if (formConfig.perfilid && estilosAtivos.length > 0) {
       setModalTroca(perfil);
       return;
     }
@@ -408,7 +376,7 @@ export default function ConfiguracoesPage() {
       }
 
       setEstilosAtivos([]);
-      setFormConfig((p) => ({ ...p, perfil_id: perfil.id }));
+      setFormConfig((p) => ({ ...p, perfilid: perfil.id }));
       await carregarEstilosDoPerfil(perfil.id);
       addToast("sucesso", `Perfil ${perfil.nome} selecionado. Salve para confirmar.`);
     } catch (err) {
@@ -423,20 +391,20 @@ export default function ConfiguracoesPage() {
   async function toggleEstilo(estilo: Estilo) {
     if (!produtoraId) return;
 
-    const registroExistente = estilosAtivos.find((e) => e.estilo_id === estilo.id);
+    const registroExistente = estilosAtivos.find((e) => e.estiloid === estilo.id);
     const atualAtivo = !!(registroExistente && registroExistente.ativo);
 
     try {
       const { data, error } = await supabase
-        .from("tenant_estilos_ativos")
+        .from("tenantestilosativos")
         .upsert(
           {
             ...(registroExistente ? { id: registroExistente.id } : {}),
-            estilo_id: estilo.id,
-            produtora_id: produtoraId,
+            estiloid: estilo.id,
+            produtoraid: produtoraId,
             ativo: !atualAtivo,
           },
-          { onConflict: "produtora_id,estilo_id" }
+          { onConflict: "produtoraid,estiloid" }
         )
         .select()
         .single();
@@ -465,7 +433,7 @@ export default function ConfiguracoesPage() {
     try {
       if (ativar) {
         const faltando = estilos.filter(
-          (e) => !estilosAtivos.find((a) => a.estilo_id === e.id && a.ativo)
+          (e) => !estilosAtivos.find((a) => a.estiloid === e.id && a.ativo)
         );
 
         if (faltando.length === 0) {
@@ -474,24 +442,24 @@ export default function ConfiguracoesPage() {
         }
 
         const dadosUpsert = faltando.map((e) => {
-          const existente = estilosAtivos.find((a) => a.estilo_id === e.id);
+          const existente = estilosAtivos.find((a) => a.estiloid === e.id);
           return existente
-            ? { id: existente.id, estilo_id: e.id, produtora_id: produtoraId, ativo: true }
-            : { estilo_id: e.id, produtora_id: produtoraId, ativo: true };
+            ? { id: existente.id, estiloid: e.id, produtoraid: produtoraId, ativo: true }
+            : { estiloid: e.id, produtoraid: produtoraId, ativo: true };
         });
 
         const { data, error } = await supabase
-          .from("tenant_estilos_ativos")
-          .upsert(dadosUpsert, { onConflict: "produtora_id,estilo_id" })
+          .from("tenantestilosativos")
+          .upsert(dadosUpsert, { onConflict: "produtoraid,estiloid" })
           .select();
 
         if (error) throw error;
 
         if (data) {
           setEstilosAtivos((prev) => {
-            const mapa = new Map(prev.map((a) => [a.estilo_id, a]));
+            const mapa = new Map(prev.map((a) => [a.estiloid, a]));
             for (const item of data) {
-              mapa.set(item.estilo_id, item);
+              mapa.set(item.estiloid, item);
             }
             return Array.from(mapa.values());
           });
@@ -500,7 +468,7 @@ export default function ConfiguracoesPage() {
         addToast("sucesso", `${faltando.length} estilos ativados!`);
       } else {
         const registrosParaDesativar = estilosAtivos.filter((a) =>
-          estilos.find((e) => e.id === a.estilo_id)
+          estilos.find((e) => e.id === a.estiloid)
         );
 
         if (registrosParaDesativar.length === 0) {
@@ -510,23 +478,23 @@ export default function ConfiguracoesPage() {
 
         const dadosUpsert = registrosParaDesativar.map((a) => ({
           id: a.id,
-          estilo_id: a.estilo_id,
-          produtora_id: produtoraId,
+          estiloid: a.estiloid,
+          produtoraid: produtoraId,
           ativo: false,
         }));
 
         const { data, error } = await supabase
-          .from("tenant_estilos_ativos")
-          .upsert(dadosUpsert, { onConflict: "produtora_id,estilo_id" })
+          .from("tenantestilosativos")
+          .upsert(dadosUpsert, { onConflict: "produtoraid,estiloid" })
           .select();
 
         if (error) throw error;
 
         if (data) {
           setEstilosAtivos((prev) => {
-            const mapa = new Map(prev.map((a) => [a.estilo_id, a]));
+            const mapa = new Map(prev.map((a) => [a.estiloid, a]));
             for (const item of data) {
-              mapa.set(item.estilo_id, item);
+              mapa.set(item.estiloid, item);
             }
             return Array.from(mapa.values());
           });
@@ -540,7 +508,7 @@ export default function ConfiguracoesPage() {
   }
 
   async function criarEstiloManual() {
-    if (!novoEstilo.nome.trim() || !formConfig.perfil_id || !produtoraId) return;
+    if (!novoEstilo.nome.trim() || !formConfig.perfilid || !produtoraId) return;
 
     setCriandoEstilo(true);
 
@@ -555,7 +523,7 @@ export default function ConfiguracoesPage() {
       const { data: estiloData, error: estiloError } = await supabase
         .from("estilos")
         .insert({
-          perfil_id: formConfig.perfil_id,
+          perfilid: formConfig.perfilid,
           nome: novoEstilo.nome.trim(),
           slug,
           descricao: novoEstilo.descricao.trim() || null,
@@ -569,10 +537,10 @@ export default function ConfiguracoesPage() {
       setEstilos((p) => [...p, estiloData]);
 
       const { data: ativoData, error: ativoError } = await supabase
-        .from("tenant_estilos_ativos")
+        .from("tenantestilosativos")
         .insert({
-          estilo_id: estiloData.id,
-          produtora_id: produtoraId,
+          estiloid: estiloData.id,
+          produtoraid: produtoraId,
           ativo: true,
         })
         .select()
@@ -598,30 +566,30 @@ export default function ConfiguracoesPage() {
     setSalvandoPerfil(true);
 
     try {
-      const perfilAnterior = config.perfil_id;
-      const perfilNovo = formConfig.perfil_id;
+      const perfilAnterior = config.perfilid;
+      const perfilNovo = formConfig.perfilid;
 
       const { error } = await supabase
-        .from("tenant_config")
+        .from("tenantconfig")
         .update({
-          perfil_id: perfilNovo,
-          updated_at: new Date().toISOString(),
+          perfilid: perfilNovo,
+          atualizadoem: new Date().toISOString(),
         })
-        .eq("produtora_id", produtoraId);
+        .eq("produtoraid", produtoraId);
 
       if (error) throw error;
 
       if (perfilNovo && perfilNovo !== perfilAnterior) {
         const { error: deleteError } = await supabase
-          .from("tenant_estilos_ativos")
+          .from("tenantestilosativos")
           .delete()
-          .eq("produtora_id", produtoraId);
+          .eq("produtoraid", produtoraId);
 
         if (deleteError) throw deleteError;
         setEstilosAtivos([]);
       }
 
-      setConfig((c) => (c ? { ...c, perfil_id: perfilNovo ?? null } : c));
+      setConfig((c) => (c ? { ...c, perfilid: perfilNovo ?? null } : c));
       addToast("sucesso", "Tipo de festival salvo com sucesso!");
     } catch {
       addToast("erro", "Erro ao salvar tipo de festival.");
@@ -637,16 +605,14 @@ export default function ConfiguracoesPage() {
 
     try {
       const { error } = await supabase
-        .from("tenant_config")
+        .from("tenantconfig")
         .update({
-          termo_inscricao: formConfig.termo_inscricao,
-          termo_participante: formConfig.termo_participante,
-          termo_grupo: formConfig.termo_grupo,
-          termo_apresentacao: formConfig.termo_apresentacao,
-          termo_evento: formConfig.termo_evento,
-          updated_at: new Date().toISOString(),
+          termoapresentacao: formConfig.termoapresentacao,
+          termoparticipante: formConfig.termoparticipante,
+          termogrupo: formConfig.termogrupo,
+          atualizadoem: new Date().toISOString(),
         })
-        .eq("produtora_id", produtoraId);
+        .eq("produtoraid", produtoraId);
 
       if (error) throw error;
 
@@ -654,11 +620,9 @@ export default function ConfiguracoesPage() {
         c
           ? {
               ...c,
-              termo_inscricao: formConfig.termo_inscricao ?? null,
-              termo_participante: formConfig.termo_participante ?? null,
-              termo_grupo: formConfig.termo_grupo ?? null,
-              termo_apresentacao: formConfig.termo_apresentacao ?? null,
-              termo_evento: formConfig.termo_evento ?? null,
+              termoapresentacao: formConfig.termoapresentacao ?? null,
+              termoparticipante: formConfig.termoparticipante ?? null,
+              termogrupo: formConfig.termogrupo ?? null,
             }
           : c
       );
@@ -678,13 +642,13 @@ export default function ConfiguracoesPage() {
 
     try {
       const { error } = await supabase
-        .from("tenant_config")
+        .from("tenantconfig")
         .update({
-          nome_organizacao: formConfig.nome_organizacao,
-          logo_url: formConfig.logo_url,
-          updated_at: new Date().toISOString(),
+          nomeorganizacao: formConfig.nomeorganizacao,
+          logourl: formConfig.logourl,
+          atualizadoem: new Date().toISOString(),
         })
-        .eq("produtora_id", produtoraId);
+        .eq("produtoraid", produtoraId);
 
       if (error) throw error;
 
@@ -692,8 +656,8 @@ export default function ConfiguracoesPage() {
         c
           ? {
               ...c,
-              nome_organizacao: formConfig.nome_organizacao ?? null,
-              logo_url: formConfig.logo_url ?? null,
+              nomeorganizacao: formConfig.nomeorganizacao ?? null,
+              logourl: formConfig.logourl ?? null,
             }
           : c
       );
@@ -736,7 +700,7 @@ export default function ConfiguracoesPage() {
         .from("axon-assets")
         .getPublicUrl(path).data.publicUrl;
 
-      setFormConfig((p) => ({ ...p, logo_url: publicUrl }));
+      setFormConfig((p) => ({ ...p, logourl: publicUrl }));
       addToast("sucesso", "Logo enviado com sucesso!");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro no upload.";
@@ -750,13 +714,16 @@ export default function ConfiguracoesPage() {
   }
 
   function removerLogo() {
-    setFormConfig((p) => ({ ...p, logo_url: null }));
+    setFormConfig((p) => ({ ...p, logourl: null }));
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   }
 
-  function handleTerminologiaChange(campo: keyof TenantConfig, valor: string) {
+  function handleTerminologiaChange(
+    campo: "termoapresentacao" | "termoparticipante" | "termogrupo",
+    valor: string
+  ) {
     setFormConfig((p) => ({ ...p, [campo]: valor }));
   }
 
@@ -771,10 +738,10 @@ export default function ConfiguracoesPage() {
 
   if (loading) return <LoadingSkeleton />;
 
-  const perfilAtivo = perfis.find((p) => p.id === formConfig.perfil_id);
+  const perfilAtivo = perfis.find((p) => p.id === formConfig.perfilid);
 
   const totalAtivos = estilosAtivos.filter(
-    (a) => estilos.find((e) => e.id === a.estilo_id) && a.ativo
+    (a) => estilos.find((e) => e.id === a.estiloid) && a.ativo
   ).length;
 
   const abas: { id: AbaId; label: string; icon: React.ElementType }[] = [
@@ -927,6 +894,7 @@ export default function ConfiguracoesPage() {
           </div>
 
           <div className="p-6 md:p-8">
+            {/* ─── ABA: PERFIL ──────────────────────────────────────────────── */}
             {abaAtiva === "perfil" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
@@ -942,7 +910,7 @@ export default function ConfiguracoesPage() {
 
                   <button
                     onClick={() => void salvarPerfil()}
-                    disabled={salvandoPerfil || !formConfig.perfil_id}
+                    disabled={salvandoPerfil || !formConfig.perfilid}
                     className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
                     {salvandoPerfil ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -952,7 +920,7 @@ export default function ConfiguracoesPage() {
 
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {perfis.map((perfil) => {
-                    const ativo = formConfig.perfil_id === perfil.id;
+                    const ativo = formConfig.perfilid === perfil.id;
 
                     return (
                       <button
@@ -1005,6 +973,7 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
+            {/* ─── ABA: ESTILOS ─────────────────────────────────────────────── */}
             {abaAtiva === "estilos" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
@@ -1018,7 +987,7 @@ export default function ConfiguracoesPage() {
                     </p>
                   </div>
 
-                  {formConfig.perfil_id && (
+                  {formConfig.perfilid && (
                     <button
                       onClick={() => setModalEstilo(true)}
                       className="flex items-center gap-2 text-sm border border-axon-border text-gray-400 hover:text-white hover:border-axon-gold px-4 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0"
@@ -1029,7 +998,7 @@ export default function ConfiguracoesPage() {
                   )}
                 </div>
 
-                {!formConfig.perfil_id ? (
+                {!formConfig.perfilid ? (
                   <div className="text-center py-16 text-gray-600">
                     <ToggleLeft size={36} className="mx-auto mb-3 opacity-30" />
                     <p className="text-sm">Selecione um tipo de festival primeiro.</p>
@@ -1078,7 +1047,7 @@ export default function ConfiguracoesPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                       {estilos.map((estilo) => {
                         const ativo = !!estilosAtivos.find(
-                          (a) => a.estilo_id === estilo.id && a.ativo
+                          (a) => a.estiloid === estilo.id && a.ativo
                         );
 
                         return (
@@ -1114,6 +1083,7 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
+            {/* ─── ABA: TERMINOLOGIA ────────────────────────────────────────── */}
             {abaAtiva === "terminologia" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
@@ -1140,27 +1110,17 @@ export default function ConfiguracoesPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {[
                     {
-                      campo: "termo_evento",
-                      label: "Evento",
-                      placeholder: "Festival, Concurso, Mostra, Olimpíada...",
-                    },
-                    {
-                      campo: "termo_inscricao",
-                      label: "Inscrição",
-                      placeholder: "Inscrição, Candidatura, Submissão...",
-                    },
-                    {
-                      campo: "termo_apresentacao",
+                      campo: "termoapresentacao" as const,
                       label: "Apresentação / Obra",
                       placeholder: "Apresentação, Peça, Performance, Música...",
                     },
                     {
-                      campo: "termo_participante",
+                      campo: "termoparticipante" as const,
                       label: "Participante",
                       placeholder: "Participante, Músico, Ator, Aluno...",
                     },
                     {
-                      campo: "termo_grupo",
+                      campo: "termogrupo" as const,
                       label: "Grupo / Instituição",
                       placeholder: "Grupo, Banda, Companhia, Instituição...",
                     },
@@ -1172,8 +1132,8 @@ export default function ConfiguracoesPage() {
                       <input
                         type="text"
                         placeholder={placeholder}
-                        value={(formConfig as Record<string, string | null | undefined>)[campo] ?? ""}
-                        onChange={(e) => handleTerminologiaChange(campo as keyof TenantConfig, e.target.value)}
+                        value={formConfig[campo] ?? ""}
+                        onChange={(e) => handleTerminologiaChange(campo, e.target.value)}
                         className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-axon-gold transition-colors"
                       />
                     </div>
@@ -1185,16 +1145,18 @@ export default function ConfiguracoesPage() {
                     Preview em tempo real
                   </p>
                   <p className="text-sm text-gray-400 leading-relaxed">
-                    Bem-vindo ao <span className="text-white font-medium">{formConfig.termo_evento || "Evento"}</span>. Faça sua <span className="text-white font-medium">{formConfig.termo_inscricao || "Inscrição"}</span> agora e registre cada <span className="text-white font-medium">{formConfig.termo_apresentacao || "Apresentação"}</span> com os <span className="text-white font-medium">{formConfig.termo_participante || "Participantes"}</span> do seu <span className="text-white font-medium">{formConfig.termo_grupo || "Grupo"}</span>.
+                    Bem-vindo ao <span className="text-white font-medium">Evento</span>. Faça sua{" "}
+                    <span className="text-white font-medium">Inscrição</span> agora e registre cada{" "}
+                    <span className="text-white font-medium">{formConfig.termoapresentacao || "Apresentação"}</span> com os{" "}
+                    <span className="text-white font-medium">{formConfig.termoparticipante || "Participantes"}</span> do seu{" "}
+                    <span className="text-white font-medium">{formConfig.termogrupo || "Grupo"}</span>.
                   </p>
 
-                  <div className="pt-2 border-t border-axon-border grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="pt-2 border-t border-axon-border grid grid-cols-3 gap-3">
                     {[
-                      { label: "Evento", valor: formConfig.termo_evento || "Evento" },
-                      { label: "Inscrição", valor: formConfig.termo_inscricao || "Inscrição" },
-                      { label: "Apresentação", valor: formConfig.termo_apresentacao || "Apresentação" },
-                      { label: "Participante", valor: formConfig.termo_participante || "Participante" },
-                      { label: "Grupo", valor: formConfig.termo_grupo || "Grupo" },
+                      { label: "Apresentação", valor: formConfig.termoapresentacao || "Apresentação" },
+                      { label: "Participante", valor: formConfig.termoparticipante || "Participante" },
+                      { label: "Grupo", valor: formConfig.termogrupo || "Grupo" },
                     ].map(({ label, valor }) => (
                       <div key={label} className="text-center">
                         <p className="text-xs text-gray-600">{label}</p>
@@ -1206,6 +1168,7 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
+            {/* ─── ABA: ORGANIZAÇÃO ─────────────────────────────────────────── */}
             {abaAtiva === "organizacao" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
@@ -1236,8 +1199,8 @@ export default function ConfiguracoesPage() {
                     <input
                       type="text"
                       placeholder="Ex.: Produtora Horizonte Cultural"
-                      value={formConfig.nome_organizacao ?? ""}
-                      onChange={(e) => setFormConfig((p) => ({ ...p, nome_organizacao: e.target.value }))}
+                      value={formConfig.nomeorganizacao ?? ""}
+                      onChange={(e) => setFormConfig((p) => ({ ...p, nomeorganizacao: e.target.value }))}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-axon-gold transition-colors"
                     />
                   </div>
@@ -1249,11 +1212,11 @@ export default function ConfiguracoesPage() {
 
                     <div className="flex items-start gap-4">
                       <div className="shrink-0">
-                        {formConfig.logo_url ? (
+                        {formConfig.logourl ? (
                           <div className="relative group w-20 h-20 rounded-xl overflow-hidden border border-axon-border bg-axon-bg">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              src={formConfig.logo_url}
+                              src={formConfig.logourl}
                               alt="Logo"
                               className="w-full h-full object-contain p-1"
                               onError={(e) => {
@@ -1289,7 +1252,7 @@ export default function ConfiguracoesPage() {
                           className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-axon-gold transition-colors ${uploadingLogo ? "pointer-events-none opacity-50" : ""}`}
                         >
                           {uploadingLogo ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                          {uploadingLogo ? "Enviando..." : formConfig.logo_url ? "Alterar Logo" : "Fazer upload do logo"}
+                          {uploadingLogo ? "Enviando..." : formConfig.logourl ? "Alterar Logo" : "Fazer upload do logo"}
                         </label>
                         <p className="text-xs text-gray-600 leading-relaxed">
                           JPG, PNG ou WebP. Máx. 5MB.
