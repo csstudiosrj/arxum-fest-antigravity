@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Settings,
   PersonStanding,
@@ -27,7 +27,6 @@ import {
   Image,
 } from "lucide-react";
 
-const supabase = createClient();
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -244,6 +243,7 @@ function LoadingSkeleton() {
 }
 
 export default function ConfiguracoesPage() {
+  const { supabase } = useAuth();
   const [abaAtiva, setAbaAtiva] = useState<AbaId>("perfil");
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
