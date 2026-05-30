@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Database } from "@/lib/database.types";
+import type { Database } from "@/lib/database.types";
 import {
   Settings,
   PersonStanding,
@@ -28,25 +28,26 @@ import {
   Image,
 } from "lucide-react";
 
-// ─── Tipos derivados do schema real do Supabase ───────────────────────────────
- type PerfilFestival = Database["public"]["Tables"]["perfisfestival"]["Row"];
- type Estilo = Database["public"]["Tables"]["estilos"]["Row"];
- type EstiloAtivo = Database["public"]["Tables"]["tenantestilosativos"]["Row"];
- type TenantConfig = Database["public"]["Tables"]["tenantconfig"]["Row"];
- type TenantConfigInsert = Database["public"]["Tables"]["tenantconfig"]["Insert"];
- type TenantConfigUpdate = Database["public"]["Tables"]["tenantconfig"]["Update"];
- type EstiloInsert = Database["public"]["Tables"]["estilos"]["Insert"];
+type PerfilFestival = Database["public"]["Tables"]["perfisfestival"]["Row"];
+type Estilo = Database["public"]["Tables"]["estilos"]["Row"];
+type EstiloAtivo = Database["public"]["Tables"]["tenantestilosativos"]["Row"];
+type TenantConfig = Database["public"]["Tables"]["tenantconfig"]["Row"];
+type TenantConfigInsert = Database["public"]["Tables"]["tenantconfig"]["Insert"];
+type TenantConfigUpdate = Database["public"]["Tables"]["tenantconfig"]["Update"];
+type EstiloInsert = Database["public"]["Tables"]["estilos"]["Insert"];
 
-// ─── Tipos auxiliares ─────────────────────────────────────────────────────────
- type Toast = {
+type Toast = {
   id: number;
   tipo: "sucesso" | "erro" | "aviso";
   mensagem: string;
 };
 
- type AbaId = "perfil" | "estilos" | "terminologia" | "organizacao";
+type AbaId = "perfil" | "estilos" | "terminologia" | "organizacao";
+type TerminologiaCampo =
+  | "termoapresentacao"
+  | "termoparticipante"
+  | "termogrupo";
 
-// ─── Mapeamento de ícones ─────────────────────────────────────────────────────
 const ICONE_MAP: Record<string, React.ReactNode> = {
   PersonStanding: <PersonStanding size={26} />,
   Music2: <Music2 size={26} />,
@@ -58,7 +59,6 @@ const ICONE_MAP: Record<string, React.ReactNode> = {
 
 let toastId = 0;
 
-// ─── Componentes auxiliares ───────────────────────────────────────────────────
 function ToastContainer({
   toasts,
   remover,
@@ -172,7 +172,11 @@ function ModalConfirmacao({
 }
 
 function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-axon-border/30 rounded-lg ${className ?? ""}`} />;
+  return (
+    <div
+      className={`animate-pulse bg-axon-border/30 rounded-lg ${className ?? ""}`}
+    />
+  );
 }
 
 function LoadingSkeleton() {
@@ -206,9 +210,9 @@ function LoadingSkeleton() {
   );
 }
 
-// ─── Página principal ─────────────────────────────────────────────────────────
 export default function ConfiguracoesPage() {
   const { supabase } = useAuth();
+
   const [abaAtiva, setAbaAtiva] = useState<AbaId>("perfil");
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -282,7 +286,7 @@ export default function ConfiguracoesPage() {
 
         const { data: usuarioData, error: usuarioError } = await supabase
           .from("usuarios")
-          .select("id, produtora_id")
+          .select("id, produtoraid")
           .eq("id", user.id)
           .single();
 
@@ -290,13 +294,13 @@ export default function ConfiguracoesPage() {
           throw new Error("Usuário não encontrado.");
         }
 
-        if (!usuarioData.produtora_id) {
+        if (!usuarioData.produtoraid) {
           throw new Error(
             "Sua conta ainda não está vinculada a uma produtora. Entre em contato com o suporte."
           );
         }
 
-        const pid = usuarioData.produtora_id;
+        const pid = usuarioData.produtoraid;
         setProdutoraId(pid);
 
         const [
@@ -331,9 +335,11 @@ export default function ConfiguracoesPage() {
             await carregarEstilosDoPerfil(configData.perfilid);
           }
         } else {
+          const payload: TenantConfigInsert = { produtoraid: pid };
+
           const { data: novaConfig, error: criacaoError } = await supabase
             .from("tenantconfig")
-            .insert({ produtoraid: pid })
+            .insert(payload)
             .select()
             .single();
 
@@ -372,13 +378,16 @@ export default function ConfiguracoesPage() {
 
     try {
       if (!produtoraId) {
-        throw new Error("produtora_id não encontrada.");
+        throw new Error("Produtora não encontrada.");
       }
 
       setEstilosAtivos([]);
       setFormConfig((p) => ({ ...p, perfilid: perfil.id }));
       await carregarEstilosDoPerfil(perfil.id);
-      addToast("sucesso", `Perfil ${perfil.nome} selecionado. Salve para confirmar.`);
+      addToast(
+        "sucesso",
+        `Perfil ${perfil.nome} selecionado. Salve para confirmar.`
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro ao trocar perfil.";
       addToast("erro", msg);
@@ -392,7 +401,7 @@ export default function ConfiguracoesPage() {
     if (!produtoraId) return;
 
     const registroExistente = estilosAtivos.find((e) => e.estiloid === estilo.id);
-    const atualAtivo = !!(registroExistente && registroExistente.ativo);
+    const atualAtivo = !!registroExistente?.ativo;
 
     try {
       const { data, error } = await supabase
@@ -433,7 +442,7 @@ export default function ConfiguracoesPage() {
     try {
       if (ativar) {
         const faltando = estilos.filter(
-          (e) => !estilosAtivos.find((a) => a.estiloid === e.id && a.ativo)
+          (e) => !estilosAtivos.find((a) => a.estiloid === e.id && !!a.ativo)
         );
 
         if (faltando.length === 0) {
@@ -444,8 +453,17 @@ export default function ConfiguracoesPage() {
         const dadosUpsert = faltando.map((e) => {
           const existente = estilosAtivos.find((a) => a.estiloid === e.id);
           return existente
-            ? { id: existente.id, estiloid: e.id, produtoraid: produtoraId, ativo: true }
-            : { estiloid: e.id, produtoraid: produtoraId, ativo: true };
+            ? {
+                id: existente.id,
+                estiloid: e.id,
+                produtoraid: produtoraId,
+                ativo: true,
+              }
+            : {
+                estiloid: e.id,
+                produtoraid: produtoraId,
+                ativo: true,
+              };
         });
 
         const { data, error } = await supabase
@@ -520,15 +538,17 @@ export default function ConfiguracoesPage() {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/--+/g, "-")}-${Date.now()}`;
 
+      const estiloPayload: EstiloInsert = {
+        perfilid: formConfig.perfilid,
+        nome: novoEstilo.nome.trim(),
+        slug,
+        descricao: novoEstilo.descricao.trim() || null,
+        ordem: estilos.length + 1,
+      };
+
       const { data: estiloData, error: estiloError } = await supabase
         .from("estilos")
-        .insert({
-          perfilid: formConfig.perfilid,
-          nome: novoEstilo.nome.trim(),
-          slug,
-          descricao: novoEstilo.descricao.trim() || null,
-          ordem: estilos.length + 1,
-        })
+        .insert(estiloPayload)
         .select()
         .single();
 
@@ -548,7 +568,9 @@ export default function ConfiguracoesPage() {
 
       if (ativoError) throw ativoError;
 
-      if (ativoData) setEstilosAtivos((p) => [...p, ativoData]);
+      if (ativoData) {
+        setEstilosAtivos((p) => [...p, ativoData]);
+      }
 
       addToast("sucesso", `${novoEstilo.nome} criado e ativado!`);
       setNovoEstilo({ nome: "", descricao: "" });
@@ -567,14 +589,16 @@ export default function ConfiguracoesPage() {
 
     try {
       const perfilAnterior = config.perfilid;
-      const perfilNovo = formConfig.perfilid;
+      const perfilNovo = formConfig.perfilid ?? null;
+
+      const payload: TenantConfigUpdate = {
+        perfilid: perfilNovo,
+        atualizadoem: new Date().toISOString(),
+      };
 
       const { error } = await supabase
         .from("tenantconfig")
-        .update({
-          perfilid: perfilNovo,
-          atualizadoem: new Date().toISOString(),
-        })
+        .update(payload)
         .eq("produtoraid", produtoraId);
 
       if (error) throw error;
@@ -589,7 +613,16 @@ export default function ConfiguracoesPage() {
         setEstilosAtivos([]);
       }
 
-      setConfig((c) => (c ? { ...c, perfilid: perfilNovo ?? null } : c));
+      setConfig((c) =>
+        c
+          ? {
+              ...c,
+              perfilid: perfilNovo,
+              atualizadoem: payload.atualizadoem ?? c.atualizadoem,
+            }
+          : c
+      );
+
       addToast("sucesso", "Tipo de festival salvo com sucesso!");
     } catch {
       addToast("erro", "Erro ao salvar tipo de festival.");
@@ -604,14 +637,16 @@ export default function ConfiguracoesPage() {
     setSalvandoTerminologia(true);
 
     try {
+      const payload: TenantConfigUpdate = {
+        termoapresentacao: formConfig.termoapresentacao ?? null,
+        termoparticipante: formConfig.termoparticipante ?? null,
+        termogrupo: formConfig.termogrupo ?? null,
+        atualizadoem: new Date().toISOString(),
+      };
+
       const { error } = await supabase
         .from("tenantconfig")
-        .update({
-          termoapresentacao: formConfig.termoapresentacao,
-          termoparticipante: formConfig.termoparticipante,
-          termogrupo: formConfig.termogrupo,
-          atualizadoem: new Date().toISOString(),
-        })
+        .update(payload)
         .eq("produtoraid", produtoraId);
 
       if (error) throw error;
@@ -620,9 +655,10 @@ export default function ConfiguracoesPage() {
         c
           ? {
               ...c,
-              termoapresentacao: formConfig.termoapresentacao ?? null,
-              termoparticipante: formConfig.termoparticipante ?? null,
-              termogrupo: formConfig.termogrupo ?? null,
+              termoapresentacao: payload.termoapresentacao ?? null,
+              termoparticipante: payload.termoparticipante ?? null,
+              termogrupo: payload.termogrupo ?? null,
+              atualizadoem: payload.atualizadoem ?? c.atualizadoem,
             }
           : c
       );
@@ -641,13 +677,15 @@ export default function ConfiguracoesPage() {
     setSalvandoOrganizacao(true);
 
     try {
+      const payload: TenantConfigUpdate = {
+        nomeorganizacao: formConfig.nomeorganizacao ?? null,
+        logourl: formConfig.logourl ?? null,
+        atualizadoem: new Date().toISOString(),
+      };
+
       const { error } = await supabase
         .from("tenantconfig")
-        .update({
-          nomeorganizacao: formConfig.nomeorganizacao,
-          logourl: formConfig.logourl,
-          atualizadoem: new Date().toISOString(),
-        })
+        .update(payload)
         .eq("produtoraid", produtoraId);
 
       if (error) throw error;
@@ -656,8 +694,9 @@ export default function ConfiguracoesPage() {
         c
           ? {
               ...c,
-              nomeorganizacao: formConfig.nomeorganizacao ?? null,
-              logourl: formConfig.logourl ?? null,
+              nomeorganizacao: payload.nomeorganizacao ?? null,
+              logourl: payload.logourl ?? null,
+              atualizadoem: payload.atualizadoem ?? c.atualizadoem,
             }
           : c
       );
@@ -686,6 +725,7 @@ export default function ConfiguracoesPage() {
     }
 
     setUploadingLogo(true);
+
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() || "png";
       const path = `tenant/logo-${produtoraId}-${Date.now()}.${ext}`;
@@ -720,18 +760,17 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  function handleTerminologiaChange(
-    campo: "termoapresentacao" | "termoparticipante" | "termogrupo",
-    valor: string
-  ) {
+  function handleTerminologiaChange(campo: TerminologiaCampo, valor: string) {
     setFormConfig((p) => ({ ...p, [campo]: valor }));
   }
 
   useEffect(() => {
     if (!modalEstilo || criandoEstilo) return;
+
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") setModalEstilo(false);
     };
+
     document.addEventListener("keydown", handleEsc);
     return () => document.removeEventListener("keydown", handleEsc);
   }, [modalEstilo, criandoEstilo]);
@@ -741,7 +780,7 @@ export default function ConfiguracoesPage() {
   const perfilAtivo = perfis.find((p) => p.id === formConfig.perfilid);
 
   const totalAtivos = estilosAtivos.filter(
-    (a) => estilos.find((e) => e.id === a.estiloid) && a.ativo
+    (a) => estilos.find((e) => e.id === a.estiloid) && !!a.ativo
   ).length;
 
   const abas: { id: AbaId; label: string; icon: React.ElementType }[] = [
@@ -788,6 +827,7 @@ export default function ConfiguracoesPage() {
                     e ativado automaticamente.
                   </p>
                 </div>
+
                 {!criandoEstilo && (
                   <button
                     onClick={() => setModalEstilo(false)}
@@ -811,7 +851,9 @@ export default function ConfiguracoesPage() {
                       setNovoEstilo((p) => ({ ...p, nome: e.target.value }))
                     }
                     disabled={criandoEstilo}
-                    onKeyDown={(e) => e.key === "Enter" && void criarEstiloManual()}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && void criarEstiloManual()
+                    }
                     className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-axon-gold transition-colors disabled:opacity-50"
                   />
                 </div>
@@ -894,7 +936,6 @@ export default function ConfiguracoesPage() {
           </div>
 
           <div className="p-6 md:p-8">
-            {/* ─── ABA: PERFIL ──────────────────────────────────────────────── */}
             {abaAtiva === "perfil" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
@@ -913,7 +954,11 @@ export default function ConfiguracoesPage() {
                     disabled={salvandoPerfil || !formConfig.perfilid}
                     className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
-                    {salvandoPerfil ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                    {salvandoPerfil ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Save size={14} />
+                    )}
                     {salvandoPerfil ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
@@ -939,7 +984,11 @@ export default function ConfiguracoesPage() {
                         )}
 
                         <div className={ativo ? "text-axon-gold" : "text-gray-600"}>
-                          {perfil.icone ? ICONE_MAP[perfil.icone] ?? <Sparkles size={26} /> : <Sparkles size={26} />}
+                          {perfil.icone ? (
+                            ICONE_MAP[perfil.icone] ?? <Sparkles size={26} />
+                          ) : (
+                            <Sparkles size={26} />
+                          )}
                         </div>
 
                         <div>
@@ -973,7 +1022,6 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
-            {/* ─── ABA: ESTILOS ─────────────────────────────────────────────── */}
             {abaAtiva === "estilos" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
@@ -1047,7 +1095,7 @@ export default function ConfiguracoesPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                       {estilos.map((estilo) => {
                         const ativo = !!estilosAtivos.find(
-                          (a) => a.estiloid === estilo.id && a.ativo
+                          (a) => a.estiloid === estilo.id && !!a.ativo
                         );
 
                         return (
@@ -1061,7 +1109,11 @@ export default function ConfiguracoesPage() {
                             }`}
                           >
                             <div className="flex-1 min-w-0">
-                              <p className={`font-medium text-sm ${ativo ? "text-white" : "text-gray-300"}`}>
+                              <p
+                                className={`font-medium text-sm ${
+                                  ativo ? "text-white" : "text-gray-300"
+                                }`}
+                              >
                                 {estilo.nome}
                               </p>
                               {estilo.descricao && (
@@ -1071,7 +1123,11 @@ export default function ConfiguracoesPage() {
                               )}
                             </div>
 
-                            <div className={`ml-4 shrink-0 transition-colors ${ativo ? "text-axon-gold" : "text-gray-700"}`}>
+                            <div
+                              className={`ml-4 shrink-0 transition-colors ${
+                                ativo ? "text-axon-gold" : "text-gray-700"
+                              }`}
+                            >
                               {ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
                             </div>
                           </button>
@@ -1083,7 +1139,6 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
-            {/* ─── ABA: TERMINOLOGIA ────────────────────────────────────────── */}
             {abaAtiva === "terminologia" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
@@ -1102,7 +1157,11 @@ export default function ConfiguracoesPage() {
                     disabled={salvandoTerminologia}
                     className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
-                    {salvandoTerminologia ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                    {salvandoTerminologia ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Save size={14} />
+                    )}
                     {salvandoTerminologia ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
@@ -1147,20 +1206,40 @@ export default function ConfiguracoesPage() {
                   <p className="text-sm text-gray-400 leading-relaxed">
                     Bem-vindo ao <span className="text-white font-medium">Evento</span>. Faça sua{" "}
                     <span className="text-white font-medium">Inscrição</span> agora e registre cada{" "}
-                    <span className="text-white font-medium">{formConfig.termoapresentacao || "Apresentação"}</span> com os{" "}
-                    <span className="text-white font-medium">{formConfig.termoparticipante || "Participantes"}</span> do seu{" "}
-                    <span className="text-white font-medium">{formConfig.termogrupo || "Grupo"}</span>.
+                    <span className="text-white font-medium">
+                      {formConfig.termoapresentacao || "Apresentação"}
+                    </span>{" "}
+                    com os{" "}
+                    <span className="text-white font-medium">
+                      {formConfig.termoparticipante || "Participantes"}
+                    </span>{" "}
+                    do seu{" "}
+                    <span className="text-white font-medium">
+                      {formConfig.termogrupo || "Grupo"}
+                    </span>
+                    .
                   </p>
 
                   <div className="pt-2 border-t border-axon-border grid grid-cols-3 gap-3">
                     {[
-                      { label: "Apresentação", valor: formConfig.termoapresentacao || "Apresentação" },
-                      { label: "Participante", valor: formConfig.termoparticipante || "Participante" },
-                      { label: "Grupo", valor: formConfig.termogrupo || "Grupo" },
+                      {
+                        label: "Apresentação",
+                        valor: formConfig.termoapresentacao || "Apresentação",
+                      },
+                      {
+                        label: "Participante",
+                        valor: formConfig.termoparticipante || "Participante",
+                      },
+                      {
+                        label: "Grupo",
+                        valor: formConfig.termogrupo || "Grupo",
+                      },
                     ].map(({ label, valor }) => (
                       <div key={label} className="text-center">
                         <p className="text-xs text-gray-600">{label}</p>
-                        <p className="text-xs text-axon-gold font-medium mt-0.5 truncate">{valor}</p>
+                        <p className="text-xs text-axon-gold font-medium mt-0.5 truncate">
+                          {valor}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -1168,7 +1247,6 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
-            {/* ─── ABA: ORGANIZAÇÃO ─────────────────────────────────────────── */}
             {abaAtiva === "organizacao" && (
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
@@ -1186,7 +1264,11 @@ export default function ConfiguracoesPage() {
                     disabled={salvandoOrganizacao}
                     className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
-                    {salvandoOrganizacao ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                    {salvandoOrganizacao ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Save size={14} />
+                    )}
                     {salvandoOrganizacao ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
@@ -1200,7 +1282,12 @@ export default function ConfiguracoesPage() {
                       type="text"
                       placeholder="Ex.: Produtora Horizonte Cultural"
                       value={formConfig.nomeorganizacao ?? ""}
-                      onChange={(e) => setFormConfig((p) => ({ ...p, nomeorganizacao: e.target.value }))}
+                      onChange={(e) =>
+                        setFormConfig((p) => ({
+                          ...p,
+                          nomeorganizacao: e.target.value,
+                        }))
+                      }
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-axon-gold transition-colors"
                     />
                   </div>
@@ -1249,10 +1336,20 @@ export default function ConfiguracoesPage() {
                         />
                         <label
                           htmlFor="logo-upload-input"
-                          className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-axon-gold transition-colors ${uploadingLogo ? "pointer-events-none opacity-50" : ""}`}
+                          className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-axon-gold transition-colors ${
+                            uploadingLogo ? "pointer-events-none opacity-50" : ""
+                          }`}
                         >
-                          {uploadingLogo ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                          {uploadingLogo ? "Enviando..." : formConfig.logourl ? "Alterar Logo" : "Fazer upload do logo"}
+                          {uploadingLogo ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Upload size={14} />
+                          )}
+                          {uploadingLogo
+                            ? "Enviando..."
+                            : formConfig.logourl
+                            ? "Alterar Logo"
+                            : "Fazer upload do logo"}
                         </label>
                         <p className="text-xs text-gray-600 leading-relaxed">
                           JPG, PNG ou WebP. Máx. 5MB.
