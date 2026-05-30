@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 import {
   Settings,
@@ -28,6 +27,7 @@ import {
   Image,
 } from "lucide-react";
 
+const supabase = createClient();
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -42,12 +42,12 @@ type PerfilFestival = {
 
 type Estilo = {
   id: string;
-  perfil_id: string;
+  perfil_id: string | null;
   nome: string;
   slug: string;
   descricao: string | null;
   ativo: boolean;
-  ordem: number;
+  ordem: number | null;
 };
 
 type EstiloAtivo = {
@@ -244,7 +244,6 @@ function LoadingSkeleton() {
 }
 
 export default function ConfiguracoesPage() {
-  const { supabase } = useAuth();
   const [abaAtiva, setAbaAtiva] = useState<AbaId>("perfil");
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
