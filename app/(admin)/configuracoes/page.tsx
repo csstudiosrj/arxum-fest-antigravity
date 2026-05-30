@@ -27,8 +27,6 @@ import {
   Image,
 } from "lucide-react";
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-
 type PerfilFestival = {
   id: string;
   slug: string;
@@ -47,7 +45,7 @@ type Estilo = {
   nome: string;
   slug: string;
   descricao: string | null;
-  ativo: boolean;
+  ativo: boolean | null;
   ordem: number | null;
   created_at?: string | null;
   criado_em?: string | null;
@@ -57,7 +55,8 @@ type EstiloAtivo = {
   id: string;
   estilo_id: string;
   produtora_id: string;
-  ativo: boolean;
+  ativo: boolean | null;
+  criado_em?: string | null;
 };
 
 type TenantConfig = {
@@ -82,8 +81,6 @@ type Toast = {
 
 type AbaId = "perfil" | "estilos" | "terminologia" | "organizacao";
 
-// ─── Ícones estáticos ─────────────────────────────────────────────────────────
-
 const ICONE_MAP: Record<string, React.ReactNode> = {
   PersonStanding: <PersonStanding size={26} />,
   Music2: <Music2 size={26} />,
@@ -92,8 +89,6 @@ const ICONE_MAP: Record<string, React.ReactNode> = {
   Zap: <Zap size={26} />,
   Sparkles: <Sparkles size={26} />,
 };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 let toastId = 0;
 
@@ -210,9 +205,7 @@ function ModalConfirmacao({
 }
 
 function Skeleton({ className }: { className?: string }) {
-  return (
-    <div className={`animate-pulse bg-axon-border/30 rounded-lg ${className ?? ""}`} />
-  );
+  return <div className={`animate-pulse bg-axon-border/30 rounded-lg ${className ?? ""}`} />;
 }
 
 function LoadingSkeleton() {
@@ -297,13 +290,7 @@ export default function ConfiguracoesPage() {
           .order("ordem");
 
         if (error) throw error;
-
-        setEstilos(
-          (data ?? []).map((e) => ({
-            ...e,
-            ativo: e.ativo ?? false,
-          }))
-        );
+        setEstilos(data ?? []);
       } catch {
         addToast("erro", "Erro ao carregar estilos do perfil.");
       }
@@ -414,6 +401,7 @@ export default function ConfiguracoesPage() {
 
   async function executarTrocaDePerfil(perfil: PerfilFestival) {
     setTrocandoPerfil(true);
+
     try {
       if (!produtoraId) {
         throw new Error("produtora_id não encontrada.");
@@ -424,8 +412,7 @@ export default function ConfiguracoesPage() {
       await carregarEstilosDoPerfil(perfil.id);
       addToast("sucesso", `Perfil ${perfil.nome} selecionado. Salve para confirmar.`);
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Erro ao trocar perfil.";
+      const msg = err instanceof Error ? err.message : "Erro ao trocar perfil.";
       addToast("erro", msg);
     } finally {
       setTrocandoPerfil(false);
@@ -436,9 +423,7 @@ export default function ConfiguracoesPage() {
   async function toggleEstilo(estilo: Estilo) {
     if (!produtoraId) return;
 
-    const registroExistente = estilosAtivos.find(
-      (e) => e.estilo_id === estilo.id
-    );
+    const registroExistente = estilosAtivos.find((e) => e.estilo_id === estilo.id);
     const atualAtivo = !!(registroExistente && registroExistente.ativo);
 
     try {
@@ -581,13 +566,7 @@ export default function ConfiguracoesPage() {
 
       if (estiloError) throw estiloError;
 
-      setEstilos((p) => [
-        ...p,
-        {
-          ...estiloData,
-          ativo: estiloData.ativo ?? false,
-        },
-      ]);
+      setEstilos((p) => [...p, estiloData]);
 
       const { data: ativoData, error: ativoError } = await supabase
         .from("tenant_estilos_ativos")
@@ -966,11 +945,7 @@ export default function ConfiguracoesPage() {
                     disabled={salvandoPerfil || !formConfig.perfil_id}
                     className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
-                    {salvandoPerfil ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <Save size={14} />
-                    )}
+                    {salvandoPerfil ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                     {salvandoPerfil ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
@@ -996,7 +971,7 @@ export default function ConfiguracoesPage() {
                         )}
 
                         <div className={ativo ? "text-axon-gold" : "text-gray-600"}>
-                          {(perfil.icone && ICONE_MAP[perfil.icone]) ?? <Sparkles size={26} />}
+                          {perfil.icone ? ICONE_MAP[perfil.icone] ?? <Sparkles size={26} /> : <Sparkles size={26} />}
                         </div>
 
                         <div>
@@ -1117,11 +1092,7 @@ export default function ConfiguracoesPage() {
                             }`}
                           >
                             <div className="flex-1 min-w-0">
-                              <p
-                                className={`font-medium text-sm ${
-                                  ativo ? "text-white" : "text-gray-300"
-                                }`}
-                              >
+                              <p className={`font-medium text-sm ${ativo ? "text-white" : "text-gray-300"}`}>
                                 {estilo.nome}
                               </p>
                               {estilo.descricao && (
@@ -1131,11 +1102,7 @@ export default function ConfiguracoesPage() {
                               )}
                             </div>
 
-                            <div
-                              className={`ml-4 shrink-0 transition-colors ${
-                                ativo ? "text-axon-gold" : "text-gray-700"
-                              }`}
-                            >
+                            <div className={`ml-4 shrink-0 transition-colors ${ativo ? "text-axon-gold" : "text-gray-700"}`}>
                               {ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
                             </div>
                           </button>
@@ -1165,11 +1132,7 @@ export default function ConfiguracoesPage() {
                     disabled={salvandoTerminologia}
                     className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
-                    {salvandoTerminologia ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <Save size={14} />
-                    )}
+                    {salvandoTerminologia ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                     {salvandoTerminologia ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
@@ -1209,12 +1172,8 @@ export default function ConfiguracoesPage() {
                       <input
                         type="text"
                         placeholder={placeholder}
-                        value={
-                          (formConfig as Record<string, string | null | undefined>)[campo] ?? ""
-                        }
-                        onChange={(e) =>
-                          handleTerminologiaChange(campo as keyof TenantConfig, e.target.value)
-                        }
+                        value={(formConfig as Record<string, string | null | undefined>)[campo] ?? ""}
+                        onChange={(e) => handleTerminologiaChange(campo as keyof TenantConfig, e.target.value)}
                         className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-axon-gold transition-colors"
                       />
                     </div>
@@ -1226,48 +1185,20 @@ export default function ConfiguracoesPage() {
                     Preview em tempo real
                   </p>
                   <p className="text-sm text-gray-400 leading-relaxed">
-                    {"Bem-vindo ao "}
-                    <span className="text-white font-medium">
-                      {formConfig.termo_evento || "Evento"}
-                    </span>
-                    {". Faça sua "}
-                    <span className="text-white font-medium">
-                      {formConfig.termo_inscricao || "Inscrição"}
-                    </span>
-                    {" agora e registre cada "}
-                    <span className="text-white font-medium">
-                      {formConfig.termo_apresentacao || "Apresentação"}
-                    </span>
-                    {" com os "}
-                    <span className="text-white font-medium">
-                      {formConfig.termo_participante || "Participantes"}
-                    </span>
-                    {" do seu "}
-                    <span className="text-white font-medium">
-                      {formConfig.termo_grupo || "Grupo"}
-                    </span>
-                    .
+                    Bem-vindo ao <span className="text-white font-medium">{formConfig.termo_evento || "Evento"}</span>. Faça sua <span className="text-white font-medium">{formConfig.termo_inscricao || "Inscrição"}</span> agora e registre cada <span className="text-white font-medium">{formConfig.termo_apresentacao || "Apresentação"}</span> com os <span className="text-white font-medium">{formConfig.termo_participante || "Participantes"}</span> do seu <span className="text-white font-medium">{formConfig.termo_grupo || "Grupo"}</span>.
                   </p>
 
                   <div className="pt-2 border-t border-axon-border grid grid-cols-2 md:grid-cols-5 gap-3">
                     {[
                       { label: "Evento", valor: formConfig.termo_evento || "Evento" },
                       { label: "Inscrição", valor: formConfig.termo_inscricao || "Inscrição" },
-                      {
-                        label: "Apresentação",
-                        valor: formConfig.termo_apresentacao || "Apresentação",
-                      },
-                      {
-                        label: "Participante",
-                        valor: formConfig.termo_participante || "Participante",
-                      },
+                      { label: "Apresentação", valor: formConfig.termo_apresentacao || "Apresentação" },
+                      { label: "Participante", valor: formConfig.termo_participante || "Participante" },
                       { label: "Grupo", valor: formConfig.termo_grupo || "Grupo" },
                     ].map(({ label, valor }) => (
                       <div key={label} className="text-center">
                         <p className="text-xs text-gray-600">{label}</p>
-                        <p className="text-xs text-axon-gold font-medium mt-0.5 truncate">
-                          {valor}
-                        </p>
+                        <p className="text-xs text-axon-gold font-medium mt-0.5 truncate">{valor}</p>
                       </div>
                     ))}
                   </div>
@@ -1292,11 +1223,7 @@ export default function ConfiguracoesPage() {
                     disabled={salvandoOrganizacao}
                     className="flex items-center gap-2 bg-axon-gold text-black font-semibold px-5 py-2.5 rounded-lg hover:bg-axon-gold-dim transition-colors text-sm disabled:opacity-40 whitespace-nowrap shrink-0"
                   >
-                    {salvandoOrganizacao ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <Save size={14} />
-                    )}
+                    {salvandoOrganizacao ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                     {salvandoOrganizacao ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
@@ -1310,9 +1237,7 @@ export default function ConfiguracoesPage() {
                       type="text"
                       placeholder="Ex.: Produtora Horizonte Cultural"
                       value={formConfig.nome_organizacao ?? ""}
-                      onChange={(e) =>
-                        setFormConfig((p) => ({ ...p, nome_organizacao: e.target.value }))
-                      }
+                      onChange={(e) => setFormConfig((p) => ({ ...p, nome_organizacao: e.target.value }))}
                       className="w-full bg-axon-bg border border-axon-border rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-700 focus:outline-none focus:border-axon-gold transition-colors"
                     />
                   </div>
@@ -1361,20 +1286,10 @@ export default function ConfiguracoesPage() {
                         />
                         <label
                           htmlFor="logo-upload-input"
-                          className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-axon-gold transition-colors ${
-                            uploadingLogo ? "pointer-events-none opacity-50" : ""
-                          }`}
+                          className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-axon-border text-sm text-gray-400 hover:text-white hover:border-axon-gold transition-colors ${uploadingLogo ? "pointer-events-none opacity-50" : ""}`}
                         >
-                          {uploadingLogo ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <Upload size={14} />
-                          )}
-                          {uploadingLogo
-                            ? "Enviando..."
-                            : formConfig.logo_url
-                            ? "Alterar Logo"
-                            : "Fazer upload do logo"}
+                          {uploadingLogo ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                          {uploadingLogo ? "Enviando..." : formConfig.logo_url ? "Alterar Logo" : "Fazer upload do logo"}
                         </label>
                         <p className="text-xs text-gray-600 leading-relaxed">
                           JPG, PNG ou WebP. Máx. 5MB.
