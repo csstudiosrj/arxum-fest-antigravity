@@ -27,7 +27,6 @@ import {
   Image,
 } from "lucide-react";
 
-
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type PerfilFestival = {
@@ -293,12 +292,18 @@ export default function ConfiguracoesPage() {
           .order("ordem");
 
         if (error) throw error;
-        setEstilos(data ?? []);
+
+        setEstilos(
+          (data ?? []).map((e) => ({
+            ...e,
+            ativo: e.ativo ?? false,
+          }))
+        );
       } catch {
         addToast("erro", "Erro ao carregar estilos do perfil.");
       }
     },
-    [addToast]
+    [addToast, supabase]
   );
 
   useEffect(() => {
@@ -389,7 +394,7 @@ export default function ConfiguracoesPage() {
     }
 
     void carregar();
-  }, [addToast, carregarEstilosDoPerfil]);
+  }, [addToast, carregarEstilosDoPerfil, supabase]);
 
   function selecionarPerfil(perfil: PerfilFestival) {
     if (formConfig.perfil_id === perfil.id) return;
@@ -404,13 +409,11 @@ export default function ConfiguracoesPage() {
 
   async function executarTrocaDePerfil(perfil: PerfilFestival) {
     setTrocandoPerfil(true);
-
     try {
       if (!produtoraId) {
         throw new Error("produtora_id não encontrada.");
       }
 
-      // Apenas limpar estado local — NÃO deletar do banco ainda
       setEstilosAtivos([]);
       setFormConfig((p) => ({ ...p, perfil_id: perfil.id }));
       await carregarEstilosDoPerfil(perfil.id);
@@ -573,9 +576,14 @@ export default function ConfiguracoesPage() {
 
       if (estiloError) throw estiloError;
 
-      setEstilos((p) => [...p, estiloData]);
+      setEstilos((p) => [
+        ...p,
+        {
+          ...estiloData,
+          ativo: estiloData.ativo ?? false,
+        },
+      ]);
 
-      // Novo estilo sempre ativo
       const { data: ativoData, error: ativoError } = await supabase
         .from("tenant_estilos_ativos")
         .insert({
@@ -609,7 +617,6 @@ export default function ConfiguracoesPage() {
       const perfilAnterior = config.perfil_id;
       const perfilNovo = formConfig.perfil_id;
 
-      // 1. Atualizar tenant_config
       const { error } = await supabase
         .from("tenant_config")
         .update({
@@ -620,7 +627,6 @@ export default function ConfiguracoesPage() {
 
       if (error) throw error;
 
-      // 2. Se mudou de perfil, deletar estilos ativos do banco
       if (perfilNovo && perfilNovo !== perfilAnterior) {
         const { error: deleteError } = await supabase
           .from("tenant_estilos_ativos")
@@ -628,7 +634,7 @@ export default function ConfiguracoesPage() {
           .eq("produtora_id", produtoraId);
 
         if (deleteError) throw deleteError;
-        setEstilosAtivos([]); // já estava vazio, mas garante
+        setEstilosAtivos([]);
       }
 
       setConfig((c) => (c ? { ...c, perfil_id: perfilNovo ?? null } : c));
@@ -720,14 +726,12 @@ export default function ConfiguracoesPage() {
     const file = e.target.files?.[0];
     if (!file || !produtoraId) return;
 
-    // Validação de tipo
     const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
       addToast("erro", "Apenas arquivos JPG, PNG ou WebP são aceitos.");
       return;
     }
 
-    // Validação de tamanho (5 MB)
     if (file.size > 5 * 1024 * 1024) {
       addToast("erro", "O arquivo deve ter no máximo 5MB.");
       return;
@@ -755,7 +759,6 @@ export default function ConfiguracoesPage() {
       addToast("erro", msg);
     } finally {
       setUploadingLogo(false);
-      // Limpar o input file
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -773,7 +776,6 @@ export default function ConfiguracoesPage() {
     setFormConfig((p) => ({ ...p, [campo]: valor }));
   }
 
-  // Fechar modal de novo estilo com Escape e overlay
   useEffect(() => {
     if (!modalEstilo || criandoEstilo) return;
     const handleEsc = (e: KeyboardEvent) => {
@@ -1218,7 +1220,6 @@ export default function ConfiguracoesPage() {
                   <p className="text-xs text-gray-600 font-medium uppercase tracking-wider">
                     Preview em tempo real
                   </p>
-
                   <p className="text-sm text-gray-400 leading-relaxed">
                     {"Bem-vindo ao "}
                     <span className="text-white font-medium">
@@ -1317,7 +1318,6 @@ export default function ConfiguracoesPage() {
                     </label>
 
                     <div className="flex items-start gap-4">
-                      {/* Preview do logo atual */}
                       <div className="shrink-0">
                         {formConfig.logo_url ? (
                           <div className="relative group w-20 h-20 rounded-xl overflow-hidden border border-axon-border bg-axon-bg">
@@ -1345,7 +1345,6 @@ export default function ConfiguracoesPage() {
                         )}
                       </div>
 
-                      {/* Botões de ação */}
                       <div className="flex flex-col gap-2">
                         <input
                           ref={fileInputRef}
@@ -1366,7 +1365,11 @@ export default function ConfiguracoesPage() {
                           ) : (
                             <Upload size={14} />
                           )}
-                          {uploadingLogo ? "Enviando..." : formConfig.logo_url ? "Alterar Logo" : "Fazer upload do logo"}
+                          {uploadingLogo
+                            ? "Enviando..."
+                            : formConfig.logo_url
+                            ? "Alterar Logo"
+                            : "Fazer upload do logo"}
                         </label>
                         <p className="text-xs text-gray-600 leading-relaxed">
                           JPG, PNG ou WebP. Máx. 5MB.
