@@ -33,9 +33,12 @@ type PerfilFestival = {
   id: string;
   slug: string;
   nome: string;
-  icone: string;
-  descricao: string;
-  ordem: number;
+  icone: string | null;
+  descricao: string | null;
+  ordem: number | null;
+  ativo?: boolean | null;
+  created_at?: string | null;
+  criado_em?: string | null;
 };
 
 type Estilo = {
@@ -46,6 +49,8 @@ type Estilo = {
   descricao: string | null;
   ativo: boolean;
   ordem: number | null;
+  created_at?: string | null;
+  criado_em?: string | null;
 };
 
 type EstiloAtivo = {
@@ -991,7 +996,7 @@ export default function ConfiguracoesPage() {
                         )}
 
                         <div className={ativo ? "text-axon-gold" : "text-gray-600"}>
-                          {ICONE_MAP[perfil.icone] ?? <Sparkles size={26} />}
+                          {(perfil.icone && ICONE_MAP[perfil.icone]) ?? <Sparkles size={26} />}
                         </div>
 
                         <div>
@@ -1225,7 +1230,7 @@ export default function ConfiguracoesPage() {
                     <span className="text-white font-medium">
                       {formConfig.termo_evento || "Evento"}
                     </span>
-                    .{" Faça sua "}
+                    {". Faça sua "}
                     <span className="text-white font-medium">
                       {formConfig.termo_inscricao || "Inscrição"}
                     </span>
